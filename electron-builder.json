@@ -1,0 +1,27 @@
+{
+  "appId": "com.smpcode.app",
+  "productName": "SMP Code",
+  "directories": {
+    "buildResources": "resources",
+    "output": "dist"
+  },
+  "files": [
+    "out/**/*",
+    "resources/**/*",
+    "package.json"
+  ],
+  "extraMetadata": {
+    "main": "out/main/index.js"
+  },
+  "electronDist": "node_modules/electron/dist",
+  "mac": {
+    "category": "public.app-category.developer-tools",
+    "target": ["dir"],
+    "icon": "resources/icon.png",
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "hardenedRuntime": true
+  },
+  "asar": false,
+  "afterPack": "scripts/afterPack.js"
+}

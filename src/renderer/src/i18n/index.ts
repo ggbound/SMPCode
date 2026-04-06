@@ -1,0 +1,300 @@
+export type Language = 'zh' | 'en'
+
+export const translations = {
+  zh: {
+    // App
+    appName: 'SMP Code',
+    commands: '命令',
+    hide: '隐藏',
+    newSession: '新会话',
+    settings: '设置',
+
+    // Sidebar
+    sessions: '会话',
+    newSessionBtn: '+ 新建',
+    noSessions: '暂无会话',
+    sessionTitle: '会话',
+
+    // ChatArea
+    welcomeTitle: '欢迎使用 SMP Code',
+    welcomeDesc: '在下方输入消息开始对话',
+    welcomeTip: '提示：输入 / 可使用命令，如 /help、/status、/model',
+    placeholder: '输入消息... (Shift+Enter 换行, / 查看命令)',
+    inputPlaceholder: '规划与编程，@添加上下文，/使用命令',
+    send: '发送',
+    addContext: '添加上下文',
+    addImage: '添加图片',
+    stopGeneration: '停止生成',
+    copy: '复制',
+    copied: '已复制',
+    unknown: '未知',
+    selectModel: '选择模型',
+    noModelsAvailable: '没有可用的模型',
+
+    // FileExplorer
+    project: '项目',
+    openFolder: '打开文件夹',
+    refresh: '刷新',
+    noFolderSelected: '未选择文件夹',
+    loading: '加载中...',
+    emptyFolder: '空文件夹',
+    enterFolderPath: '输入文件夹路径',
+    failedToSetWorkingDir: '设置工作目录失败',
+
+    // Terminal
+    newTerminal: '新建终端',
+    splitTerminal: '拆分终端',
+    killTerminal: '关闭终端',
+    terminalError: '错误',
+    retry: '重试',
+    creatingTerminal: '正在创建终端...',
+    noActiveTerminals: '没有活动的终端',
+    openNewTerminal: '打开新终端',
+    runningProcesses: '运行中的进程',
+    noRunningProcesses: '没有运行中的进程',
+    running: '运行中',
+    stopped: '已停止',
+    stopProcess: '停止进程',
+    restartProcess: '重启进程',
+    focusTerminal: '定位终端',
+
+    // FileViewer
+    selectFileToView: '选择文件查看',
+    edit: '编辑',
+    saving: '保存中...',
+    saveFailed: '保存失败',
+
+    // CommandPanel
+    commandsTab: '命令',
+    toolsTab: '工具',
+    searchPlaceholder: '搜索...',
+    noCommands: '未找到命令',
+    noTools: '未找到工具',
+
+    // SettingsModal
+    settingsTitle: '设置',
+    apiKey: 'API 密钥',
+    apiKeyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    model: '模型 (DashScope)',
+    openaiProtocol: 'OpenAI 协议',
+    anthropicProtocol: 'Anthropic 协议',
+    permissionMode: '权限模式',
+    readOnly: '只读',
+    workspaceWrite: '工作区写入',
+    fullAccess: '完全访问',
+    cancel: '取消',
+    save: '保存',
+    general: '通用',
+    providers: '供应商',
+    defaultModel: '默认模型',
+    defaultModelHint: '启动时默认使用的模型',
+    addProvider: '添加供应商',
+    addModel: '添加模型',
+    providerName: '供应商名称',
+    modelId: '模型ID',
+    modelName: '模型名称',
+    delete: '删除',
+    searchProviders: '搜索模型平台...',
+    clickToDisable: '点击禁用',
+    clickToEnable: '点击启用',
+    on: 'ON',
+    off: 'OFF',
+    add: '添加',
+    test: '检测',
+    apiUrl: 'API URL',
+    apiUrlHint: '预览',
+    models: '模型',
+    selectProvider: '请选择一个供应商',
+    addProviderTitle: '添加提供商',
+    providerType: '提供商类型',
+    providerNamePlaceholder: '例如 OpenAI',
+    addModelTitle: '添加模型',
+    groupName: '分组名称',
+    groupNamePlaceholder: '例如 ChatGPT',
+    modelIdPlaceholder: '例如 gpt-3.5-turbo',
+    modelNamePlaceholder: '例如 GPT-4',
+    confirm: '确定',
+
+    // StatusBar
+    modelLabel: '模型',
+    permission: '权限',
+    in: '输入',
+    out: '输出',
+    total: '总计',
+    estCost: '预估费用',
+
+    // Permission modes
+    preview: '预览',
+    readOnlyMode: '只读',
+    workspaceWriteMode: '工作区写入',
+    fullAccessMode: '完全访问',
+
+    // Models
+    qwen35Plus: '通义千问 3.5 Plus',
+    qwen3Max: '通义千问 3 Max',
+    qwen3CoderNext: '通义千问 3 Coder Next',
+    qwen3CoderPlus: '通义千问 3 Coder Plus',
+    glm5: 'GLM 5',
+    glm47: 'GLM 4.7',
+    kimiK25: 'Kimi K2.5',
+    minimaxM25: 'MiniMax M2.5',
+    claude35Sonnet: 'Claude 3.5 Sonnet',
+    claude37Sonnet: 'Claude 3.7 Sonnet',
+  },
+  en: {
+    // App
+    appName: 'SMP Code',
+    commands: 'Commands',
+    hide: 'Hide',
+    newSession: 'New Session',
+    settings: 'Settings',
+
+    // Sidebar
+    sessions: 'Sessions',
+    newSessionBtn: '+ New',
+    noSessions: 'No sessions yet',
+    sessionTitle: 'Session',
+
+    // ChatArea
+    welcomeTitle: 'Welcome to SMP Code',
+    welcomeDesc: 'Start a conversation by typing a message below',
+    welcomeTip: 'Tip: Start with / to use commands like /help, /status, /model',
+    placeholder: 'Type your message... (Shift+Enter for new line, / for commands)',
+    inputPlaceholder: 'Plan and code, @ for context, / for commands',
+    send: 'Send',
+    addContext: 'Add Context',
+    addImage: 'Add Image',
+    stopGeneration: 'Stop Generation',
+    copy: 'Copy',
+    copied: 'Copied',
+    unknown: 'Unknown',
+    selectModel: 'Select Model',
+    noModelsAvailable: 'No models available',
+
+    // FileExplorer
+    project: 'Project',
+    openFolder: 'Open Folder',
+    refresh: 'Refresh',
+    noFolderSelected: 'No folder selected',
+    loading: 'Loading...',
+    emptyFolder: 'Empty folder',
+    enterFolderPath: 'Enter folder path',
+    failedToSetWorkingDir: 'Failed to set working directory',
+
+    // Terminal
+    newTerminal: 'New Terminal',
+    splitTerminal: 'Split Terminal',
+    killTerminal: 'Kill Terminal',
+    terminalError: 'Error',
+    retry: 'Retry',
+    creatingTerminal: 'Creating terminal...',
+    noActiveTerminals: 'No active terminals',
+    openNewTerminal: 'Open New Terminal',
+    runningProcesses: 'Running Processes',
+    noRunningProcesses: 'No running processes',
+    running: 'Running',
+    stopped: 'Stopped',
+    stopProcess: 'Stop Process',
+    restartProcess: 'Restart Process',
+    focusTerminal: 'Focus Terminal',
+
+    // FileViewer
+    selectFileToView: 'Select a file to view',
+    edit: 'Edit',
+    saving: 'Saving...',
+    saveFailed: 'Save failed',
+
+    // CommandPanel
+    commandsTab: 'Commands',
+    toolsTab: 'Tools',
+    searchPlaceholder: 'Search...',
+    noCommands: 'No commands found',
+    noTools: 'No tools found',
+
+    // SettingsModal
+    settingsTitle: 'Settings',
+    apiKey: 'API Key',
+    apiKeyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    model: 'Model (DashScope)',
+    openaiProtocol: 'OpenAI Protocol',
+    anthropicProtocol: 'Anthropic Protocol',
+    permissionMode: 'Permission Mode',
+    readOnly: 'Read Only',
+    workspaceWrite: 'Workspace Write',
+    fullAccess: 'Full Access',
+    cancel: 'Cancel',
+    save: 'Save',
+    general: 'General',
+    providers: 'Providers',
+    defaultModel: 'Default Model',
+    defaultModelHint: 'Model used by default on startup',
+    addProvider: 'Add Provider',
+    addModel: 'Add Model',
+    providerName: 'Provider Name',
+    modelId: 'Model ID',
+    modelName: 'Model Name',
+    delete: 'Delete',
+    searchProviders: 'Search providers...',
+    clickToDisable: 'Click to disable',
+    clickToEnable: 'Click to enable',
+    on: 'ON',
+    off: 'OFF',
+    add: 'Add',
+    test: 'Test',
+    apiUrl: 'API URL',
+    apiUrlHint: 'Preview',
+    models: 'Models',
+    selectProvider: 'Please select a provider',
+    addProviderTitle: 'Add Provider',
+    providerType: 'Provider Type',
+    providerNamePlaceholder: 'e.g. OpenAI',
+    addModelTitle: 'Add Model',
+    groupName: 'Group Name',
+    groupNamePlaceholder: 'e.g. ChatGPT',
+    modelIdPlaceholder: 'e.g. gpt-3.5-turbo',
+    modelNamePlaceholder: 'e.g. GPT-4',
+    confirm: 'Confirm',
+
+    // StatusBar
+    modelLabel: 'Model',
+    permission: 'Permission',
+    in: 'In',
+    out: 'Out',
+    total: 'Total',
+    estCost: 'Est. Cost',
+
+    // Permission modes
+    preview: 'preview',
+    readOnlyMode: 'read-only',
+    workspaceWriteMode: 'workspace-write',
+    fullAccessMode: 'full-access',
+
+    // Models
+    qwen35Plus: 'Qwen 3.5 Plus',
+    qwen3Max: 'Qwen 3 Max',
+    qwen3CoderNext: 'Qwen 3 Coder Next',
+    qwen3CoderPlus: 'Qwen 3 Coder Plus',
+    glm5: 'GLM 5',
+    glm47: 'GLM 4.7',
+    kimiK25: 'Kimi K2.5',
+    minimaxM25: 'MiniMax M2.5',
+    claude35Sonnet: 'Claude 3.5 Sonnet',
+    claude37Sonnet: 'Claude 3.7 Sonnet',
+  }
+}
+
+export type Translations = typeof translations.zh
+
+let currentLanguage: Language = 'zh'
+
+export function setLanguage(lang: Language) {
+  currentLanguage = lang
+}
+
+export function getLanguage(): Language {
+  return currentLanguage
+}
+
+export function t(key: keyof Translations): string {
+  return translations[currentLanguage][key] || key
+}
