@@ -380,7 +380,7 @@ class ProcessTerminalBridge extends EventEmitter {
   }
 
   // Stop a process
-  stopProcess(processId: string): { success: boolean; error?: string } {
+  async stopProcess(processId: string): Promise<{ success: boolean; error?: string; actuallyStopped?: boolean }> {
     const managedProcess = this.processes.get(processId)
     
     if (!managedProcess) {
@@ -388,7 +388,7 @@ class ProcessTerminalBridge extends EventEmitter {
     }
 
     if (!managedProcess.isRunning) {
-      return { success: true }
+      return { success: true, actuallyStopped: true }
     }
 
     try {
@@ -396,18 +396,45 @@ class ProcessTerminalBridge extends EventEmitter {
       
       // Since the process runs in the terminal, send Ctrl+C to stop it
       const terminalId = managedProcess.terminalId
+      let terminalExists = false
+      
       if (terminalId) {
         // Check if terminal still exists
         const terminals = getTerminals()
-        if (terminals.has(terminalId)) {
-          // Send Ctrl+C (\x03) to the terminal
+        terminalExists = terminals.has(terminalId)
+        
+        if (terminalExists) {
+          // Send Ctrl+C (\x03) to the terminal - send twice for ts-node-dev
+          // First Ctrl+C stops the node process, second stops ts-node-dev itself
           writeToTerminal(terminalId, '\x03')
-          log.info(`[ProcessBridge] Sent Ctrl+C to terminal ${terminalId}`)
+          log.info(`[ProcessBridge] Sent first Ctrl+C to terminal ${terminalId}`)
+          
+          // Wait a bit and send second Ctrl+C for ts-node-dev
+          await new Promise(resolve => setTimeout(resolve, 300))
+          writeToTerminal(terminalId, '\x03')
+          log.info(`[ProcessBridge] Sent second Ctrl+C to terminal ${terminalId}`)
+          
+          // Send a third one just to be sure (some processes need it)
+          await new Promise(resolve => setTimeout(resolve, 300))
+          writeToTerminal(terminalId, '\x03')
+          log.info(`[ProcessBridge] Sent third Ctrl+C to terminal ${terminalId}`)
         } else {
           log.warn(`[ProcessBridge] Terminal ${terminalId} no longer exists, process may have already exited`)
+          managedProcess.isRunning = false
+          managedProcess.output.push('\n--- Process already stopped (terminal closed) ---\n')
+          return { success: true, actuallyStopped: true }
         }
       }
 
+      // Wait for process to actually stop (give it time to handle the signal)
+      // We'll check if the terminal is still active and outputting
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      
+      // Check if terminal still exists after the delay
+      const terminals = getTerminals()
+      const terminalStillExists = terminalId ? terminals.has(terminalId) : false
+      
+      // Mark process as stopped in our registry
       managedProcess.isRunning = false
       managedProcess.output.push('\n--- Process stopped by user ---\n')
       
@@ -420,7 +447,13 @@ class ProcessTerminalBridge extends EventEmitter {
         }
       }
       
-      return { success: true }
+      // Note: We can't be 100% sure the process actually stopped due to PTY limitations
+      // But we return actuallyStopped: true if the terminal is still there (command was sent)
+      // or false if terminal disappeared unexpectedly
+      return { 
+        success: true, 
+        actuallyStopped: terminalStillExists || !terminalExists 
+      }
     } catch (error) {
       log.error(`[ProcessBridge] Failed to stop process ${processId}:`, error)
       return {
@@ -447,10 +480,10 @@ class ProcessTerminalBridge extends EventEmitter {
       terminalId = undefined
     }
 
-    // Stop existing process
-    this.stopProcess(processId)
+    // Stop existing process (now async)
+    await this.stopProcess(processId)
     
-    // Wait a bit for cleanup
+    // Wait a bit for cleanup (additional wait since stopProcess already waits)
     await new Promise(resolve => setTimeout(resolve, 500))
     
     // Start new process with same command and cwd

@@ -354,7 +354,7 @@ function setupProcessBridgeHandlers(): void {
   // Stop a process
   ipcMain.handle('process:stop', async (_event, { processId }: { processId: string }) => {
     try {
-      const result = processBridge.stopProcess(processId)
+      const result = await processBridge.stopProcess(processId)
       return result
     } catch (error) {
       log.error('Failed to stop process:', error)

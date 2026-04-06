@@ -1513,26 +1513,40 @@ class ProcessTerminalBridge extends events.EventEmitter {
     }
   }
   // Stop a process
-  stopProcess(processId) {
+  async stopProcess(processId) {
     const managedProcess = this.processes.get(processId);
     if (!managedProcess) {
       return { success: false, error: "Process not found" };
     }
     if (!managedProcess.isRunning) {
-      return { success: true };
+      return { success: true, actuallyStopped: true };
     }
     try {
       log.info(`[ProcessBridge] Stopping process ${processId}`);
       const terminalId = managedProcess.terminalId;
+      let terminalExists = false;
       if (terminalId) {
-        const terminals2 = getTerminals();
-        if (terminals2.has(terminalId)) {
+        const terminals22 = getTerminals();
+        terminalExists = terminals22.has(terminalId);
+        if (terminalExists) {
           writeToTerminal(terminalId, "");
-          log.info(`[ProcessBridge] Sent Ctrl+C to terminal ${terminalId}`);
+          log.info(`[ProcessBridge] Sent first Ctrl+C to terminal ${terminalId}`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          writeToTerminal(terminalId, "");
+          log.info(`[ProcessBridge] Sent second Ctrl+C to terminal ${terminalId}`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          writeToTerminal(terminalId, "");
+          log.info(`[ProcessBridge] Sent third Ctrl+C to terminal ${terminalId}`);
         } else {
           log.warn(`[ProcessBridge] Terminal ${terminalId} no longer exists, process may have already exited`);
+          managedProcess.isRunning = false;
+          managedProcess.output.push("\n--- Process already stopped (terminal closed) ---\n");
+          return { success: true, actuallyStopped: true };
         }
       }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const terminals2 = getTerminals();
+      const terminalStillExists = terminalId ? terminals2.has(terminalId) : false;
       managedProcess.isRunning = false;
       managedProcess.output.push("\n--- Process stopped by user ---\n");
       for (const [key, pid] of this.commandTypeMap.entries()) {
@@ -1542,7 +1556,10 @@ class ProcessTerminalBridge extends events.EventEmitter {
           break;
         }
       }
-      return { success: true };
+      return {
+        success: true,
+        actuallyStopped: terminalStillExists || !terminalExists
+      };
     } catch (error) {
       log.error(`[ProcessBridge] Failed to stop process ${processId}:`, error);
       return {
@@ -1563,7 +1580,7 @@ class ProcessTerminalBridge extends events.EventEmitter {
       log.info(`[ProcessBridge] Terminal ${terminalId} no longer exists, will create new terminal for restart`);
       terminalId = void 0;
     }
-    this.stopProcess(processId);
+    await this.stopProcess(processId);
     await new Promise((resolve) => setTimeout(resolve, 500));
     return this.startProcess(
       managedProcess.command,
@@ -1878,9 +1895,16 @@ async function executeStopProcess(processId) {
     if (!processId) {
       return { success: false, output: "", error: "Process ID is required" };
     }
-    const result = processBridge.stopProcess(processId);
+    const result = await processBridge.stopProcess(processId);
     if (result.success) {
-      return { success: true, output: `Process ${processId} stopped successfully` };
+      if (result.actuallyStopped) {
+        return { success: true, output: `Process ${processId} stopped successfully` };
+      } else {
+        return {
+          success: true,
+          output: `Stop signal sent to process ${processId}, but could not verify if process actually stopped. Please check the terminal to confirm.`
+        };
+      }
     } else {
       return { success: false, output: "", error: result.error || "Failed to stop process" };
     }
@@ -2828,7 +2852,7 @@ function setupProcessBridgeHandlers() {
   });
   electron.ipcMain.handle("process:stop", async (_event, { processId }) => {
     try {
-      const result = processBridge.stopProcess(processId);
+      const result = await processBridge.stopProcess(processId);
       return result;
     } catch (error) {
       log.error("Failed to stop process:", error);

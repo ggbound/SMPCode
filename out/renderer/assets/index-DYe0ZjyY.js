@@ -53762,19 +53762,37 @@ function buildSystemPrompt(commands, tools, cwd2) {
 `;
   prompt2 += `1. **DO NOT USE pkill or kill commands** - These won't work properly with the terminal system
 `;
-  prompt2 += `2. **Use get_running_processes()** - First get the list of running processes to find the process ID
+  prompt2 += `2. **DO NOT assume process status** - Always use tools to check actual process status
 `;
-  prompt2 += `3. **Use stop_process(process_id)** - Stop the specific process by its ID
+  prompt2 += `3. **MUST USE TOOLS** - You MUST call get_running_processes() first, then stop_process() to actually stop a process
 `;
-  prompt2 += `4. **Use restart_process(process_id)** - Restart a process by its ID (preferred over stop+start)
+  prompt2 += `4. **NEVER say process is stopped without using stop_process tool** - Always use the tool
 `;
-  prompt2 += `Example workflow to stop a service:
+  prompt2 += `
+**REQUIRED WORKFLOW to stop a process:**
+`;
+  prompt2 += `Step 1: Get current running processes:
 `;
   prompt2 += `  {"tool": "get_running_processes", "arguments": {}}
 `;
-  prompt2 += `  Then use the process ID from the output:
+  prompt2 += `Step 2: Find the process ID from the output
 `;
-  prompt2 += `  {"tool": "stop_process", "arguments": {"process_id": "the-process-id"}}
+  prompt2 += `Step 3: Call stop_process with the actual process ID:
+`;
+  prompt2 += `  {"tool": "stop_process", "arguments": {"process_id": "actual-process-id-from-step-1"}}
+`;
+  prompt2 += `Step 4: Call get_running_processes again to verify the process is actually stopped
+
+`;
+  prompt2 += `**CRITICAL**: If user says "帮我中断/停止 server", you MUST:
+`;
+  prompt2 += `1. Call get_running_processes() to get the process ID
+`;
+  prompt2 += `2. Call stop_process(process_id) with the actual ID
+`;
+  prompt2 += `3. Call get_running_processes() again to verify
+`;
+  prompt2 += `4. Only then report success/failure based on actual tool results
 
 `;
   prompt2 += `=== NODE.JS PROJECT STARTUP GUIDELINES ===

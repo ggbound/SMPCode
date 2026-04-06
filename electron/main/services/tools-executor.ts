@@ -300,10 +300,18 @@ export async function executeStopProcess(processId: string): Promise<ToolExecuti
       return { success: false, output: '', error: 'Process ID is required' }
     }
     
-    const result = processBridge.stopProcess(processId)
+    const result = await processBridge.stopProcess(processId)
     
     if (result.success) {
-      return { success: true, output: `Process ${processId} stopped successfully` }
+      // Check if we actually stopped the process or if it was already stopped
+      if (result.actuallyStopped) {
+        return { success: true, output: `Process ${processId} stopped successfully` }
+      } else {
+        return { 
+          success: true, 
+          output: `Stop signal sent to process ${processId}, but could not verify if process actually stopped. Please check the terminal to confirm.` 
+        }
+      }
     } else {
       return { success: false, output: '', error: result.error || 'Failed to stop process' }
     }

@@ -84,13 +84,21 @@ function buildSystemPrompt(commands: { name: string; responsibility: string }[],
   prompt += `=== PROCESS MANAGEMENT GUIDELINES ===\n`
   prompt += `When user asks to stop, restart, or manage running services/processes:\n`
   prompt += `1. **DO NOT USE pkill or kill commands** - These won't work properly with the terminal system\n`
-  prompt += `2. **Use get_running_processes()** - First get the list of running processes to find the process ID\n`
-  prompt += `3. **Use stop_process(process_id)** - Stop the specific process by its ID\n`
-  prompt += `4. **Use restart_process(process_id)** - Restart a process by its ID (preferred over stop+start)\n`
-  prompt += `Example workflow to stop a service:\n`
+  prompt += `2. **DO NOT assume process status** - Always use tools to check actual process status\n`
+  prompt += `3. **MUST USE TOOLS** - You MUST call get_running_processes() first, then stop_process() to actually stop a process\n`
+  prompt += `4. **NEVER say process is stopped without using stop_process tool** - Always use the tool\n`
+  prompt += `\n**REQUIRED WORKFLOW to stop a process:**\n`
+  prompt += `Step 1: Get current running processes:\n`
   prompt += `  {"tool": "get_running_processes", "arguments": {}}\n`
-  prompt += `  Then use the process ID from the output:\n`
-  prompt += `  {"tool": "stop_process", "arguments": {"process_id": "the-process-id"}}\n\n`
+  prompt += `Step 2: Find the process ID from the output\n`
+  prompt += `Step 3: Call stop_process with the actual process ID:\n`
+  prompt += `  {"tool": "stop_process", "arguments": {"process_id": "actual-process-id-from-step-1"}}\n`
+  prompt += `Step 4: Call get_running_processes again to verify the process is actually stopped\n\n`
+  prompt += `**CRITICAL**: If user says "帮我中断/停止 server", you MUST:\n`
+  prompt += `1. Call get_running_processes() to get the process ID\n`
+  prompt += `2. Call stop_process(process_id) with the actual ID\n`
+  prompt += `3. Call get_running_processes() again to verify\n`
+  prompt += `4. Only then report success/failure based on actual tool results\n\n`
 
   prompt += `=== NODE.JS PROJECT STARTUP GUIDELINES ===\n`
   prompt += `When starting a Node.js/TypeScript project:\n`
