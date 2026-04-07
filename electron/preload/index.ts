@@ -67,9 +67,9 @@ const api = {
     return () => ipcRenderer.removeListener('terminal:create', callback)
   },
 
-  // Process management
-  startProcessInTerminal: (command: string, cwd: string, terminalId: string) =>
-    ipcRenderer.invoke('process:start-in-terminal', { command, cwd, terminalId }),
+  // Process management - 支持AI意图
+  startProcessInTerminal: (command: string, cwd: string, terminalId: string, aiPrompt?: string) =>
+    ipcRenderer.invoke('process:start-in-terminal', { command, cwd, terminalId, aiPrompt }),
   stopProcess: (processId: string) =>
     ipcRenderer.invoke('process:stop', { processId }),
   restartProcess: (processId: string) =>
@@ -78,9 +78,22 @@ const api = {
     ipcRenderer.invoke('process:list'),
   shouldRunInTerminal: (command: string) =>
     ipcRenderer.invoke('process:should-run-in-terminal', { command }),
+  
+  // AI意图相关API
+  getAIIntentContext: (processId: string) =>
+    ipcRenderer.invoke('process:get-ai-intent', { processId }),
+  getProjectAIHistory: (cwd: string) =>
+    ipcRenderer.invoke('process:get-ai-history', { cwd }),
 
-  // Process event listeners
-  onProcessStarted: (callback: (event: unknown, data: { processId: string; command: string; cwd: string; terminalId?: string }) => void) => {
+  // Process event listeners - 支持AI意图数据
+  onProcessStarted: (callback: (event: unknown, data: { 
+    processId: string; 
+    command: string; 
+    cwd: string; 
+    terminalId?: string;
+    aiIntentId?: string;
+    taskType?: string;
+  }) => void) => {
     ipcRenderer.on('process:started', callback)
     return () => ipcRenderer.removeListener('process:started', callback)
   },

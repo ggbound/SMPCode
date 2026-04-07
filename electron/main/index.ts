@@ -340,10 +340,10 @@ function setupIpcHandlers(): void {
 
 // Process Bridge IPC handlers
 function setupProcessBridgeHandlers(): void {
-  // Start a process in terminal
-  ipcMain.handle('process:start-in-terminal', async (_event, { command, cwd, terminalId }: { command: string; cwd: string; terminalId: string }) => {
+  // Start a process in terminal - 支持AI意图
+  ipcMain.handle('process:start-in-terminal', async (_event, { command, cwd, terminalId, aiPrompt }: { command: string; cwd: string; terminalId: string; aiPrompt?: string }) => {
     try {
-      const result = await processBridge.startProcess(command, cwd, terminalId)
+      const result = await processBridge.startProcess(command, cwd, terminalId, aiPrompt)
       return result
     } catch (error) {
       log.error('Failed to start process in terminal:', error)
@@ -387,6 +387,26 @@ function setupProcessBridgeHandlers(): void {
   // Check if command should run in terminal
   ipcMain.handle('process:should-run-in-terminal', (_event, { command }: { command: string }) => {
     return processBridge.shouldRunInTerminal(command)
+  })
+
+  // 获取AI意图上下文
+  ipcMain.handle('process:get-ai-intent', async (_event, { processId }: { processId: string }) => {
+    try {
+      return processBridge.getAIIntentContext(processId)
+    } catch (error) {
+      log.error('Failed to get AI intent:', error)
+      return undefined
+    }
+  })
+
+  // 获取项目AI历史
+  ipcMain.handle('process:get-ai-history', async (_event, { cwd }: { cwd: string }) => {
+    try {
+      return processBridge.getProjectAIHistory(cwd)
+    } catch (error) {
+      log.error('Failed to get AI history:', error)
+      return []
+    }
   })
 
   log.info('Process bridge handlers registered')

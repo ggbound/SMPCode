@@ -1,45 +1,35 @@
 import { EventEmitter } from 'events'
-import { spawn, ChildProcess, exec } from 'child_process'
-import * as path from 'path'
+import { exec } from 'child_process'
 import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
 import { BrowserWindow } from 'electron'
-import { getTerminals, writeToTerminal } from './terminal-service'
+import { getTerminals, writeToTerminal, TerminalSession } from './terminal-service'
 
 // Process types that should run in terminal
 export const TERMINAL_PROCESS_PATTERNS = [
-  // Node.js - match anywhere in command (for compound commands like "cd && npm run")
   /npm\s+(run|start|dev|serve)/i,
   /npm\s+run\s+\w+/i,
   /node\s+/i,
   /npx\s+/i,
   /yarn\s+(run|start|dev|serve)/i,
   /pnpm\s+(run|start|dev|serve)/i,
-  // Python
   /python\w*\s+/i,
   /pip\s+/i,
-  // Java
   /^java\s+/i,
   /^mvn\w*\s+/i,
   /^gradle\w*\s+/i,
-  // Go
   /^go\s+(run|build|test)/i,
-  // Rust
   /^cargo\s+(run|build|test)/i,
-  // Docker
   /^docker\s+(run|up|compose)/i,
   /^docker-compose\s+/i,
-  // Shell scripts
   /^\.\/\w+\.sh/i,
   /^bash\s+\w+\.sh/i,
-  // Other dev servers
   /^vite\s+/i,
   /^webpack\s+/i,
   /^next\s+/i,
   /^nuxt\s+/i,
   /^vue-cli-service\s+/i,
   /^react-scripts\s+/i,
-  // Custom scripts
   /^start\.sh/i,
   /^dev\.sh/i,
   /^run\.sh/i,
@@ -50,15 +40,33 @@ export const TERMINAL_PROCESS_PATTERNS = [
   /^\.\/server/i
 ]
 
+// AI意图上下文
+export interface AIIntentContext {
+  intentId: string
+  originalPrompt: string
+  taskType: string
+  projectContext: {
+    name: string
+    path: string
+    type?: string
+  }
+  expectedOutcome: string
+  createdAt: string
+  lastAccessedAt: string
+  accessCount: number
+}
+
 export interface ManagedProcess {
   id: string
   command: string
-  process?: ChildProcess  // Optional - only used when spawning directly
   output: string[]
   isRunning: boolean
   startTime: string
   cwd: string
-  terminalId?: string  // Associated terminal session ID
+  terminalId?: string
+  aiIntent?: AIIntentContext
+  commandTypeKey: string
+  port?: number  // 监听的端口，用于验证进程是否运行
 }
 
 export interface ProcessEvent {
@@ -72,22 +80,42 @@ export interface ProcessEvent {
 class ProcessTerminalBridge extends EventEmitter {
   private processes: Map<string, ManagedProcess> = new Map()
   private windowRef: BrowserWindow | null = null
-  // Track command types to their process IDs for reuse
   private commandTypeMap: Map<string, string> = new Map()
+  private aiIntents: Map<string, AIIntentContext> = new Map()
 
   setWindow(window: BrowserWindow): void {
     this.windowRef = window
   }
 
-  // Generate a command type key for grouping similar commands
-  getCommandTypeKey(command: string, cwd: string): string {
-    // Extract the project name from cwd (last directory)
+  // 推断任务类型
+  private inferTaskType(command: string): string {
+    const cmd = command.toLowerCase()
+    if (/npm\s+run\s+dev|vite|next\s+dev|nuxt\s+dev/.test(cmd)) return 'dev-server'
+    if (/npm\s+run\s+build|vite\s+build|next\s+build/.test(cmd)) return 'build'
+    if (/npm\s+test|jest|vitest|pytest/.test(cmd)) return 'test'
+    if (/npm\s+run\s+start|serve/.test(cmd)) return 'production-server'
+    if (/docker.*up|docker-compose/.test(cmd)) return 'docker-deploy'
+    if (/pip\s+install|npm\s+install|yarn\s+install/.test(cmd)) return 'install'
+    return 'command'
+  }
+
+  // 推断项目类型
+  private inferProjectType(command: string): string {
+    const cmd = command.toLowerCase()
+    if (/npm|yarn|pnpm|node|vite|next|nuxt/.test(cmd)) return 'node'
+    if (/python|pip|uvicorn|fastapi|flask/.test(cmd)) return 'python'
+    if (/java|mvn|gradle/.test(cmd)) return 'java'
+    if (/go\s+/.test(cmd)) return 'go'
+    if (/cargo|rust/.test(cmd)) return 'rust'
+    if (/docker/.test(cmd)) return 'docker'
+    return 'unknown'
+  }
+
+  // 提取命令类型键
+  private getCommandTypeKey(command: string, cwd: string): string {
     const projectName = cwd.split('/').pop() || cwd
-    
-    // Extract the actual command part (after cd ... && or cd ... ;)
     const commandPart = this.extractCommandPart(command)
     
-    // Detect command type based on patterns
     if (/npm\s+run\s+dev|npm\s+run\s+serve|npm\s+run\s+start/i.test(commandPart)) {
       return `${projectName}:npm-dev`
     }
@@ -104,17 +132,12 @@ class ProcessTerminalBridge extends EventEmitter {
     if (/docker.*up|docker-compose.*up/i.test(commandPart)) {
       return `${projectName}:docker`
     }
-    if (/python.*manage\.py.*runserver|flask.*run|uvicorn|fastapi/i.test(commandPart)) {
-      return `${projectName}:python-server`
-    }
     
-    // Default: use full command as key
     return `${projectName}:${commandPart.split(' ')[0]}`
   }
 
-  // Extract the actual command part (after cd ... && or cd ... ;)
+  // 提取实际命令部分
   private extractCommandPart(command: string): string {
-    // Match patterns like "cd /path && command" or "cd /path; command"
     const cdMatch = command.match(/^cd\s+\S+\s*(&&|;|\n)\s*(.+)$/)
     if (cdMatch) {
       return cdMatch[2].trim()
@@ -122,11 +145,9 @@ class ProcessTerminalBridge extends EventEmitter {
     return command.trim()
   }
 
-  // Get a display name for the command (for terminal title)
+  // 获取显示名称
   private getCommandDisplayName(command: string): string {
     const commandPart = this.extractCommandPart(command)
-    
-    // Extract project name from command if possible
     const projectMatch = command.match(/cd\s+(?:.*?\/)*([^/]+)\s*&&/)
     const projectName = projectMatch ? projectMatch[1] : ''
     
@@ -139,247 +160,179 @@ class ProcessTerminalBridge extends EventEmitter {
     if (/node.*server|ts-node.*server/i.test(commandPart)) {
       return projectName ? `${projectName} (server)` : 'Server'
     }
-    if (/docker.*up/i.test(commandPart)) {
-      return 'Docker'
-    }
     
-    // Default: first word
     const firstWord = commandPart.split(' ')[0]
     return projectName ? `${projectName} (${firstWord})` : firstWord
   }
 
-  // Check if a command should run in terminal
+  // 检查命令是否应在终端运行
   shouldRunInTerminal(command: string): boolean {
     const commandPart = this.extractCommandPart(command)
     return TERMINAL_PROCESS_PATTERNS.some(pattern => pattern.test(commandPart))
   }
 
-  // Start a process that will output to terminal
+  // 提取端口
+  private extractPort(command: string): number | undefined {
+    const portMatch = command.match(/:(\d+)/)
+    return portMatch ? parseInt(portMatch[1]) : undefined
+  }
+
+  // 创建AI意图
+  private createAIIntent(originalPrompt: string, command: string, cwd: string): AIIntentContext {
+    const projectName = cwd.split('/').pop() || cwd
+    const intent: AIIntentContext = {
+      intentId: `intent-${uuidv4()}`,
+      originalPrompt,
+      taskType: this.inferTaskType(command),
+      projectContext: {
+        name: projectName,
+        path: cwd,
+        type: this.inferProjectType(command)
+      },
+      expectedOutcome: 'long-running-service',
+      createdAt: new Date().toISOString(),
+      lastAccessedAt: new Date().toISOString(),
+      accessCount: 0
+    }
+    this.aiIntents.set(intent.intentId, intent)
+    return intent
+  }
+
+  // 启动进程
   async startProcess(
     command: string,
     cwd: string,
-    terminalId?: string
-  ): Promise<{ processId: string; success: boolean; error?: string; commandTypeKey?: string }> {
+    terminalId?: string,
+    aiPrompt?: string
+  ): Promise<{ processId: string; success: boolean; error?: string; reused?: boolean }> {
     try {
-      // Generate command type key for grouping
       const commandTypeKey = this.getCommandTypeKey(command, cwd)
-      log.info(`[ProcessBridge] Command type key: ${commandTypeKey}`)
+      log.info(`[ProcessBridge] Starting process: ${commandTypeKey}`)
 
-      // Check if there's an existing process of the same type that is still running
+      // 检查是否已有同类型进程在运行
       const existingProcessId = this.commandTypeMap.get(commandTypeKey)
       if (existingProcessId) {
         const existingProcess = this.processes.get(existingProcessId)
-        if (existingProcess && existingProcess.isRunning) {
-          // Check if the terminal still exists
-          const terminals = getTerminals()
-          if (existingProcess.terminalId && terminals.has(existingProcess.terminalId)) {
-            log.info(`[ProcessBridge] Found existing running process for ${commandTypeKey}, returning existing`)
-            return {
-              processId: existingProcessId,
-              success: true,
-              commandTypeKey
-            }
+        if (existingProcess) {
+          // 检查进程是否真的在运行
+          const isRunning = await this.isProcessActuallyRunning(existingProcessId)
+          if (isRunning) {
+            log.info(`[ProcessBridge] Reusing existing process: ${existingProcessId}`)
+            return { processId: existingProcessId, success: true, reused: true }
           } else {
-            // Terminal no longer exists, clean up the stale process entry
-            log.info(`[ProcessBridge] Found existing process for ${commandTypeKey} but terminal ${existingProcess.terminalId} no longer exists, will recreate`)
-            existingProcess.isRunning = false
-            this.commandTypeMap.delete(commandTypeKey)
+            // 进程已停止，清理记录
+            log.info(`[ProcessBridge] Cleaning up stopped process: ${existingProcessId}`)
+            this.cleanupProcessRecord(existingProcessId)
           }
+        } else {
+          // 进程记录不存在但映射还在，清理映射
+          this.commandTypeMap.delete(commandTypeKey)
         }
       }
 
       const processId = uuidv4()
-      // Map this process to its command type
-      this.commandTypeMap.set(commandTypeKey, processId)
-
-      // For long-running commands, check if a terminal already exists for this command type
-      // If yes, reuse it; if no, create a new one
+      const port = this.extractPort(command)
+      
+      // 确定终端ID
       let targetTerminalId = terminalId
       const expectedTerminalId = `terminal-${commandTypeKey}`
       
       if (!targetTerminalId) {
         const terminals = getTerminals()
         
-        // Check if a terminal already exists for this command type
         if (terminals.has(expectedTerminalId)) {
           targetTerminalId = expectedTerminalId
-          log.info(`[ProcessBridge] Reusing existing terminal: ${targetTerminalId}`)
-        } else {
-          // Request renderer to create a new terminal
-          if (this.windowRef && !this.windowRef.isDestroyed()) {
-            this.windowRef.webContents.send('terminal:create', {
-              id: expectedTerminalId,
-              cwd: cwd,
-              title: this.getCommandDisplayName(command)
-            })
-            targetTerminalId = expectedTerminalId
-            log.info(`[ProcessBridge] Requested new terminal creation: ${expectedTerminalId}`)
-            
-            // Wait a bit for terminal to be created
-            await new Promise(resolve => setTimeout(resolve, 500))
+          // 确保终端中的任何旧进程都已停止
+          log.info(`[ProcessBridge] Reusing existing terminal: ${targetTerminalId}, stopping any existing process`)
+          await this.stopTerminalProcess(targetTerminalId)
+          // 额外等待确保终端准备就绪
+          await new Promise(resolve => setTimeout(resolve, 800))
+        } else if (this.windowRef && !this.windowRef.isDestroyed()) {
+          this.windowRef.webContents.send('terminal:create', {
+            id: expectedTerminalId,
+            cwd: cwd,
+            title: this.getCommandDisplayName(command)
+          })
+          targetTerminalId = expectedTerminalId
+          // 等待终端创建完成
+          await new Promise(resolve => setTimeout(resolve, 800))
+        }
+      }
+
+      // 验证终端
+      const terminals = getTerminals()
+      if (!targetTerminalId || !terminals.has(targetTerminalId)) {
+        return { processId: '', success: false, error: 'Failed to create terminal' }
+      }
+
+      // 再次检查是否有同类型进程在运行（防止并发启动）
+      const doubleCheckProcessId = this.commandTypeMap.get(commandTypeKey)
+      if (doubleCheckProcessId && doubleCheckProcessId !== processId) {
+        const doubleCheckProcess = this.processes.get(doubleCheckProcessId)
+        if (doubleCheckProcess) {
+          const isRunning = await this.isProcessActuallyRunning(doubleCheckProcessId)
+          if (isRunning) {
+            log.info(`[ProcessBridge] Found running process during double-check: ${doubleCheckProcessId}`)
+            return { processId: doubleCheckProcessId, success: true, reused: true }
           }
         }
       }
-      
-      // Verify terminal exists
-      const terminals = getTerminals()
-      if (!targetTerminalId || !terminals.has(targetTerminalId)) {
-        return {
-          processId: '',
-          success: false,
-          error: 'Failed to create terminal. Please try again.',
-          commandTypeKey
-        }
-      }
-      
-      log.info(`[ProcessBridge] Using terminal: ${targetTerminalId}`)
-      log.info(`[ProcessBridge] Writing command to terminal: ${command} in ${cwd}`)
 
-      // Create a managed process entry (without actual ChildProcess)
-      // The command will run in the terminal via PTY
+      // 创建进程记录
       const managedProcess: ManagedProcess = {
         id: processId,
         command: command,
-        process: null as any,
         output: [`$ ${command}`, `Working directory: ${cwd}`, '---'],
         isRunning: true,
         startTime: new Date().toISOString(),
         cwd: cwd,
-        terminalId: targetTerminalId
+        terminalId: targetTerminalId,
+        aiIntent: aiPrompt ? this.createAIIntent(aiPrompt, command, cwd) : undefined,
+        commandTypeKey: commandTypeKey,
+        port: port
       }
 
       this.processes.set(processId, managedProcess)
+      this.commandTypeMap.set(commandTypeKey, processId)
 
-      // Clean up command for foreground execution
-      // Remove background execution (&) and output redirections (> file 2>&1)
-      let foregroundCommand = command
-        // Remove output redirections: > file 2>&1 or > file (handle paths with slashes)
+      // 清理命令并执行
+      const foregroundCommand = command
         .replace(/\s*>\s*[^&]+?\s*2>&1\s*&?\s*$/, '')
         .replace(/\s*>\s*[^&]+?\s*&?\s*$/, '')
-        // Remove standalone 2>&1
         .replace(/\s*2>&1\s*&?\s*$/, '')
-        // Remove trailing &
         .replace(/\s*&\s*$/, '')
         .trim()
+
+      // 确保终端有干净的提示符
+      writeToTerminal(targetTerminalId, '\n')
+      await new Promise(resolve => setTimeout(resolve, 200))
       
-      log.info(`[ProcessBridge] Original command: ${command}`)
-      log.info(`[ProcessBridge] Cleaned command for foreground: ${foregroundCommand}`)
+      // 发送命令
+      log.info(`[ProcessBridge] Executing command in terminal: ${foregroundCommand}`)
+      writeToTerminal(targetTerminalId, `${foregroundCommand}\n`)
 
-      // Write command to terminal - run in foreground
-      writeToTerminal(targetTerminalId, `${foregroundCommand}\r`)
-
-      // Buffer for output to reduce IPC calls and improve formatting
-      let outputBuffer = ''
-      let lastOutputTime = Date.now()
-      const BUFFER_TIMEOUT = 30 // ms - shorter for more responsive display
-
-      // ANSI color codes for highlighting
-      const colors = {
-        reset: '\x1b[0m',
-        bright: '\x1b[1m',
-        dim: '\x1b[2m',
-        red: '\x1b[31m',
-        green: '\x1b[32m',
-        yellow: '\x1b[33m',
-        blue: '\x1b[34m',
-        magenta: '\x1b[35m',
-        cyan: '\x1b[36m',
-        white: '\x1b[37m',
-        brightRed: '\x1b[91m',
-        brightGreen: '\x1b[92m',
-        brightYellow: '\x1b[93m',
-        brightBlue: '\x1b[94m',
-        brightMagenta: '\x1b[95m'
-      }
-
-      // Highlight important patterns in output
-      const highlightOutput = (text: string): string => {
-        return text
-          // Highlight errors
-          .replace(/(\[?ERROR\]?|\[?Error\]?|error:|Error:)/g, `${colors.brightRed}$1${colors.reset}`)
-          // Highlight warnings
-          .replace(/(\[?WARN\]?|\[?Warn\]?|warning:|Warning:)/g, `${colors.brightYellow}$1${colors.reset}`)
-          // Highlight success/info
-          .replace(/(\[?INFO\]?|\[?Info\]?|✓|✔|success|Success)/g, `${colors.brightGreen}$1${colors.reset}`)
-          // Highlight URLs
-          .replace(/(http[s]?:\/\/[^\s]+)/g, `${colors.brightBlue}$1${colors.reset}`)
-          // Highlight file paths
-          .replace(/(\/[^\s]+\.(js|ts|json|md|py|java|go|rs|cpp|c|h|jsx|tsx|vue|css|scss|less|html|xml|yml|yaml|sh|bash|zsh))/g, `${colors.cyan}$1${colors.reset}`)
-          // Highlight npm/yarn commands
-          .replace(/(npm|yarn|pnpm|npx)\s+/g, `${colors.brightMagenta}$1${colors.reset} `)
-          // Highlight server start messages
-          .replace(/(🚀|server running|listening on|started on)/gi, `${colors.brightGreen}$1${colors.reset}`)
-      }
-
-      const flushOutputBuffer = () => {
-        if (outputBuffer.length === 0) return
-        
-        const text = outputBuffer
-        outputBuffer = ''
-        
-        // Check for error patterns that indicate the command failed
-        const errorPatterns = [
-          /Error: Cannot find module/i,
-          /MODULE_NOT_FOUND/i,
-          /command not found/i,
-          /npm ERR!/i,
-          /error:.*failed/i,
-          /Error:.*failed/i
-        ]
-        
-        const hasError = errorPatterns.some(pattern => pattern.test(text))
-        if (hasError && managedProcess.isRunning) {
-          log.warn(`[ProcessBridge] Detected error in process ${processId} output, marking as potentially failed`)
-          // Don't immediately mark as stopped, but add a flag that it may have failed
-          // The actual exit detection is tricky with PTY
-        }
-        
-        // Normalize line endings and ensure proper formatting
-        let normalizedText = text.replace(/\r?\n/g, '\r\n')
-        
-        // Apply syntax highlighting
-        normalizedText = highlightOutput(normalizedText)
-        
-        managedProcess.output.push(normalizedText)
-        this.emit('process:data', { processId, data: normalizedText })
-
-        if (this.windowRef && !this.windowRef.isDestroyed()) {
-          this.windowRef.webContents.send('terminal:process-data', {
-            terminalId: terminalId || 'any',
-            processId,
-            data: normalizedText
-          })
-        }
-      }
-
-      // Since the command runs in the terminal via PTY, we don't need to handle
-      // stdout/stderr here. The terminal will display the output directly.
-      // We just need to track that the process is "running" in our registry.
-      
-      log.info(`[ProcessBridge] Command written to terminal ${targetTerminalId}: ${command}`)
-
-      // Notify renderer that process started
+      // 通知前端
       if (this.windowRef && !this.windowRef.isDestroyed()) {
         this.windowRef.webContents.send('process:started', {
           processId,
           command,
           cwd,
-          terminalId: terminalId || 'any'
+          terminalId: targetTerminalId,
+          aiIntentId: managedProcess.aiIntent?.intentId,
+          taskType: managedProcess.aiIntent?.taskType
         })
       }
 
-      return { processId, success: true }
+      log.info(`[ProcessBridge] Process started: ${processId}`)
+      return { processId, success: true, reused: false }
+
     } catch (error) {
       log.error('[ProcessBridge] Failed to start process:', error)
-      return {
-        processId: '',
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      }
+      return { processId: '', success: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
 
-  // Stop a process
+  // 停止进程 - 确保真正停止
   async stopProcess(processId: string): Promise<{ success: boolean; error?: string; actuallyStopped?: boolean }> {
     const managedProcess = this.processes.get(processId)
     
@@ -388,82 +341,78 @@ class ProcessTerminalBridge extends EventEmitter {
     }
 
     if (!managedProcess.isRunning) {
+      // 进程已标记为停止，清理记录
+      this.cleanupProcessRecord(processId)
       return { success: true, actuallyStopped: true }
     }
 
     try {
-      log.info(`[ProcessBridge] Stopping process ${processId}`)
-      
-      // Since the process runs in the terminal, send Ctrl+C to stop it
-      const terminalId = managedProcess.terminalId
-      let terminalExists = false
-      
+      log.info(`[ProcessBridge] Stopping process: ${processId}, command: ${managedProcess.command}`)
+      const { terminalId, port, cwd, command, commandTypeKey } = managedProcess
+
+      // 1. 发送 Ctrl+C 尝试优雅停止
       if (terminalId) {
-        // Check if terminal still exists
         const terminals = getTerminals()
-        terminalExists = terminals.has(terminalId)
-        
-        if (terminalExists) {
-          // Send Ctrl+C (\x03) to the terminal - send twice for ts-node-dev
-          // First Ctrl+C stops the node process, second stops ts-node-dev itself
-          writeToTerminal(terminalId, '\x03')
-          log.info(`[ProcessBridge] Sent first Ctrl+C to terminal ${terminalId}`)
-          
-          // Wait a bit and send second Ctrl+C for ts-node-dev
-          await new Promise(resolve => setTimeout(resolve, 300))
-          writeToTerminal(terminalId, '\x03')
-          log.info(`[ProcessBridge] Sent second Ctrl+C to terminal ${terminalId}`)
-          
-          // Send a third one just to be sure (some processes need it)
-          await new Promise(resolve => setTimeout(resolve, 300))
-          writeToTerminal(terminalId, '\x03')
-          log.info(`[ProcessBridge] Sent third Ctrl+C to terminal ${terminalId}`)
+        if (terminals.has(terminalId)) {
+          log.info(`[ProcessBridge] Sending Ctrl+C to terminal: ${terminalId}`)
+          // 发送多次 Ctrl+C
+          for (let i = 0; i < 3; i++) {
+            writeToTerminal(terminalId, '\x03')
+            await new Promise(resolve => setTimeout(resolve, 500))
+          }
+          writeToTerminal(terminalId, '\n')
+          await new Promise(resolve => setTimeout(resolve, 1000))
         } else {
-          log.warn(`[ProcessBridge] Terminal ${terminalId} no longer exists, process may have already exited`)
-          managedProcess.isRunning = false
-          managedProcess.output.push('\n--- Process already stopped (terminal closed) ---\n')
-          return { success: true, actuallyStopped: true }
+          log.warn(`[ProcessBridge] Terminal ${terminalId} not found during stop`)
         }
       }
 
-      // Wait for process to actually stop (give it time to handle the signal)
-      // We'll check if the terminal is still active and outputting
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      // Check if terminal still exists after the delay
-      const terminals = getTerminals()
-      const terminalStillExists = terminalId ? terminals.has(terminalId) : false
-      
-      // Mark process as stopped in our registry
-      managedProcess.isRunning = false
-      managedProcess.output.push('\n--- Process stopped by user ---\n')
-      
-      // Clean up commandTypeMap entry for this process
-      for (const [key, pid] of this.commandTypeMap.entries()) {
-        if (pid === processId) {
-          this.commandTypeMap.delete(key)
-          log.info(`[ProcessBridge] Cleaned up command type mapping: ${key}`)
-          break
+      // 2. 如果指定了端口，检查端口是否仍被占用
+      let actuallyStopped = true
+      if (port) {
+        const portInUse = await this.checkPortInUse(port)
+        if (portInUse) {
+          log.warn(`[ProcessBridge] Port ${port} still in use, force killing`)
+          await this.killProcessByPort(port)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // 再次检查端口
+          const stillInUse = await this.checkPortInUse(port)
+          actuallyStopped = !stillInUse
         }
       }
-      
-      // Note: We can't be 100% sure the process actually stopped due to PTY limitations
-      // But we return actuallyStopped: true if the terminal is still there (command was sent)
-      // or false if terminal disappeared unexpectedly
-      return { 
-        success: true, 
-        actuallyStopped: terminalStillExists || !terminalExists 
+
+      // 3. 强制 kill 进程树
+      await this.forceKillByCommand(command, cwd)
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // 4. 验证进程是否真的停止（如果端口检查失败）
+      if (port && actuallyStopped) {
+        const stillInUse = await this.checkPortInUse(port)
+        actuallyStopped = !stillInUse
       }
+
+      // 更新状态 - 标记为停止
+      managedProcess.isRunning = false
+      managedProcess.output.push('\n--- Process stopped ---\n')
+      
+      // 从 commandTypeMap 中移除，允许后续启动新进程
+      this.commandTypeMap.delete(commandTypeKey)
+      log.info(`[ProcessBridge] Removed commandTypeKey mapping: ${commandTypeKey}`)
+
+      log.info(`[ProcessBridge] Process ${processId} stopped: ${actuallyStopped}`)
+      return { success: actuallyStopped, actuallyStopped }
+
     } catch (error) {
       log.error(`[ProcessBridge] Failed to stop process ${processId}:`, error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      }
+      // 即使出错也标记为停止
+      managedProcess.isRunning = false
+      this.commandTypeMap.delete(managedProcess.commandTypeKey)
+      return { success: false, error: error instanceof Error ? error.message : String(error) }
     }
   }
 
-  // Restart a process
+  // 重启进程
   async restartProcess(processId: string): Promise<{ processId: string; success: boolean; error?: string }> {
     const managedProcess = this.processes.get(processId)
     
@@ -471,30 +420,52 @@ class ProcessTerminalBridge extends EventEmitter {
       return { processId: '', success: false, error: 'Process not found' }
     }
 
-    // Check if the terminal still exists
-    const terminals = getTerminals()
-    let terminalId = managedProcess.terminalId
+    const { command, cwd, terminalId, aiIntent, commandTypeKey } = managedProcess
+
+    // 1. 停止旧进程
+    log.info(`[ProcessBridge] Restarting process ${processId}`)
+    const stopResult = await this.stopProcess(processId)
     
-    if (terminalId && !terminals.has(terminalId)) {
-      log.info(`[ProcessBridge] Terminal ${terminalId} no longer exists, will create new terminal for restart`)
-      terminalId = undefined
+    if (!stopResult.success) {
+      log.error(`[ProcessBridge] Failed to stop process for restart:`, stopResult.error)
+      // 即使停止失败也继续，尝试强制清理
     }
 
-    // Stop existing process (now async)
-    await this.stopProcess(processId)
+    // 2. 确保命令类型映射被清理
+    this.commandTypeMap.delete(commandTypeKey)
+    log.info(`[ProcessBridge] Deleted commandTypeKey for restart: ${commandTypeKey}`)
     
-    // Wait a bit for cleanup (additional wait since stopProcess already waits)
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // 3. 等待确保终端准备就绪
+    await new Promise(resolve => setTimeout(resolve, 2500))
+
+    // 4. 检查终端是否还存在
+    const terminals = getTerminals()
+    let targetTerminalId = terminalId
     
-    // Start new process with same command and cwd
-    return this.startProcess(
-      managedProcess.command,
-      managedProcess.cwd,
-      terminalId
+    if (targetTerminalId && !terminals.has(targetTerminalId)) {
+      log.info(`[ProcessBridge] Terminal ${targetTerminalId} no longer exists, will create new`)
+      targetTerminalId = undefined
+    }
+
+    // 5. 启动新进程
+    log.info(`[ProcessBridge] Starting new process after restart: ${command}`)
+    const result = await this.startProcess(
+      command,
+      cwd,
+      targetTerminalId,
+      aiIntent?.originalPrompt
     )
+
+    if (result.success) {
+      log.info(`[ProcessBridge] Restart successful, new process: ${result.processId}`)
+    } else {
+      log.error(`[ProcessBridge] Restart failed:`, result.error)
+    }
+
+    return result
   }
 
-  // Get all processes
+  // 获取所有进程
   getAllProcesses(): Array<{
     id: string
     command: string
@@ -502,125 +473,203 @@ class ProcessTerminalBridge extends EventEmitter {
     startTime: string
     cwd: string
     terminalId?: string
+    aiIntent?: AIIntentContext
   }> {
-    const terminals = getTerminals()
-    const activeProcesses: Array<{
-      id: string
-      command: string
-      isRunning: boolean
-      startTime: string
-      cwd: string
-      terminalId?: string
-    }> = []
+    // 清理无效的进程记录
+    this.cleanupInvalidProcesses()
     
-    for (const [id, p] of this.processes) {
-      // Check if the associated terminal still exists
-      if (p.terminalId && !terminals.has(p.terminalId)) {
-        // Terminal no longer exists, mark process as not running
-        if (p.isRunning) {
-          p.isRunning = false
-          log.info(`[ProcessBridge] Process ${id} marked as stopped - terminal ${p.terminalId} no longer exists`)
-        }
-        // Clean up commandTypeMap entry
-        for (const [key, pid] of this.commandTypeMap.entries()) {
-          if (pid === id) {
-            this.commandTypeMap.delete(key)
-            log.info(`[ProcessBridge] Cleaned up command type mapping: ${key}`)
-            break
-          }
-        }
-      }
-      
-      activeProcesses.push({
-        id: p.id,
-        command: p.command,
-        isRunning: p.isRunning,
-        startTime: p.startTime,
-        cwd: p.cwd,
-        terminalId: p.terminalId
-      })
-    }
-    
-    return activeProcesses
+    return Array.from(this.processes.values()).map(p => ({
+      id: p.id,
+      command: p.command,
+      isRunning: p.isRunning,
+      startTime: p.startTime,
+      cwd: p.cwd,
+      terminalId: p.terminalId,
+      aiIntent: p.aiIntent
+    }))
   }
 
-  // Get process output
+  // 获取进程输出
   getProcessOutput(processId: string): string[] | null {
     const managedProcess = this.processes.get(processId)
     return managedProcess ? managedProcess.output : null
   }
 
-  // Get a specific process
+  // 获取特定进程
   getProcess(processId: string): ManagedProcess | undefined {
     return this.processes.get(processId)
   }
 
-  // Clean up stopped processes
-  cleanupProcess(processId: string): boolean {
-    const managedProcess = this.processes.get(processId)
-    
-    if (!managedProcess) {
-      return false
-    }
-
-    if (managedProcess.isRunning) {
-      return false
-    }
-
-    this.processes.delete(processId)
-    return true
+  // 获取AI意图上下文
+  getAIIntentContext(processId: string): AIIntentContext | undefined {
+    const process = this.processes.get(processId)
+    return process?.aiIntent
   }
 
-  // Clean up all processes
+  // 清理所有进程
   cleanupAll(): void {
     for (const [id, managedProcess] of this.processes) {
-      if (managedProcess.isRunning && managedProcess.process) {
-        try {
-          managedProcess.process.kill('SIGTERM')
-        } catch (error) {
-          log.error(`[ProcessBridge] Failed to kill process ${id}:`, error)
-        }
+      if (managedProcess.isRunning && managedProcess.terminalId) {
+        this.stopProcess(id).catch(err => {
+          log.error(`[ProcessBridge] Failed to cleanup process ${id}:`, err)
+        })
       }
     }
     this.processes.clear()
     this.commandTypeMap.clear()
-    log.info('[ProcessBridge] All processes and command type mappings cleaned up')
+    this.aiIntents.clear()
+    log.info('[ProcessBridge] All processes cleaned up')
   }
 
-  // Send input to a process (for interactive processes)
+  // 发送输入到进程
   sendInput(processId: string, input: string): boolean {
     const managedProcess = this.processes.get(processId)
-    
-    if (!managedProcess || !managedProcess.isRunning) {
+    if (!managedProcess?.isRunning || !managedProcess.terminalId) {
       return false
     }
-
-    // If there's a terminal, write to terminal instead
-    if (managedProcess.terminalId) {
-      return writeToTerminal(managedProcess.terminalId, input)
-    }
-
-    // Fallback to process stdin if available
-    if (managedProcess.process?.stdin) {
-      try {
-        managedProcess.process.stdin.write(input)
-        return true
-      } catch (error) {
-        log.error(`[ProcessBridge] Failed to send input to process ${processId}:`, error)
-      }
-    }
-    return false
+    return writeToTerminal(managedProcess.terminalId, input)
   }
 
-  // Parse command into cmd and args
-  private parseCommand(command: string): { cmd: string; args: string[] } {
-    // For shell execution, we pass the whole command as an argument to the shell
-    if (process.platform === 'win32') {
-      return { cmd: 'cmd.exe', args: ['/c', command] }
+  // ============ 私有辅助方法 ============
+
+  // 检查进程是否真正在运行
+  private async isProcessActuallyRunning(processId: string): Promise<boolean> {
+    const managedProcess = this.processes.get(processId)
+    if (!managedProcess) {
+      log.info(`[ProcessBridge] isProcessActuallyRunning: process ${processId} not found`)
+      return false
     }
-    return { cmd: process.env.SHELL || '/bin/bash', args: ['-c', command] }
+    
+    // 首先检查进程标记
+    if (!managedProcess.isRunning) {
+      log.info(`[ProcessBridge] isProcessActuallyRunning: process ${processId} isRunning=false`)
+      return false
+    }
+    
+    // 检查终端是否还存在
+    if (managedProcess.terminalId) {
+      const terminals = getTerminals()
+      if (!terminals.has(managedProcess.terminalId)) {
+        log.info(`[ProcessBridge] isProcessActuallyRunning: terminal ${managedProcess.terminalId} not found`)
+        return false
+      }
+    }
+    
+    // 如果有端口，检查端口是否被占用
+    if (managedProcess.port) {
+      const portInUse = await this.checkPortInUse(managedProcess.port)
+      log.info(`[ProcessBridge] isProcessActuallyRunning: port ${managedProcess.port} in use = ${portInUse}`)
+      return portInUse
+    }
+    
+    // 没有端口，只能通过 isRunning 标记和终端存在性判断
+    return managedProcess.isRunning
+  }
+
+  // 停止终端中的进程
+  private async stopTerminalProcess(terminalId: string): Promise<void> {
+    const terminals = getTerminals()
+    if (!terminals.has(terminalId)) return
+
+    log.info(`[ProcessBridge] Stopping processes in terminal: ${terminalId}`)
+
+    // 发送 Ctrl+C 多次，尝试优雅停止
+    for (let i = 0; i < 5; i++) {
+      writeToTerminal(terminalId, '\x03')
+      await new Promise(resolve => setTimeout(resolve, 400))
+    }
+    
+    // 发送 Enter 确保提示符出现
+    writeToTerminal(terminalId, '\n')
+    await new Promise(resolve => setTimeout(resolve, 600))
+    
+    // 再次发送 Ctrl+C 确保任何残留进程都被停止
+    for (let i = 0; i < 3; i++) {
+      writeToTerminal(terminalId, '\x03')
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+    
+    log.info(`[ProcessBridge] Finished stopping processes in terminal: ${terminalId}`)
+  }
+
+  // 检查端口是否被占用
+  private async checkPortInUse(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const checkCmd = `lsof -i :${port} | grep LISTEN`
+      exec(checkCmd, (error, stdout) => {
+        resolve(!error && stdout.length > 0)
+      })
+    })
+  }
+
+  // 通过端口 kill 进程
+  private async killProcessByPort(port: number): Promise<void> {
+    return new Promise((resolve) => {
+      const killCmd = `lsof -i :${port} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true`
+      exec(killCmd, () => resolve())
+    })
+  }
+
+  // 通过命令和目录强制 kill
+  private async forceKillByCommand(command: string, cwd: string): Promise<void> {
+    const commandPart = this.extractCommandPart(command)
+    const mainCmd = commandPart.split(' ')[0]
+    const projectName = cwd.split('/').pop() || ''
+    
+    return new Promise((resolve) => {
+      // 尝试多种方式 kill
+      const killCmds = [
+        `pkill -f "${mainCmd}.*${projectName}" 2>/dev/null || true`,
+        `pkill -f "node.*${projectName}" 2>/dev/null || true`,
+        `pkill -f "npm.*${projectName}" 2>/dev/null || true`
+      ]
+      
+      let completed = 0
+      killCmds.forEach(cmd => {
+        exec(cmd, () => {
+          completed++
+          if (completed === killCmds.length) resolve()
+        })
+      })
+    })
+  }
+
+  // 清理进程记录
+  private cleanupProcessRecord(processId: string): void {
+    const managedProcess = this.processes.get(processId)
+    if (!managedProcess) return
+
+    // 从 commandTypeMap 中移除
+    for (const [key, pid] of this.commandTypeMap.entries()) {
+      if (pid === processId) {
+        this.commandTypeMap.delete(key)
+        break
+      }
+    }
+
+    // 从 processes 中移除
+    this.processes.delete(processId)
+    
+    // 清理 AI 意图
+    if (managedProcess.aiIntent) {
+      this.aiIntents.delete(managedProcess.aiIntent.intentId)
+    }
+
+    log.info(`[ProcessBridge] Cleaned up process record: ${processId}`)
+  }
+
+  // 清理无效进程记录
+  private cleanupInvalidProcesses(): void {
+    const terminals = getTerminals()
+    
+    for (const [id, process] of this.processes) {
+      // 如果终端不存在但进程标记为运行，则清理
+      if (process.terminalId && !terminals.has(process.terminalId) && process.isRunning) {
+        process.isRunning = false
+        this.cleanupProcessRecord(id)
+      }
+    }
   }
 }
 
-// Export singleton instance
 export const processBridge = new ProcessTerminalBridge()

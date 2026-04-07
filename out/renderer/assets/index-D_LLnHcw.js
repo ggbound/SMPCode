@@ -53107,6 +53107,8 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
   const [hasError, setHasError] = reactExports.useState(null);
   const [runningProcesses, setRunningProcesses] = reactExports.useState([]);
   const [showProcessPanel, setShowProcessPanel] = reactExports.useState(false);
+  const [showAIHistoryPanel, setShowAIHistoryPanel] = reactExports.useState(false);
+  const [aiHistory, setAIHistory] = reactExports.useState([]);
   const containerRefs = reactExports.useRef(/* @__PURE__ */ new Map());
   const sessionsRef = reactExports.useRef([]);
   const initializedRef = reactExports.useRef(false);
@@ -53125,9 +53127,16 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
     }
   }, [isVisible]);
   reactExports.useEffect(() => {
+    if (isVisible && projectPath && window.api?.getProjectAIHistory) {
+      window.api.getProjectAIHistory(projectPath).then((history) => {
+        setAIHistory(history);
+      });
+    }
+  }, [isVisible, projectPath]);
+  reactExports.useEffect(() => {
     if (!window.api) return;
     const removeStartedListener = window.api.onProcessStarted((_2, data) => {
-      console.log("[Terminal] Process started:", data.processId, data.command, "terminalId:", data.terminalId);
+      console.log("[Terminal] Process started:", data.processId, data.command, "terminalId:", data.terminalId, "taskType:", data.taskType);
       setRunningProcesses((prev) => {
         if (prev.find((p2) => p2.id === data.processId)) {
           return prev;
@@ -53138,7 +53147,8 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
           isRunning: true,
           startTime: (/* @__PURE__ */ new Date()).toISOString(),
           cwd: data.cwd,
-          terminalId: data.terminalId || "any"
+          terminalId: data.terminalId || "any",
+          taskType: data.taskType
         }];
       });
       if (data.terminalId && data.terminalId.startsWith("terminal-")) {
@@ -53147,7 +53157,7 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
         if (!existingSession) {
           console.log("[Terminal] Auto-creating terminal for process:", terminalId);
           const commandType = terminalId.replace("terminal-", "");
-          createTerminalForProcess(terminalId, commandType, data.cwd);
+          createTerminalForProcess(terminalId, commandType, data.cwd, data.taskType);
         }
       }
     });
@@ -53219,13 +53229,13 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
       removeCreateListener();
     };
   }, [activeSessionId]);
-  const createTerminalForProcess = reactExports.useCallback(async (terminalId, commandType, cwd2) => {
+  const createTerminalForProcess = reactExports.useCallback(async (terminalId, commandType, cwd2, taskType) => {
     if (isCreating) {
       console.log("[Terminal] Already creating, waiting...");
       setTimeout(() => createTerminalForProcess(terminalId, commandType, cwd2), 100);
       return;
     }
-    console.log("[Terminal] Creating process terminal:", terminalId, "for", commandType);
+    console.log("[Terminal] Creating process terminal:", terminalId, "for", commandType, "task:", taskType);
     setIsCreating(true);
     setHasError(null);
     try {
@@ -53243,7 +53253,6 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
       console.log("[Terminal] Process terminal created:", result);
       const session = {
         id: terminalId,
-        // Use the dedicated terminal ID for routing
         name: displayName,
         xterm: null,
         fitAddon: null,
@@ -53456,7 +53465,7 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
       setActiveSessionId(remaining.length > 0 ? remaining[0].id : null);
     }
   };
-  const executeCommandInTerminal = async (command, cwd2) => {
+  const executeCommandInTerminal = async (command, cwd2, aiPrompt) => {
     if (!activeSessionId) {
       await createTerminal();
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -53468,9 +53477,9 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
       return;
     }
     try {
-      const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId);
+      const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId, aiPrompt);
       if (result.success) {
-        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`);
+        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`, "reused:", result.reused);
       } else {
         console.error("[Terminal] Failed to start process:", result.error);
       }
@@ -53508,6 +53517,32 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
     const seconds = diff2 % 60;
     return `${minutes}m ${seconds}s`;
   };
+  const getTaskTypeIcon = (taskType) => {
+    const icons = {
+      "dev-server": "🚀",
+      "build": "🔨",
+      "test": "🧪",
+      "production-server": "🌐",
+      "docker-deploy": "🐳",
+      "deploy": "📦",
+      "install": "📥",
+      "command": "⚡"
+    };
+    return icons[taskType || "command"] || "⚡";
+  };
+  const getTaskTypeLabel = (taskType) => {
+    const labels = {
+      "dev-server": "Dev Server",
+      "build": "Build",
+      "test": "Test",
+      "production-server": "Server",
+      "docker-deploy": "Docker",
+      "deploy": "Deploy",
+      "install": "Install",
+      "command": "Command"
+    };
+    return labels[taskType || "command"] || "Command";
+  };
   if (!isVisible) return null;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "terminal-panel", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "terminal-tabs-container", children: [
@@ -53517,7 +53552,7 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
           className: `terminal-tab ${session.id === activeSessionId ? "active" : ""}`,
           onClick: () => setActiveSessionId(session.id),
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-icon", children: "⚡" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-icon", children: session.aiIntent ? getTaskTypeIcon(session.aiIntent.taskType) : "⚡" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-name", children: session.name }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
@@ -53550,6 +53585,15 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
           "button",
           {
             className: "terminal-action-btn",
+            title: "AI History",
+            onClick: () => setShowAIHistoryPanel(!showAIHistoryPanel),
+            children: "🤖"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "terminal-action-btn",
             title: t("killTerminal") || "Kill Terminal",
             onClick: () => activeSessionId && closeTerminal(activeSessionId),
             disabled: !activeSessionId,
@@ -53564,10 +53608,10 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
         ": ",
         hasError
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: createTerminal, children: t("retry") || "Retry" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: () => createTerminal(), children: t("retry") || "Retry" })
     ] }) }) : sessions.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "terminal-empty", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "terminal-empty-content", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: isCreating ? t("creatingTerminal") || "Creating terminal..." : t("noActiveTerminals") || "No active terminals" }),
-      !isCreating && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: createTerminal, children: t("openNewTerminal") || "Open New Terminal" })
+      !isCreating && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: () => createTerminal(), children: t("openNewTerminal") || "Open New Terminal" })
     ] }) }) : sessions.map((session) => /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
@@ -53586,7 +53630,12 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "process-list", children: runningProcesses.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "process-empty", children: t("noRunningProcesses") || "No running processes" }) : runningProcesses.map((process2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `process-item ${process2.isRunning ? "running" : "stopped"}`, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "process-info", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "process-command", children: process2.command }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "process-command", children: [
+            getTaskTypeIcon(process2.taskType),
+            " ",
+            process2.command,
+            process2.reused && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "reused-badge", children: "↻ 复用" })
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "process-meta", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "process-cwd", children: process2.cwd }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "process-duration", children: formatDuration(process2.startTime) }),
@@ -53626,6 +53675,34 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
           )
         ] })
       ] }, process2.id)) })
+    ] }),
+    showAIHistoryPanel && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ai-history-panel", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ai-history-panel-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ai-history-panel-title", children: "🤖 AI 任务历史" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "ai-history-panel-close", onClick: () => setShowAIHistoryPanel(false), children: "×" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ai-history-list", children: aiHistory.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ai-history-empty", children: "暂无 AI 任务历史" }) : aiHistory.map((intent) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ai-history-item", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ai-history-header", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ai-history-icon", children: getTaskTypeIcon(intent.taskType) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ai-history-type", children: getTaskTypeLabel(intent.taskType) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ai-history-count", children: [
+            "复用 ",
+            intent.accessCount,
+            " 次"
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ai-history-prompt", children: intent.originalPrompt }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ai-history-meta", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "项目: ",
+            intent.projectContext.name
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "类型: ",
+            intent.projectContext.type
+          ] })
+        ] })
+      ] }, intent.intentId)) })
     ] })
   ] });
 });
@@ -53727,6 +53804,38 @@ function buildSystemPrompt(commands, tools, cwd2) {
   prompt2 += `3. ALWAYS wrap the JSON in triple backticks with 'json' language identifier
 `;
   prompt2 += `4. You can invoke multiple tools by outputting multiple JSON code blocks in sequence
+`;
+  prompt2 += `5. DO NOT output raw text explanations before or between tool calls
+`;
+  prompt2 += `6. When multiple tools are needed, output them one after another in separate code blocks
+
+`;
+  prompt2 += `=== RESPONSE FORMAT ===
+`;
+  prompt2 += `When you need to use tools, your ENTIRE response must be ONLY the JSON code block(s).
+`;
+  prompt2 += `Do not include any explanatory text before, between, or after the tool calls.
+`;
+  prompt2 += `Example of CORRECT response with multiple tools:
+`;
+  prompt2 += `\`\`\`json
+{"tool": "list_directory", "arguments": {"path": "/project"}}
+\`\`\`
+\`\`\`json
+{"tool": "read_file", "arguments": {"path": "/project/package.json"}}
+\`\`\`
+
+`;
+  prompt2 += `Example of INCORRECT response (do NOT do this):
+`;
+  prompt2 += `Let me check the directory first:
+\`\`\`json
+{"tool": "list_directory", "arguments": {"path": "/project"}}
+\`\`\`
+Now let me read the file...
+\`\`\`json
+{"tool": "read_file", "arguments": {"path": "/project/package.json"}}
+\`\`\`
 
 `;
   if (commands.length > 0) {

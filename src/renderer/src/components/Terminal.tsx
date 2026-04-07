@@ -9,8 +9,24 @@ interface TerminalProps {
   projectPath?: string | null
 }
 
+// AI意图上下文
+interface AIIntentContext {
+  intentId: string
+  originalPrompt: string
+  taskType: string
+  projectContext: {
+    name: string
+    path: string
+    type?: string
+  }
+  expectedOutcome: string
+  createdAt: string
+  lastAccessedAt: string
+  accessCount: number
+}
+
 export interface TerminalRef {
-  executeCommand: (command: string, cwd?: string) => Promise<void>
+  executeCommand: (command: string, cwd?: string, aiPrompt?: string) => Promise<void>
 }
 
 interface RunningProcess {
@@ -20,6 +36,10 @@ interface RunningProcess {
   startTime: string
   cwd: string
   terminalId?: string
+  // AI意图相关
+  aiIntent?: AIIntentContext
+  reused?: boolean
+  taskType?: string
 }
 
 interface TerminalSession {
@@ -28,8 +48,9 @@ interface TerminalSession {
   xterm: XTerm | null
   fitAddon: FitAddon | null
   isActive: boolean
-  isProcessTerminal?: boolean  // Mark if this terminal is dedicated to a process
-  processCommand?: string      // The command type this terminal is running
+  isProcessTerminal?: boolean
+  processCommand?: string
+  aiIntent?: AIIntentContext
 }
 
 declare global {
@@ -42,12 +63,27 @@ declare global {
       listTerminals: () => Promise<Array<{ id: string; name: string; createdAt: Date }>>
       onTerminalData: (callback: (event: unknown, data: { id: string; data: string }) => void) => () => void
       onTerminalExit: (callback: (event: unknown, data: { id: string; exitCode: number }) => void) => () => void
-      // Process management APIs
-      startProcessInTerminal: (command: string, cwd: string, terminalId: string) => Promise<{ processId: string; success: boolean; error?: string }>
+      // Process management APIs - 更新以支持AI意图
+      startProcessInTerminal: (command: string, cwd: string, terminalId: string, aiPrompt?: string) => Promise<{ 
+        processId: string; 
+        success: boolean; 
+        error?: string;
+        aiIntentId?: string;
+        reused?: boolean;
+      }>
       stopProcess: (processId: string) => Promise<{ success: boolean; error?: string }>
       restartProcess: (processId: string) => Promise<{ processId: string; success: boolean; error?: string }>
       getRunningProcesses: () => Promise<RunningProcess[]>
-      onProcessStarted: (callback: (event: unknown, data: { processId: string; command: string; cwd: string; terminalId?: string }) => void) => () => void
+      getAIIntentContext: (processId: string) => Promise<AIIntentContext | undefined>
+      getProjectAIHistory: (cwd: string) => Promise<AIIntentContext[]>
+      onProcessStarted: (callback: (event: unknown, data: { 
+        processId: string; 
+        command: string; 
+        cwd: string; 
+        terminalId?: string;
+        aiIntentId?: string;
+        taskType?: string;
+      }) => void) => () => void
       onProcessData: (callback: (event: unknown, data: { terminalId: string; processId: string; data: string }) => void) => () => void
       onProcessExit: (callback: (event: unknown, data: { terminalId: string; processId: string; exitCode: number }) => void) => () => void
       onProcessError: (callback: (event: unknown, data: { terminalId: string; processId: string; error: string }) => void) => () => void
@@ -63,12 +99,14 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   const [hasError, setHasError] = useState<string | null>(null)
   const [runningProcesses, setRunningProcesses] = useState<RunningProcess[]>([])
   const [showProcessPanel, setShowProcessPanel] = useState(false)
+  const [showAIHistoryPanel, setShowAIHistoryPanel] = useState(false)
+  const [aiHistory, setAIHistory] = useState<AIIntentContext[]>([])
   const containerRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const sessionsRef = useRef<TerminalSession[]>([])
   const initializedRef = useRef(false)
   const processDataBuffer = useRef<Map<string, string[]>>(new Map())
 
-  // Expose executeCommand method via ref
+  // Expose executeCommand method via ref - 支持AI提示
   useImperativeHandle(ref, () => ({
     executeCommand: executeCommandInTerminal
   }))
@@ -87,12 +125,21 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
   }, [isVisible])
 
+  // Load AI历史
+  useEffect(() => {
+    if (isVisible && projectPath && window.api?.getProjectAIHistory) {
+      window.api.getProjectAIHistory(projectPath).then(history => {
+        setAIHistory(history)
+      })
+    }
+  }, [isVisible, projectPath])
+
   // Listen for process events
   useEffect(() => {
     if (!window.api) return
 
     const removeStartedListener = window.api.onProcessStarted((_, data) => {
-      console.log('[Terminal] Process started:', data.processId, data.command, 'terminalId:', data.terminalId)
+      console.log('[Terminal] Process started:', data.processId, data.command, 'terminalId:', data.terminalId, 'taskType:', data.taskType)
       setRunningProcesses(prev => {
         // Avoid duplicate entries
         if (prev.find(p => p.id === data.processId)) {
@@ -104,7 +151,8 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           isRunning: true,
           startTime: new Date().toISOString(),
           cwd: data.cwd,
-          terminalId: data.terminalId || 'any'
+          terminalId: data.terminalId || 'any',
+          taskType: data.taskType
         }]
       })
       
@@ -117,7 +165,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           console.log('[Terminal] Auto-creating terminal for process:', terminalId)
           // Extract command type from terminalId (e.g., "server:npm-dev" from "terminal-server:npm-dev")
           const commandType = terminalId.replace('terminal-', '')
-          createTerminalForProcess(terminalId, commandType, data.cwd)
+          createTerminalForProcess(terminalId, commandType, data.cwd, data.taskType)
         }
       }
       
@@ -194,8 +242,8 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
   }, [activeSessionId])
 
-  // Create a terminal specifically for a process (with fixed ID)
-  const createTerminalForProcess = useCallback(async (terminalId: string, commandType: string, cwd: string) => {
+  // Create a terminal specifically for a process (with fixed ID) - 支持AI意图
+  const createTerminalForProcess = useCallback(async (terminalId: string, commandType: string, cwd: string, taskType?: string) => {
     if (isCreating) {
       console.log('[Terminal] Already creating, waiting...')
       // Wait a bit and retry
@@ -203,7 +251,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       return
     }
     
-    console.log('[Terminal] Creating process terminal:', terminalId, 'for', commandType)
+    console.log('[Terminal] Creating process terminal:', terminalId, 'for', commandType, 'task:', taskType)
     setIsCreating(true)
     setHasError(null)
 
@@ -224,7 +272,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       
       // Use the terminalId as the session ID for process routing
       const session: TerminalSession = {
-        id: terminalId,  // Use the dedicated terminal ID for routing
+        id: terminalId,
         name: displayName,
         xterm: null,
         fitAddon: null,
@@ -492,8 +540,8 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
   }
 
-  // Execute command in terminal
-  const executeCommandInTerminal = async (command: string, cwd?: string) => {
+  // Execute command in terminal - 支持AI提示
+  const executeCommandInTerminal = async (command: string, cwd?: string, aiPrompt?: string) => {
     if (!activeSessionId) {
       // Create a new terminal first
       await createTerminal()
@@ -510,9 +558,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
 
     try {
-      const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId)
+      const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId, aiPrompt)
       if (result.success) {
-        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`)
+        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`, 'reused:', result.reused)
         // Command will be written by onProcessStarted listener, no need to write here
       } else {
         console.error('[Terminal] Failed to start process:', result.error)
@@ -559,6 +607,36 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     return `${minutes}m ${seconds}s`
   }
 
+  // 获取任务类型图标
+  const getTaskTypeIcon = (taskType?: string) => {
+    const icons: Record<string, string> = {
+      'dev-server': '🚀',
+      'build': '🔨',
+      'test': '🧪',
+      'production-server': '🌐',
+      'docker-deploy': '🐳',
+      'deploy': '📦',
+      'install': '📥',
+      'command': '⚡'
+    }
+    return icons[taskType || 'command'] || '⚡'
+  }
+
+  // 获取任务类型标签
+  const getTaskTypeLabel = (taskType?: string) => {
+    const labels: Record<string, string> = {
+      'dev-server': 'Dev Server',
+      'build': 'Build',
+      'test': 'Test',
+      'production-server': 'Server',
+      'docker-deploy': 'Docker',
+      'deploy': 'Deploy',
+      'install': 'Install',
+      'command': 'Command'
+    }
+    return labels[taskType || 'command'] || 'Command'
+  }
+
   if (!isVisible) return null
 
   return (
@@ -572,7 +650,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
               className={`terminal-tab ${session.id === activeSessionId ? 'active' : ''}`}
               onClick={() => setActiveSessionId(session.id)}
             >
-              <span className="tab-icon">⚡</span>
+              <span className="tab-icon">
+                {session.aiIntent ? getTaskTypeIcon(session.aiIntent.taskType) : '⚡'}
+              </span>
               <span className="tab-name">{session.name}</span>
               <button
                 className="tab-close"
@@ -600,6 +680,13 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           </button>
           <button 
             className="terminal-action-btn" 
+            title="AI History"
+            onClick={() => setShowAIHistoryPanel(!showAIHistoryPanel)}
+          >
+            🤖
+          </button>
+          <button 
+            className="terminal-action-btn" 
             title={t('killTerminal') || 'Kill Terminal'}
             onClick={() => activeSessionId && closeTerminal(activeSessionId)}
             disabled={!activeSessionId}
@@ -615,7 +702,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           <div className="terminal-empty">
             <div className="terminal-empty-content">
               <p style={{ color: '#ef4444' }}>{t('terminalError') || 'Error'}: {hasError}</p>
-              <button className="btn btn-primary" onClick={createTerminal}>
+              <button className="btn btn-primary" onClick={() => createTerminal()}>
                 {t('retry') || 'Retry'}
               </button>
             </div>
@@ -625,7 +712,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
             <div className="terminal-empty-content">
               <p>{isCreating ? (t('creatingTerminal') || 'Creating terminal...') : (t('noActiveTerminals') || 'No active terminals')}</p>
               {!isCreating && (
-                <button className="btn btn-primary" onClick={createTerminal}>
+                <button className="btn btn-primary" onClick={() => createTerminal()}>
                   {t('openNewTerminal') || 'Open New Terminal'}
                 </button>
               )}
@@ -659,7 +746,10 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
               runningProcesses.map(process => (
                 <div key={process.id} className={`process-item ${process.isRunning ? 'running' : 'stopped'}`}>
                   <div className="process-info">
-                    <div className="process-command">{process.command}</div>
+                    <div className="process-command">
+                      {getTaskTypeIcon(process.taskType)} {process.command}
+                      {process.reused && <span className="reused-badge">↻ 复用</span>}
+                    </div>
                     <div className="process-meta">
                       <span className="process-cwd">{process.cwd}</span>
                       <span className="process-duration">{formatDuration(process.startTime)}</span>
@@ -697,6 +787,36 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
                     >
                       📍
                     </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* AI History Panel */}
+      {showAIHistoryPanel && (
+        <div className="ai-history-panel">
+          <div className="ai-history-panel-header">
+            <span className="ai-history-panel-title">🤖 AI 任务历史</span>
+            <button className="ai-history-panel-close" onClick={() => setShowAIHistoryPanel(false)}>×</button>
+          </div>
+          <div className="ai-history-list">
+            {aiHistory.length === 0 ? (
+              <div className="ai-history-empty">暂无 AI 任务历史</div>
+            ) : (
+              aiHistory.map(intent => (
+                <div key={intent.intentId} className="ai-history-item">
+                  <div className="ai-history-header">
+                    <span className="ai-history-icon">{getTaskTypeIcon(intent.taskType)}</span>
+                    <span className="ai-history-type">{getTaskTypeLabel(intent.taskType)}</span>
+                    <span className="ai-history-count">复用 {intent.accessCount} 次</span>
+                  </div>
+                  <div className="ai-history-prompt">{intent.originalPrompt}</div>
+                  <div className="ai-history-meta">
+                    <span>项目: {intent.projectContext.name}</span>
+                    <span>类型: {intent.projectContext.type}</span>
                   </div>
                 </div>
               ))

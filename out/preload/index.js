@@ -58,13 +58,16 @@ const api = {
     electron.ipcRenderer.on("terminal:create", callback);
     return () => electron.ipcRenderer.removeListener("terminal:create", callback);
   },
-  // Process management
-  startProcessInTerminal: (command, cwd, terminalId) => electron.ipcRenderer.invoke("process:start-in-terminal", { command, cwd, terminalId }),
+  // Process management - 支持AI意图
+  startProcessInTerminal: (command, cwd, terminalId, aiPrompt) => electron.ipcRenderer.invoke("process:start-in-terminal", { command, cwd, terminalId, aiPrompt }),
   stopProcess: (processId) => electron.ipcRenderer.invoke("process:stop", { processId }),
   restartProcess: (processId) => electron.ipcRenderer.invoke("process:restart", { processId }),
   getRunningProcesses: () => electron.ipcRenderer.invoke("process:list"),
   shouldRunInTerminal: (command) => electron.ipcRenderer.invoke("process:should-run-in-terminal", { command }),
-  // Process event listeners
+  // AI意图相关API
+  getAIIntentContext: (processId) => electron.ipcRenderer.invoke("process:get-ai-intent", { processId }),
+  getProjectAIHistory: (cwd) => electron.ipcRenderer.invoke("process:get-ai-history", { cwd }),
+  // Process event listeners - 支持AI意图数据
   onProcessStarted: (callback) => {
     electron.ipcRenderer.on("process:started", callback);
     return () => electron.ipcRenderer.removeListener("process:started", callback);

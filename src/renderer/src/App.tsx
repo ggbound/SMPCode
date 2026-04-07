@@ -62,7 +62,30 @@ function buildSystemPrompt(commands: { name: string; responsibility: string }[],
   prompt += `1. ONLY use the JSON code block format shown above\n`
   prompt += `2. NEVER use any other format like <|tool_calls_section_begin|> or special markers\n`
   prompt += `3. ALWAYS wrap the JSON in triple backticks with 'json' language identifier\n`
-  prompt += `4. You can invoke multiple tools by outputting multiple JSON code blocks in sequence\n\n`
+  prompt += `4. You can invoke multiple tools by outputting multiple JSON code blocks in sequence\n`
+  prompt += `5. DO NOT output raw text explanations before or between tool calls\n`
+  prompt += `6. When multiple tools are needed, output them one after another in separate code blocks\n\n`
+  prompt += `=== RESPONSE FORMAT ===\n`
+  prompt += `When you need to use tools, your ENTIRE response must be ONLY the JSON code block(s).\n`
+  prompt += `Do not include any explanatory text before, between, or after the tool calls.\n`
+  prompt += `Example of CORRECT response with multiple tools:\n`
+  prompt += `\`\`\`json
+{"tool": "list_directory", "arguments": {"path": "/project"}}
+\`\`\`
+\`\`\`json
+{"tool": "read_file", "arguments": {"path": "/project/package.json"}}
+\`\`\`
+
+`
+  prompt += `Example of INCORRECT response (do NOT do this):\n`
+  prompt += `Let me check the directory first:\n\`\`\`json
+{"tool": "list_directory", "arguments": {"path": "/project"}}
+\`\`\`
+Now let me read the file...\n\`\`\`json
+{"tool": "read_file", "arguments": {"path": "/project/package.json"}}
+\`\`\`
+
+`
 
   if (commands.length > 0) {
     prompt += `=== AVAILABLE COMMANDS ===\n`
