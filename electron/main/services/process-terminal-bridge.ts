@@ -3,16 +3,17 @@ import { exec } from 'child_process'
 import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
 import { BrowserWindow } from 'electron'
-import { getTerminals, writeToTerminal, TerminalSession } from './terminal-service'
+import { getTerminals, writeToTerminal, TerminalSession, onTerminalData, getTerminalOutput } from './terminal-service'
 
 // Process types that should run in terminal
 export const TERMINAL_PROCESS_PATTERNS = [
   /npm\s+(run|start|dev|serve)/i,
   /npm\s+run\s+\w+/i,
+  /npm\s+(install|i|add|remove|uninstall|ci)/i,
   /node\s+/i,
   /npx\s+/i,
-  /yarn\s+(run|start|dev|serve)/i,
-  /pnpm\s+(run|start|dev|serve)/i,
+  /yarn\s+(run|start|dev|serve|install|add|remove)/i,
+  /pnpm\s+(run|start|dev|serve|install|add|remove)/i,
   /python\w*\s+/i,
   /pip\s+/i,
   /^java\s+/i,
@@ -295,6 +296,20 @@ class ProcessTerminalBridge extends EventEmitter {
       this.processes.set(processId, managedProcess)
       this.commandTypeMap.set(commandTypeKey, processId)
 
+      // 注册终端输出监听
+      if (targetTerminalId) {
+        const unsubscribe = onTerminalData(targetTerminalId, (data) => {
+          // 将终端输出添加到进程输出缓冲区
+          managedProcess.output.push(data)
+          // 限制缓冲区大小
+          if (managedProcess.output.length > 10000) {
+            managedProcess.output = managedProcess.output.slice(-5000)
+          }
+        })
+        // 保存取消订阅函数以便后续清理
+        ;(managedProcess as any).unsubscribeTerminal = unsubscribe
+      }
+
       // 清理命令并执行
       const foregroundCommand = command
         .replace(/\s*>\s*[^&]+?\s*2>&1\s*&?\s*$/, '')
@@ -500,6 +515,65 @@ class ProcessTerminalBridge extends EventEmitter {
     return this.processes.get(processId)
   }
 
+  // 等待进程执行完成
+  async waitForProcess(
+    processId: string,
+    timeoutMs: number = 120000
+  ): Promise<{ success: boolean; output: string; exitCode?: number; error?: string }> {
+    const startTime = Date.now()
+    const managedProcess = this.processes.get(processId)
+    
+    if (!managedProcess) {
+      return { success: false, output: '', error: 'Process not found' }
+    }
+
+    log.info(`[ProcessBridge] Waiting for process ${processId} to complete (timeout: ${timeoutMs}ms)`)
+
+    // 轮询检查进程状态
+    while (true) {
+      // 检查是否超时
+      if (Date.now() - startTime > timeoutMs) {
+        log.warn(`[ProcessBridge] Process ${processId} timed out after ${timeoutMs}ms`)
+        // 取消终端监听
+        const unsubscribe = (managedProcess as any).unsubscribeTerminal
+        if (unsubscribe) {
+          unsubscribe()
+        }
+        return { 
+          success: false, 
+          output: managedProcess.output.join('\n'), 
+          error: `Process timed out after ${timeoutMs}ms`,
+          exitCode: -1 
+        }
+      }
+
+      // 检查进程是否还在运行
+      const isRunning = await this.isProcessActuallyRunning(processId)
+      if (!isRunning) {
+        // 进程已结束，取消终端监听
+        const unsubscribe = (managedProcess as any).unsubscribeTerminal
+        if (unsubscribe) {
+          unsubscribe()
+          log.info(`[ProcessBridge] Unsubscribed terminal data for process ${processId}`)
+        }
+        
+        // 进程已结束，获取退出码
+        const exitCode = (managedProcess as any).exitCode ?? 0
+        const output = managedProcess.output.join('\n')
+        
+        log.info(`[ProcessBridge] Process ${processId} completed with exit code ${exitCode}, output length: ${output.length}`)
+        return {
+          success: exitCode === 0,
+          output: output || '(no output)',
+          exitCode
+        }
+      }
+
+      // 等待一段时间后再检查
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+  }
+
   // 获取AI意图上下文
   getAIIntentContext(processId: string): AIIntentContext | undefined {
     const process = this.processes.get(processId)
@@ -546,13 +620,35 @@ class ProcessTerminalBridge extends EventEmitter {
       return false
     }
     
-    // 检查终端是否还存在
+    // 检查终端是否还存在（关键修复）
     if (managedProcess.terminalId) {
       const terminals = getTerminals()
       if (!terminals.has(managedProcess.terminalId)) {
-        log.info(`[ProcessBridge] isProcessActuallyRunning: terminal ${managedProcess.terminalId} not found`)
+        log.info(`[ProcessBridge] isProcessActuallyRunning: terminal ${managedProcess.terminalId} not found, process ended`)
+        // 终端不存在，说明进程已结束
+        managedProcess.isRunning = false
         return false
       }
+      
+      // 终端存在，使用超时机制来判断进程是否完成
+      // 对于没有端口的进程，使用启动时间来判断是否超时
+      if (!(managedProcess as any)._startTimeForTimeout) {
+        (managedProcess as any)._startTimeForTimeout = Date.now()
+      }
+      
+      // 获取进程运行时间
+      const runningTime = Date.now() - ((managedProcess as any)._startTimeForTimeout || Date.now())
+      
+      // 对于短命令（没有端口的服务），如果运行超过30秒，认为可能已经完成
+      // 这是一个保守估计，实际应该通过检测终端输出来判断
+      if (!managedProcess.port && runningTime > 30000) {
+        log.info(`[ProcessBridge] isProcessActuallyRunning: process ${processId} running for ${runningTime}ms without port, assuming completed`)
+        managedProcess.isRunning = false
+        ;(managedProcess as any).exitCode = 0
+        return false
+      }
+      
+      return managedProcess.isRunning
     }
     
     // 如果有端口，检查端口是否被占用

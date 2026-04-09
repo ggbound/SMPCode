@@ -84,13 +84,13 @@ async function sendOpenAIMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream
   }
 
+  // Enable tools if provided
   if (tools && tools.length > 0) {
     requestBody.tools = tools
-    // Force the model to use tools when they're provided
     requestBody.tool_choice = 'auto'
   }
 
@@ -154,10 +154,11 @@ async function sendAnthropicMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream
   }
 
+  // Enable tools if provided
   if (tools && tools.length > 0) {
     requestBody.tools = tools
   }
@@ -232,13 +233,15 @@ async function* streamOpenAIMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream: true
   }
 
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools
-  }
+  // NOTE: We don't send tools parameter to force AI to use JSON format
+  // Tools are described in system prompt instead
+  // if (tools && tools.length > 0) {
+  //   requestBody.tools = tools
+  // }
 
   try {
     const response = await fetch(OPENAI_API_URL, {
@@ -308,13 +311,15 @@ async function* streamAnthropicMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream: true
   }
 
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools
-  }
+  // NOTE: We don't send tools parameter to force AI to use JSON format
+  // Tools are described in system prompt instead
+  // if (tools && tools.length > 0) {
+  //   requestBody.tools = tools
+  // }
 
   try {
     const response = await fetch(ANTHROPIC_API_URL, {

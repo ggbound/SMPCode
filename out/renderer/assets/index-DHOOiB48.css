@@ -448,7 +448,7 @@ body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--bg-color);
+  background: #0d0d0d;
   min-width: 0;
   overflow: hidden;
 }
@@ -457,10 +457,10 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px;
+  padding: 20px 24px;
   max-width: 100%;
   min-width: 0;
-  background: var(--bg-color);
+  background: #0d0d0d;
 }
 
 /* Ensure code blocks don't expand beyond container */
@@ -469,11 +469,23 @@ body {
   overflow-x: auto;
 }
 
-/* Message wrapper styles - VS Code Dark */
+/* Message wrapper styles - Modern dark theme */
 .message {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   display: flex;
   width: 100%;
+  animation: messageFadeIn 0.3s ease-out;
+}
+
+@keyframes messageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .message.user {
@@ -484,83 +496,163 @@ body {
   justify-content: flex-start;
 }
 
-/* User message bubble - VS Code Dark */
+/* User message bubble - Modern dark style */
 .user-message-wrapper {
   max-width: 85%;
 }
 
 .user-message-bubble {
-  background: var(--bg-tertiary);
-  color: var(--text-color);
-  padding: 10px 14px;
-  border-radius: 12px 12px 2px 12px;
-  font-size: 13px;
-  line-height: 1.5;
+  background: #2d2d30;
+  color: #e0e0e0;
+  padding: 12px 16px;
+  border-radius: 16px 16px 4px 16px;
+  font-size: 14px;
+  line-height: 1.6;
   white-space: pre-wrap;
   word-wrap: break-word;
-  border: 1px solid var(--border-color);
+  border: 1px solid #3e3e42;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* Assistant message wrapper - VS Code Dark */
+/* Assistant message wrapper - Modern card style */
 .assistant-message-wrapper {
   max-width: 100%;
   width: 100%;
 }
 
 .assistant-message-content {
-  background: var(--bg-secondary);
-  padding: 12px 16px;
-  border-radius: 6px;
-  border: 1px solid var(--border-color);
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--text-color);
+  background: #1e1e1e;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid #2d2d30;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #d4d4d4;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* Code block styles - VS Code Dark */
+/* Assistant message markdown enhancements */
+.assistant-message-content .markdown-body {
+  color: #d4d4d4;
+}
+
+.assistant-message-content .markdown-body h1,
+.assistant-message-content .markdown-body h2,
+.assistant-message-content .markdown-body h3,
+.assistant-message-content .markdown-body h4 {
+  color: #ffffff;
+  margin-top: 20px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.assistant-message-content .markdown-body h1 {
+  font-size: 20px;
+  border-bottom: 1px solid #3e3e42;
+  padding-bottom: 8px;
+}
+
+.assistant-message-content .markdown-body h2 {
+  font-size: 18px;
+}
+
+.assistant-message-content .markdown-body h3 {
+  font-size: 16px;
+}
+
+.assistant-message-content .markdown-body p {
+  margin-bottom: 12px;
+}
+
+.assistant-message-content .markdown-body ul,
+.assistant-message-content .markdown-body ol {
+  margin-bottom: 12px;
+  padding-left: 24px;
+}
+
+.assistant-message-content .markdown-body li {
+  margin-bottom: 6px;
+}
+
+.assistant-message-content .markdown-body li::marker {
+  color: #89d185;
+}
+
+.assistant-message-content .markdown-body strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.assistant-message-content .markdown-body a {
+  color: #4fc1ff;
+  text-decoration: none;
+}
+
+.assistant-message-content .markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.assistant-message-content .markdown-body blockquote {
+  border-left: 3px solid #007acc;
+  padding-left: 16px;
+  margin: 12px 0;
+  color: #9cdcfe;
+  background: #252526;
+  padding: 12px 16px;
+  border-radius: 0 8px 8px 0;
+}
+
+/* Code block styles - Modern dark theme */
 .code-block-wrapper {
   position: relative;
-  margin: 8px 0;
-  border-radius: 6px;
+  margin: 12px 0;
+  border-radius: 10px;
   overflow: hidden;
   max-width: 100%;
-  background: #1e1e1e;
-  border: 1px solid var(--border-color);
+  background: #0d0d0d;
+  border: 1px solid #2d2d30;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
 .code-block-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 10px;
-  background: #252526;
-  border-bottom: 1px solid var(--border-color);
+  padding: 10px 14px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2d2d30;
 }
 
 .code-language {
-  font-size: 11px;
-  color: #9cdcfe;
+  font-size: 12px;
+  color: #858585;
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.5px;
 }
 
 .copy-button {
-  padding: 3px 8px;
-  font-size: 10px;
-  background: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 3px;
+  padding: 6px 12px;
+  font-size: 11px;
+  background: #2d2d30;
+  color: #cccccc;
+  border: 1px solid #3e3e42;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.2s ease;
+  font-weight: 500;
 }
 
 .copy-button:hover {
-  background: var(--accent-hover);
+  background: #3e3e42;
+  color: #ffffff;
+  border-color: #505050;
 }
 
 .copy-button.copied {
-  background: var(--success-color);
+  background: #238636;
+  color: #ffffff;
+  border-color: #238636;
 }
 
 .code-block-content {
@@ -569,12 +661,13 @@ body {
 }
 
 .inline-code {
-  background-color: rgba(0, 122, 204, 0.2);
-  color: #9cdcfe;
-  padding: 2px 5px;
-  border-radius: 3px;
+  background-color: rgba(110, 118, 129, 0.4);
+  color: #e6edf3;
+  padding: 3px 6px;
+  border-radius: 4px;
   font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
-  font-size: 0.9em;
+  font-size: 0.85em;
+  border: 1px solid rgba(110, 118, 129, 0.2);
 }
 
 /* User message text styling */
@@ -943,6 +1036,63 @@ body {
 
 .btn-danger:hover {
   background: #e06c75;
+}
+
+/* Continue Action Button */
+.continue-action-container {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #2d2d30;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.continue-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #0e639c 0%, #1177bb 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(14, 99, 156, 0.3);
+}
+
+.continue-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1177bb 0%, #138ad1 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14, 99, 156, 0.4);
+}
+
+.continue-button:disabled {
+  background: #3c3c3c;
+  color: #808080;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.continue-button svg {
+  flex-shrink: 0;
+}
+
+.spinner-small {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Settings Modal */

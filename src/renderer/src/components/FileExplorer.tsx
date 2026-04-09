@@ -28,22 +28,56 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }: FileExpl
     fileTreeRef.current = fileTree
   }, [fileTree])
 
+  // Refresh project context when files change
+  const refreshProjectContext = useCallback(async () => {
+    if (!rootPath) return
+    try {
+      // Trigger project context refresh in backend
+      await fetch(`${API_BASE}/project-context/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: rootPath })
+      })
+      console.log('[FileExplorer] Project context refreshed')
+    } catch (error) {
+      console.error('[FileExplorer] Failed to refresh project context:', error)
+    }
+  }, [rootPath])
+
   // Auto refresh file tree when files are modified
   useEffect(() => {
     if (rootPath) {
       // Initial load - do NOT expand any folders by default
       handleRefreshNoExpansion()
 
-      // Set up auto refresh interval
+      // Initial project context scan
+      refreshProjectContext()
+
+      // Set up auto refresh interval - 延长到 10 秒，减少请求频率
       const interval = setInterval(() => {
-        handleRefreshPreserveExpansion()
-      }, 2000) // Refresh every 2 seconds
+        // 只在窗口可见时刷新
+        if (document.visibilityState === 'visible') {
+          handleRefreshPreserveExpansion()
+          // Also refresh project context periodically
+          refreshProjectContext()
+        }
+      }, 30000) // Refresh every 30 seconds
+
+      // 监听窗口可见性变化，窗口重新可见时刷新
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          handleRefreshPreserveExpansion()
+          refreshProjectContext()
+        }
+      }
+      document.addEventListener('visibilitychange', handleVisibilityChange)
 
       return () => {
         clearInterval(interval)
+        document.removeEventListener('visibilitychange', handleVisibilityChange)
       }
     }
-  }, [rootPath])
+  }, [rootPath, refreshProjectContext])
 
   // Load directory contents
   const loadDirectory = useCallback(async (path: string): Promise<FileNode[]> => {

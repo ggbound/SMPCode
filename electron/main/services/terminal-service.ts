@@ -11,6 +11,8 @@ export interface TerminalSession {
   name: string
   pty: pty.IPty
   createdAt: Date
+  outputBuffer: string[]  // 存储终端输出
+  onDataCallbacks: Set<(data: string) => void>  // 数据监听回调
 }
 
 const terminals = new Map<string, TerminalSession>()
@@ -160,13 +162,24 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
         id,
         name: options?.name || `Terminal ${terminals.size + 1}`,
         pty: ptyProcess,
-        createdAt: new Date()
+        createdAt: new Date(),
+        outputBuffer: [],
+        onDataCallbacks: new Set()
       }
 
       terminals.set(id, session)
 
       // Handle data from PTY
       ptyProcess.onData((data) => {
+        // 存储输出到缓冲区
+        session.outputBuffer.push(data)
+        // 限制缓冲区大小，防止内存溢出
+        if (session.outputBuffer.length > 10000) {
+          session.outputBuffer = session.outputBuffer.slice(-5000)
+        }
+        // 触发回调
+        session.onDataCallbacks.forEach(callback => callback(data))
+        // 发送到前端
         if (windowRef && !windowRef.isDestroyed()) {
           windowRef.webContents.send('terminal:data', { id, data })
         }
@@ -255,6 +268,38 @@ export function writeToTerminal(id: string, data: string): boolean {
   const session = terminals.get(id)
   if (session) {
     session.pty.write(data)
+    return true
+  }
+  return false
+}
+
+// Export function to get terminal output buffer
+export function getTerminalOutput(id: string): string[] | null {
+  const session = terminals.get(id)
+  if (session) {
+    return session.outputBuffer
+  }
+  return null
+}
+
+// Export function to register data callback for a terminal
+export function onTerminalData(id: string, callback: (data: string) => void): (() => void) | null {
+  const session = terminals.get(id)
+  if (session) {
+    session.onDataCallbacks.add(callback)
+    // Return unsubscribe function
+    return () => {
+      session.onDataCallbacks.delete(callback)
+    }
+  }
+  return null
+}
+
+// Export function to clear terminal output buffer
+export function clearTerminalOutput(id: string): boolean {
+  const session = terminals.get(id)
+  if (session) {
+    session.outputBuffer = []
     return true
   }
   return false

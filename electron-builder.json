@@ -18,9 +18,7 @@
     "category": "public.app-category.developer-tools",
     "target": ["dir"],
     "icon": "resources/icon.png",
-    "entitlements": "build/entitlements.mac.plist",
-    "entitlementsInherit": "build/entitlements.mac.plist",
-    "hardenedRuntime": true
+    "identity": null
   },
   "asar": false,
   "afterPack": "scripts/afterPack.js"

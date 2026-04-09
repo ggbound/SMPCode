@@ -4,7 +4,7 @@ import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
 import { app } from 'electron'
 import * as fs from 'fs'
-import { join } from 'path'
+import * as path from 'path'
 import { spawn, ChildProcess } from 'child_process'
 
 // Import services
@@ -13,8 +13,52 @@ import { getCommandsService } from './services/commands-service'
 import { getToolsService } from './services/tools-service'
 import { executeCommand, setCurrentWorkingDirectory, getCurrentWorkingDirectory } from './services/command-executor'
 import { listDirectory, readFile, writeFile } from './services/files-service'
-import { CODE_TOOLS, ToolCall, ToolResult } from './services/tools-definitions'
-import { executeTool } from './services/tools-executor'
+import {
+  CODE_TOOLS,
+  ToolCall,
+  ToolResult,
+  registerAllTools,
+  executeTool,
+  toolRegistry
+} from './services/tools-definitions'
+import {
+  parseToolCallsFromText,
+  createExecutionContext
+} from './services/tools-core'
+import {
+  executeToolCalls
+} from './services/tools-executor'
+import {
+  scanProject,
+  getProjectContext,
+  getProjectStructureForAI,
+  shouldRefreshContext,
+  refreshProjectContext,
+  clearProjectContext
+} from './services/project-context-service'
+
+// Import new Port Architecture
+import { PortRuntime, RuntimeSessionImpl } from './core/runtime'
+import { QueryEnginePort } from './core/query-engine'
+import {
+  getCommand,
+  getCommands,
+  findCommands,
+  executeCommand as executePortCommand,
+  renderCommandIndex,
+  PORTED_COMMANDS
+} from './core/commands'
+import {
+  getTool,
+  getTools,
+  findTools,
+  executeTool as executePortTool,
+  renderToolIndex,
+  PORTED_TOOLS
+} from './core/tools'
+import { buildPortManifest } from './core/port-manifest'
+import { loadSession as loadPortSession, saveSession as savePortSession, listSessions as listPortSessions, deleteSession as deletePortSession, createStoredSession } from './core/session-store'
+import { ToolPermissionContextImpl } from './core/permissions'
 
 let server: Server | null = null
 
@@ -41,8 +85,138 @@ interface ManagedProcess {
 
 const managedProcesses: Map<string, ManagedProcess> = new Map()
 
+// Debug log file path
+function getDebugLogPath(): string {
+  const dir = path.join(app.getPath('userData'), 'logs')
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
+  return path.join(dir, 'api-debug.log')
+}
+
+// Write debug log
+function writeDebugLog(label: string, data: unknown): void {
+  const logPath = getDebugLogPath()
+  const timestamp = new Date().toISOString()
+  const logEntry = `[${timestamp}] ${label}:\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}\n\n`
+  try {
+    fs.appendFileSync(logPath, logEntry, 'utf-8')
+  } catch (e) {
+    console.error('Failed to write debug log:', e)
+  }
+}
+
+/**
+ * Convert special tool call format to JSON code block format
+ * This ensures AI responses are always in JSON format
+ */
+function convertSpecialFormatToJSON(text: string): string {
+  // Pattern to match the special format section (Claude's <|...|> format)
+  const specialSectionPattern = /<\|tool_calls_section_begin\|>[\s\S]*?<\|tool_calls_section_end\|>/g
+  // Pattern to match individual tool calls within a section
+  const callPattern = /<\|tool_call_begin\|>functions\.([\w-]+)(?::\d+)?<\|tool_call_args\|>([\s\S]*?)<\|tool_call_end\|>/g
+
+  let result = text
+
+  // Find all special format sections and replace them
+  result = result.replace(specialSectionPattern, (section) => {
+    const toolCalls: string[] = []
+    let match
+
+    // Extract individual tool calls from the section
+    // Need to reset regex lastIndex for each section
+    callPattern.lastIndex = 0
+    while ((match = callPattern.exec(section)) !== null) {
+      const toolName = match[1]
+      const argsJson = match[2].trim()
+      try {
+        const args = JSON.parse(argsJson)
+        // Convert to JSON code block format
+        toolCalls.push(`\`\`\`json\n{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}\n\`\`\``)
+      } catch (e) {
+        log.warn('[FormatConverter] Failed to parse args:', argsJson)
+      }
+    }
+
+    // Return JSON code blocks or empty string if no valid tool calls
+    return toolCalls.length > 0 ? toolCalls.join('\n\n') : ''
+  })
+
+  // Also handle standalone tool calls without section markers
+  const standalonePattern = /<\|tool_call_begin\|>functions\.([\w-]+)(?::\d+)?<\|tool_call_args\|>([\s\S]*?)<\|tool_call_end\|>/g
+  result = result.replace(standalonePattern, (match, toolName, argsJson) => {
+    try {
+      const args = JSON.parse(argsJson.trim())
+      return `\`\`\`json\n{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}\n\`\`\``
+    } catch (e) {
+      log.warn('[FormatConverter] Failed to parse standalone args:', argsJson)
+      return match // Keep original if parsing fails
+    }
+  })
+
+  // Handle markdown code block with tool call: ```functions.tool_name{"arg": "value"}```
+  // This is the most common format from Claude
+  const markdownToolPattern = /```\s*functions\.([a-zA-Z0-9_-]+)\s*(\{[\s\S]*?\})\s*```/g
+  result = result.replace(markdownToolPattern, (match, toolName, argsJson) => {
+    try {
+      // Find the last closing brace to handle nested content
+      let braceCount = 0
+      let jsonEnd = 0
+      for (let i = 0; i < argsJson.length; i++) {
+        if (argsJson[i] === '{') braceCount++
+        else if (argsJson[i] === '}') {
+          braceCount--
+          if (braceCount === 0) {
+            jsonEnd = i + 1
+            break
+          }
+        }
+      }
+      const validJson = argsJson.substring(0, jsonEnd)
+      const args = JSON.parse(validJson.trim())
+      return `\`\`\`json\n{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}\n\`\`\``
+    } catch (e) {
+      log.warn('[FormatConverter] Failed to parse markdown tool args:', argsJson)
+      return match
+    }
+  })
+
+  // Handle inline tool call format: ```functions.tool_name:index{"arg": "value"}```
+  // This format appears when AI embeds tool calls directly in text with index
+  const inlineToolPattern = /```functions\.([a-zA-Z0-9_-]+):(\d+)\s*(\{[\s\S]*?\})\s*```/g
+  result = result.replace(inlineToolPattern, (match, toolName, index, argsJson) => {
+    try {
+      const args = JSON.parse(argsJson.trim())
+      return `\`\`\`json\n{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}\n\`\`\``
+    } catch (e) {
+      log.warn('[FormatConverter] Failed to parse inline tool args:', argsJson)
+      return match
+    }
+  })
+
+  // Handle simplified inline format: functions.tool_name{"arg": "value"} (without code block)
+  // Match functions. followed by tool name, optional index, then JSON object on same line
+  const simpleInlinePattern = /functions\.([a-zA-Z0-9_-]+)(?::\d+)?\s*(\{[^\n]*?\})/g
+  result = result.replace(simpleInlinePattern, (match, toolName, argsJson) => {
+    try {
+      // Validate it's a proper JSON object with balanced braces
+      const openBraces = (argsJson.match(/\{/g) || []).length
+      const closeBraces = (argsJson.match(/\}/g) || []).length
+      if (openBraces !== closeBraces || openBraces === 0) {
+        return match
+      }
+      const args = JSON.parse(argsJson.trim())
+      return `\`\`\`json\n{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}\n\`\`\``
+    } catch (e) {
+      return match
+    }
+  })
+
+  return result
+}
+
 function getSessionsDir(): string {
-  const dir = join(app.getPath('userData'), 'sessions')
+  const dir = path.join(app.getPath('userData'), 'sessions')
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true })
   }
@@ -56,7 +230,7 @@ function loadSessions(): void {
     const files = fs.readdirSync(dir)
     for (const file of files) {
       if (file.endsWith('.json')) {
-        const sessionPath = join(dir, file)
+        const sessionPath = path.join(dir, file)
         try {
           const data = fs.readFileSync(sessionPath, 'utf-8')
           const session = JSON.parse(data) as Session
@@ -75,7 +249,7 @@ function loadSessions(): void {
 // Save session to disk
 function saveSession(session: Session): void {
   const dir = getSessionsDir()
-  const sessionPath = join(dir, `${session.id}.json`)
+  const sessionPath = path.join(dir, `${session.id}.json`)
   try {
     fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2), 'utf-8')
   } catch (e) {
@@ -86,7 +260,7 @@ function saveSession(session: Session): void {
 // Delete session from disk
 function deleteSessionFromDisk(sessionId: string): void {
   const dir = getSessionsDir()
-  const sessionPath = join(dir, `${sessionId}.json`)
+  const sessionPath = path.join(dir, `${sessionId}.json`)
   try {
     if (fs.existsSync(sessionPath)) {
       fs.unlinkSync(sessionPath)
@@ -98,19 +272,30 @@ function deleteSessionFromDisk(sessionId: string): void {
 
 export async function startApiServer(): Promise<void> {
   const expressApp: Express = express()
-  expressApp.use(express.json())
+  // Increase JSON body size limit to 100MB for large file operations
+  expressApp.use(express.json({ limit: '100mb' }))
+  expressApp.use(express.urlencoded({ limit: '100mb', extended: true }))
 
   // CORS
   expressApp.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*')
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
-    next()
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+    if (_req.method === 'OPTIONS') {
+      res.sendStatus(200)
+    } else {
+      next()
+    }
   })
 
   // Initialize services (they will auto-load their data)
   const commandsService = getCommandsService()
   const toolsService = getToolsService()
-  log.info(`API Server initialized: ${commandsService.getCount()} commands, ${toolsService.getCount()} tools`)
+
+  // Register all tools
+  registerAllTools()
+
+  log.info(`API Server initialized: ${commandsService.getCount()} commands, ${toolsService.getCount()} tools, ${toolRegistry.count()} executors`)
 
   // Health check
   expressApp.get('/api/health', (_req: Request, res: Response) => {
@@ -217,6 +402,279 @@ export async function startApiServer(): Promise<void> {
     res.json({ matches: matches.slice(0, 5) })
   })
 
+  // ========== Port Architecture Endpoints ==========
+
+  // Get port manifest
+  expressApp.get('/api/port/manifest', (_req: Request, res: Response) => {
+    const manifest = buildPortManifest()
+    res.json({ manifest: manifest.toMarkdown() })
+  })
+
+  // Get ported commands (new architecture)
+  expressApp.get('/api/port/commands', (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 20
+    const query = req.query.query as string | undefined
+    const noPluginCommands = req.query.noPluginCommands === 'true'
+    const noSkillCommands = req.query.noSkillCommands === 'true'
+
+    if (query) {
+      res.json({ commands: findCommands(query, limit) })
+    } else {
+      const commands = getCommands(undefined, !noPluginCommands, !noSkillCommands)
+      res.json({
+        count: commands.length,
+        commands: commands.slice(0, limit)
+      })
+    }
+  })
+
+  // Get ported tools (new architecture)
+  expressApp.get('/api/port/tools', (req: Request, res: Response) => {
+    const limit = parseInt(req.query.limit as string) || 20
+    const query = req.query.query as string | undefined
+    const simpleMode = req.query.simpleMode === 'true'
+    const noMcp = req.query.noMcp === 'true'
+    const denyTool = ((req.query.denyTool as string) || '').split(',').filter(Boolean)
+    const denyPrefix = ((req.query.denyPrefix as string) || '').split(',').filter(Boolean)
+
+    const permissionContext = ToolPermissionContextImpl.fromIterables(denyTool, denyPrefix)
+
+    if (query) {
+      res.json({ tools: findTools(query, limit) })
+    } else {
+      const tools = getTools(simpleMode, !noMcp, permissionContext)
+      res.json({
+        count: tools.length,
+        tools: tools.slice(0, limit)
+      })
+    }
+  })
+
+  // Route prompt using new architecture
+  expressApp.post('/api/port/route', (req: Request, res: Response) => {
+    const { prompt, limit = 5 } = req.body
+
+    if (!prompt) {
+      res.status(400).json({ error: 'Prompt is required' })
+      return
+    }
+
+    const runtime = new PortRuntime()
+    const matches = runtime.routePrompt(prompt, limit)
+
+    res.json({
+      matches: matches.map(m => ({
+        kind: m.kind,
+        name: m.name,
+        source_hint: m.sourceHint,
+        score: m.score
+      }))
+    })
+  })
+
+  // Bootstrap session using new architecture
+  expressApp.post('/api/port/bootstrap', (req: Request, res: Response) => {
+    const { prompt, limit = 5 } = req.body
+
+    if (!prompt) {
+      res.status(400).json({ error: 'Prompt is required' })
+      return
+    }
+
+    const runtime = new PortRuntime()
+    const session = runtime.bootstrapSession(prompt, limit)
+
+    res.json({
+      session: {
+        prompt: session.prompt,
+        context: session.context,
+        setup: session.setup,
+        routedMatches: session.routedMatches,
+        turnResult: session.turnResult,
+        persistedSessionPath: session.persistedSessionPath
+      }
+    })
+  })
+
+  // Run turn loop using new architecture
+  expressApp.post('/api/port/turn-loop', (req: Request, res: Response) => {
+    const { prompt, limit = 5, maxTurns = 3, structuredOutput = false } = req.body
+
+    if (!prompt) {
+      res.status(400).json({ error: 'Prompt is required' })
+      return
+    }
+
+    const runtime = new PortRuntime()
+    const results = runtime.runTurnLoop(prompt, limit, maxTurns, structuredOutput)
+
+    res.json({ results })
+  })
+
+  // Stream bootstrap session
+  expressApp.post('/api/port/bootstrap/stream', (req: Request, res: Response) => {
+    const { prompt, limit = 5 } = req.body
+
+    if (!prompt) {
+      res.status(400).json({ error: 'Prompt is required' })
+      return
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    const runtime = new PortRuntime()
+    const matches = runtime.routePrompt(prompt, limit)
+    const engine = QueryEnginePort.fromWorkspace()
+
+    const denials = matches
+      .filter(m => m.kind === 'tool' && m.name.toLowerCase().includes('bash'))
+      .map(m => ({ toolName: m.name, reason: 'Destructive shell execution remains gated' }))
+
+    const generator = engine.streamSubmitMessage(
+      prompt,
+      matches.filter(m => m.kind === 'command').map(m => m.name),
+      matches.filter(m => m.kind === 'tool').map(m => m.name),
+      denials
+    )
+
+    for (const event of generator) {
+      res.write(`data: ${JSON.stringify(event)}\n\n`)
+    }
+
+    res.write('data: [DONE]\n\n')
+    res.end()
+  })
+
+  // Execute ported command
+  expressApp.post('/api/port/exec-command', (req: Request, res: Response) => {
+    const { name, prompt = '' } = req.body
+
+    if (!name) {
+      res.status(400).json({ error: 'Command name is required' })
+      return
+    }
+
+    const result = executePortCommand(name, prompt)
+    res.json({ result })
+  })
+
+  // Execute ported tool
+  expressApp.post('/api/port/exec-tool', (req: Request, res: Response) => {
+    const { name, payload = '' } = req.body
+
+    if (!name) {
+      res.status(400).json({ error: 'Tool name is required' })
+      return
+    }
+
+    const result = executePortTool(name, payload)
+    res.json({ result })
+  })
+
+  // Port session management
+  expressApp.get('/api/port/sessions', (_req: Request, res: Response) => {
+    const sessions = listPortSessions()
+    res.json({ sessions })
+  })
+
+  // POST /api/port/sessions - Create a new session
+  expressApp.post('/api/port/sessions', (_req: Request, res: Response) => {
+    const sessionId = uuidv4()
+    const session = createStoredSession(sessionId)
+    savePortSession(session)
+    log.info(`[API] Created new port session: ${sessionId}`)
+    res.json({ session })
+  })
+
+  expressApp.get('/api/port/sessions/:id', (req: Request, res: Response) => {
+    const session = loadPortSession(req.params.id)
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+    res.json({ session })
+  })
+
+  expressApp.delete('/api/port/sessions/:id', (req: Request, res: Response) => {
+    const success = deletePortSession(req.params.id)
+    if (!success) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+    res.json({ success: true })
+  })
+
+  // ========== Project Context Endpoint ==========
+
+  // Get project context for AI
+  expressApp.get('/api/project-context', async (req: Request, res: Response) => {
+    const projectPath = req.query.path as string
+
+    if (!projectPath) {
+      res.status(400).json({ error: 'path query parameter is required' })
+      return
+    }
+
+    try {
+      // Check if we need to refresh the context
+      if (shouldRefreshContext(projectPath)) {
+        log.info(`[API] Scanning project context for: ${projectPath}`)
+        await scanProject(projectPath)
+      }
+
+      const context = getProjectContext()
+      if (!context) {
+        res.status(404).json({ error: 'Failed to scan project' })
+        return
+      }
+
+      // Get formatted context for AI
+      const aiContext = getProjectStructureForAI(true, 4)
+
+      res.json({
+        context: aiContext,
+        stats: context.stats,
+        scannedAt: context.scannedAt
+      })
+    } catch (error) {
+      log.error('[API] Failed to get project context:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Refresh project context
+  expressApp.post('/api/project-context/refresh', async (req: Request, res: Response) => {
+    const { path: projectPath } = req.body
+
+    if (!projectPath) {
+      res.status(400).json({ error: 'path is required' })
+      return
+    }
+
+    try {
+      log.info(`[API] Refreshing project context for: ${projectPath}`)
+      const context = await refreshProjectContext(projectPath)
+      const aiContext = getProjectStructureForAI(true, 4)
+
+      res.json({
+        context: aiContext,
+        stats: context.stats,
+        scannedAt: context.scannedAt
+      })
+    } catch (error) {
+      log.error('[API] Failed to refresh project context:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Clear project context
+  expressApp.post('/api/project-context/clear', (_req: Request, res: Response) => {
+    clearProjectContext()
+    res.json({ success: true })
+  })
+
   // ========== Subsystems Endpoint ==========
 
   expressApp.get('/api/subsystems', (_req: Request, res: Response) => {
@@ -226,7 +684,9 @@ export async function startApiServer(): Promise<void> {
       { name: 'runtime', file_count: 1, notes: 'Runtime orchestration' },
       { name: 'query_engine', file_count: 1, notes: 'Query engine' },
       { name: 'session_store', file_count: 1, notes: 'Session storage' },
-      { name: 'permissions', file_count: 1, notes: 'Permission management' }
+      { name: 'permissions', file_count: 1, notes: 'Permission management' },
+      { name: 'ported_commands', file_count: PORTED_COMMANDS.length, notes: 'Ported command surface' },
+      { name: 'ported_tools', file_count: PORTED_TOOLS.length, notes: 'Ported tool surface' }
     ])
   })
 
@@ -235,6 +695,7 @@ export async function startApiServer(): Promise<void> {
   expressApp.post('/api/chat', async (req: Request, res: Response) => {
     try {
       const { apiKey, model, messages, tools, stream = false } = req.body
+      log.info('[API] /api/chat called with', messages?.length, 'messages')
 
       if (!apiKey) {
         res.status(400).json({ error: 'API key is required' })
@@ -254,11 +715,31 @@ export async function startApiServer(): Promise<void> {
         res.end()
       } else {
         const response = await sendChatMessage({ apiKey, model, messages, tools, stream })
+
+        // Debug: log original response
+        writeDebugLog('ORIGINAL_RESPONSE', response.content)
+
+        // Convert special format to JSON format in the response content
+        let convertedContent = response.content
+        if (typeof convertedContent === 'string') {
+          convertedContent = convertSpecialFormatToJSON(convertedContent)
+        } else if (Array.isArray(convertedContent)) {
+          convertedContent = convertedContent.map(item => {
+            if (typeof item === 'object' && item !== null && 'text' in item) {
+              return { ...item, text: convertSpecialFormatToJSON(item.text as string) }
+            }
+            return item
+          })
+        }
+
+        // Debug: log converted response
+        writeDebugLog('CONVERTED_RESPONSE', convertedContent)
+
         const result: Record<string, unknown> = {
           id: response.id,
           type: response.type,
           role: response.role,
-          content: response.content,
+          content: convertedContent,
           model: response.model,
           stop_reason: response.stop_reason,
           usage: response.usage
@@ -284,39 +765,25 @@ export async function startApiServer(): Promise<void> {
 
   // Execute tool calls from LLM (OpenAI format)
   expressApp.post('/api/tools/execute', async (req: Request, res: Response) => {
-    const { tool_calls } = req.body as { tool_calls: ToolCall[] }
+    const { tool_calls, cwd } = req.body as { tool_calls: ToolCall[]; cwd?: string }
 
     if (!tool_calls || !Array.isArray(tool_calls)) {
       res.status(400).json({ error: 'tool_calls array is required' })
       return
     }
 
-    const results: ToolResult[] = []
+    try {
+      const workingDir = cwd || getCurrentWorkingDirectory()
 
-    for (const toolCall of tool_calls) {
-      try {
-        const args = JSON.parse(toolCall.function.arguments)
-        const result = await executeTool(toolCall.function.name, args)
+      const results = await executeToolCalls(tool_calls, {
+        cwd: workingDir
+      })
 
-        results.push({
-          tool_call_id: toolCall.id,
-          role: 'tool',
-          name: toolCall.function.name,
-          content: result.success
-            ? result.output
-            : `Error: ${result.error || 'Unknown error'}`
-        })
-      } catch (error) {
-        results.push({
-          tool_call_id: toolCall.id,
-          role: 'tool',
-          name: toolCall.function.name,
-          content: `Error executing tool: ${String(error)}`
-        })
-      }
+      res.json({ results })
+    } catch (error) {
+      log.error('Tool execution error:', error)
+      res.status(500).json({ error: String(error) })
     }
-
-    res.json({ results })
   })
 
   // Execute tool directly (simplified format for text-based tool calling)
@@ -329,17 +796,68 @@ export async function startApiServer(): Promise<void> {
     }
 
     try {
+      const workingDir = cwd || getCurrentWorkingDirectory()
+
       // Set working directory if provided
       if (cwd) {
         setCurrentWorkingDirectory(cwd)
       }
 
-      log.info(`Executing tool ${tool} with args:`, args, 'in cwd:', cwd || getCurrentWorkingDirectory())
+      log.info(`[API] Executing tool ${tool} with args:`, args, 'in cwd:', workingDir)
+      writeDebugLog(`TOOL_EXECUTE_${tool}`, { args, cwd: workingDir })
 
-      const result = await executeTool(tool, args || {})
+      const startTime = Date.now()
+      const result = await executeTool(tool, args || {}, workingDir)
+      const duration = Date.now() - startTime
+
+      log.info(`[API] Tool ${tool} completed in ${duration}ms, success:`, result.success)
+      writeDebugLog(`TOOL_RESULT_${tool}`, { result, duration })
+
       res.json({ result })
     } catch (error) {
       log.error('Tool execution error:', error)
+      writeDebugLog(`TOOL_ERROR_${tool}`, { error: String(error), stack: error instanceof Error ? error.stack : undefined })
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Parse and execute tool calls from text (for text-based tool calling)
+  expressApp.post('/api/tools/parse-and-execute', async (req: Request, res: Response) => {
+    const { text, cwd } = req.body as { text: string; cwd?: string }
+
+    if (!text) {
+      res.status(400).json({ error: 'text is required' })
+      return
+    }
+
+    try {
+      const workingDir = cwd || getCurrentWorkingDirectory()
+
+      // Parse tool calls from text
+      const toolCalls = parseToolCallsFromText(text)
+
+      if (toolCalls.length === 0) {
+        res.json({ toolCalls: [], results: [] })
+        return
+      }
+
+      // Execute parsed tool calls
+      const toolCallArray: ToolCall[] = toolCalls.map((call, index) => ({
+        id: `call_${index + 1}_${Date.now()}`,
+        type: 'function',
+        function: {
+          name: call.tool,
+          arguments: call.arguments
+        }
+      }))
+
+      const results = await executeToolCalls(toolCallArray, {
+        cwd: workingDir
+      })
+
+      res.json({ toolCalls, results })
+    } catch (error) {
+      log.error('Parse and execute error:', error)
       res.status(500).json({ error: String(error) })
     }
   })
@@ -481,7 +999,9 @@ export async function startApiServer(): Promise<void> {
     }
 
     try {
-      const content = readFile(filePath)
+      // 将相对路径解析为绝对路径
+      const resolvedPath = path.isAbsolute(filePath) ? filePath : path.join(getCurrentWorkingDirectory() || process.cwd(), filePath)
+      const content = readFile(resolvedPath)
       res.json({ content })
     } catch (error) {
       log.error('Failed to read file:', error)
@@ -506,9 +1026,10 @@ export async function startApiServer(): Promise<void> {
     }
   })
 
-  // ========== Tool Execution Endpoints ==========
+  // ========== Legacy Tool Execution Endpoint ==========
 
-  expressApp.post('/api/tools/execute', async (req: Request, res: Response) => {
+  // Note: This endpoint is deprecated, use /api/tools/execute (OpenAI format) instead
+  expressApp.post('/api/tools/execute-legacy', async (req: Request, res: Response) => {
     const { tool, parameters } = req.body
 
     try {

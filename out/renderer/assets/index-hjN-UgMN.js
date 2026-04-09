@@ -43180,7 +43180,9 @@ function ChatArea({
   outputTokens = 0,
   providers = [],
   model = "",
-  onModelChange
+  onModelChange,
+  onContinueExecution,
+  showContinueButton
 }) {
   const [input, setInput] = reactExports.useState("");
   const getPermissionLabel = (mode) => {
@@ -43357,63 +43359,80 @@ function ChatArea({
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "user-message-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "user-message-bubble", children: msg.content }) })
           ) : (
             // Assistant message - left aligned with thinking tags
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assistant-message-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assistant-message-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              Markdown,
-              {
-                remarkPlugins: [remarkGfm],
-                components: {
-                  pre: ({ children, ...props }) => {
-                    const codeElement = children;
-                    const className = codeElement?.props?.className || "";
-                    const language = className.replace("language-", "") || "text";
-                    const codeContent = codeElement?.props?.children || "";
-                    const codeId = `${language}-${String(codeContent).slice(0, 20)}`;
-                    const isCopied = copiedId === codeId;
-                    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-wrapper", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-header", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "code-language", children: language }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assistant-message-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "assistant-message-content", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                Markdown,
+                {
+                  remarkPlugins: [remarkGfm],
+                  components: {
+                    pre: ({ children, ...props }) => {
+                      const codeElement = children;
+                      const className = codeElement?.props?.className || "";
+                      const language = className.replace("language-", "") || "text";
+                      const codeContent = codeElement?.props?.children || "";
+                      const codeId = `${language}-${String(codeContent).slice(0, 20)}`;
+                      const isCopied = copiedId === codeId;
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-wrapper", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-header", children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "code-language", children: language }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              onClick: () => copyToClipboard(String(codeContent), codeId),
+                              className: `copy-button ${isCopied ? "copied" : ""}`,
+                              children: isCopied ? t("copied") : t("copy")
+                            }
+                          )
+                        ] }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "code-block-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          highlighter,
                           {
-                            onClick: () => copyToClipboard(String(codeContent), codeId),
-                            className: `copy-button ${isCopied ? "copied" : ""}`,
-                            children: isCopied ? t("copied") : t("copy")
+                            language,
+                            style: vscDarkPlus,
+                            customStyle: {
+                              margin: 0,
+                              padding: "16px",
+                              background: "#1e1e1e",
+                              fontSize: "13px",
+                              lineHeight: "1.6",
+                              minWidth: "fit-content",
+                              borderRadius: "0"
+                            },
+                            showLineNumbers: true,
+                            lineNumberStyle: {
+                              color: "#6e7681",
+                              fontSize: "12px",
+                              minWidth: "2.5em"
+                            },
+                            children: String(codeContent).replace(/\n$/, "")
                           }
-                        )
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "code-block-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        highlighter,
-                        {
-                          language,
-                          style: vscDarkPlus,
-                          customStyle: {
-                            margin: 0,
-                            padding: "16px",
-                            background: "#1e1e1e",
-                            fontSize: "13px",
-                            lineHeight: "1.6",
-                            minWidth: "fit-content",
-                            borderRadius: "0"
-                          },
-                          showLineNumbers: true,
-                          lineNumberStyle: {
-                            color: "#6e7681",
-                            fontSize: "12px",
-                            minWidth: "2.5em"
-                          },
-                          children: String(codeContent).replace(/\n$/, "")
-                        }
-                      ) })
-                    ] });
+                        ) })
+                      ] });
+                    },
+                    code: ({ children, className }) => {
+                      const isInline = !className;
+                      return isInline ? /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: "inline-code", children }) : /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children });
+                    }
                   },
-                  code: ({ children, className }) => {
-                    const isInline = !className;
-                    return isInline ? /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: "inline-code", children }) : /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children });
-                  }
-                },
-                children: msg.content
-              }
-            ) }) })
+                  children: msg.content
+                }
+              ),
+              msg.needsAction === "continue" && onContinueExecution && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "continue-action-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: "continue-button",
+                  onClick: onContinueExecution,
+                  disabled: isLoading,
+                  children: isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "spinner-small" }),
+                    "继续执行中..."
+                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M5 12h14M12 5l7 7-7 7" }) }),
+                    "继续执行"
+                  ] })
+                }
+              ) })
+            ] }) })
           ) }, idx)),
           isLoading && // Only show loading spinner if the last message is not from assistant
           // (streaming mode adds an assistant message that gets filled progressively)
@@ -44128,17 +44147,42 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
   reactExports.useEffect(() => {
     fileTreeRef.current = fileTree;
   }, [fileTree]);
+  const refreshProjectContext = reactExports.useCallback(async () => {
+    if (!rootPath) return;
+    try {
+      await fetch(`${API_BASE2}/project-context/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: rootPath })
+      });
+      console.log("[FileExplorer] Project context refreshed");
+    } catch (error) {
+      console.error("[FileExplorer] Failed to refresh project context:", error);
+    }
+  }, [rootPath]);
   reactExports.useEffect(() => {
     if (rootPath) {
       handleRefreshNoExpansion();
+      refreshProjectContext();
       const interval = setInterval(() => {
-        handleRefreshPreserveExpansion();
-      }, 2e3);
+        if (document.visibilityState === "visible") {
+          handleRefreshPreserveExpansion();
+          refreshProjectContext();
+        }
+      }, 3e4);
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === "visible") {
+          handleRefreshPreserveExpansion();
+          refreshProjectContext();
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
       return () => {
         clearInterval(interval);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
     }
-  }, [rootPath]);
+  }, [rootPath, refreshProjectContext]);
   const loadDirectory = reactExports.useCallback(async (path2) => {
     try {
       const res = await fetch(`${API_BASE2}/fs/list?path=${encodeURIComponent(path2)}`);
@@ -53708,9 +53752,11 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
 });
 Terminal.displayName = "Terminal";
 const API_BASE = "http://localhost:3847/api";
-function buildSystemPrompt(commands, tools, cwd2) {
+let cachedProjectContext = "";
+let cachedProjectPath = "";
+function buildSystemPrompt(commands, tools, cwd2, projectContext = "") {
   const platform = navigator.platform.toLowerCase().includes("win") ? "Windows" : navigator.platform.toLowerCase().includes("mac") ? "macOS" : "Linux";
-  let prompt2 = `You are Claude Code, an AI coding assistant with direct access to the user's file system and command line. You can read, write, and edit files, execute shell commands, and help with software development tasks.
+  let prompt2 = `You are Claude Code, an AI coding assistant with direct access to the user's file system and command line.
 
 `;
   prompt2 += `=== SYSTEM INFORMATION ===
@@ -53718,77 +53764,55 @@ function buildSystemPrompt(commands, tools, cwd2) {
   prompt2 += `Platform: ${platform}
 `;
   prompt2 += `Working Directory: ${cwd2}
-
+`;
+  if (projectContext) {
+    prompt2 += `
+${projectContext}
+`;
+  }
+  prompt2 += `
 `;
   prompt2 += `=== CORE PRINCIPLES ===
 `;
-  prompt2 += `1. **ALWAYS USE TOOLS**: When the user asks you to create, edit, or modify files, you MUST use the available tools. Do not just describe what you would do.
+  prompt2 += `1. ALWAYS USE TOOLS: When the user asks you to create, edit, or modify files, you MUST use the available tools.
 `;
-  prompt2 += `2. **BE PROACTIVE**: Take initiative to complete tasks. If you see a way to help, do it.
+  prompt2 += `2. BE PROACTIVE: Take initiative to complete tasks.
 `;
-  prompt2 += `3. **EXPLAIN YOUR ACTIONS**: After using tools, briefly summarize what you did and why.
-`;
-  prompt2 += `4. **ASK FOR CLARITY**: If a request is ambiguous, ask clarifying questions before proceeding.
+  prompt2 += `3. EXPLAIN YOUR ACTIONS: After using tools, briefly summarize what you did.
 
 `;
   prompt2 += `=== AVAILABLE TOOLS ===
 `;
-  prompt2 += `Use these tools by outputting JSON code blocks:
+  prompt2 += `You have access to the following tools. Use them by outputting JSON code blocks:
 
 `;
-  prompt2 += `**read_file(path)** - Read file contents
+  prompt2 += `read_file: Read file contents
 `;
-  prompt2 += `  Example: {"tool": "read_file", "arguments": {"path": "/path/to/file.txt"}}
-
+  prompt2 += `write_file: Create or overwrite files
 `;
-  prompt2 += `**write_file(path, content)** - Create or overwrite files
+  prompt2 += `edit_file: Replace specific text in a file
 `;
-  prompt2 += `  Example: {"tool": "write_file", "arguments": {"path": "/path/to/file.txt", "content": "file contents"}}
-
+  prompt2 += `append_file: Append content to existing file
 `;
-  prompt2 += `**edit_file(path, old_string, new_string)** - Replace specific text
+  prompt2 += `delete_file: Delete a file or directory
 `;
-  prompt2 += `  Example: {"tool": "edit_file", "arguments": {"path": "/path/to/file.txt", "old_string": "old text", "new_string": "new text"}}
-
+  prompt2 += `list_directory: List directory contents
 `;
-  prompt2 += `**delete_file(path)** - Delete a file or directory
+  prompt2 += `execute_bash: Execute shell commands
 `;
-  prompt2 += `  Example: {"tool": "delete_file", "arguments": {"path": "/path/to/file.txt"}}
-
+  prompt2 += `search_code: Search for code patterns
 `;
-  prompt2 += `**list_directory(path)** - List directory contents
+  prompt2 += `get_running_processes: Get list of running processes
 `;
-  prompt2 += `  Example: {"tool": "list_directory", "arguments": {"path": "/path/to/dir"}}
-
+  prompt2 += `stop_process: Stop a running process by its ID
 `;
-  prompt2 += `**execute_bash(command)** - Execute shell commands
-`;
-  prompt2 += `  Example: {"tool": "execute_bash", "arguments": {"command": "npm install"}}
-
-`;
-  prompt2 += `**search_code(pattern, path?)** - Search for code patterns
-`;
-  prompt2 += `  Example: {"tool": "search_code", "arguments": {"pattern": "function main", "path": "/path/to/search"}}
-
-`;
-  prompt2 += `**get_running_processes()** - Get list of running processes in terminal
-`;
-  prompt2 += `  Example: {"tool": "get_running_processes", "arguments": {}}
-
-`;
-  prompt2 += `**stop_process(process_id)** - Stop a running process by its ID
-`;
-  prompt2 += `  Example: {"tool": "stop_process", "arguments": {"process_id": "abc-123"}}
-
-`;
-  prompt2 += `**restart_process(process_id)** - Restart a running process by its ID
-`;
-  prompt2 += `  Example: {"tool": "restart_process", "arguments": {"process_id": "abc-123"}}
+  prompt2 += `restart_process: Restart a running process by its ID
 
 `;
   prompt2 += `=== TOOL INVOCATION FORMAT ===
 `;
-  prompt2 += `IMPORTANT: When you need to use a tool, you MUST output the tool call in a JSON code block format like this:
+  prompt2 += `When you need to use a tool, output ONLY the JSON code block:
+
 `;
   prompt2 += `\`\`\`json
 {"tool": "tool_name", "arguments": {"arg1": "value1"}}
@@ -53797,147 +53821,44 @@ function buildSystemPrompt(commands, tools, cwd2) {
 `;
   prompt2 += `CRITICAL RULES:
 `;
-  prompt2 += `1. ONLY use the JSON code block format shown above
+  prompt2 += `1. ONLY output the JSON code block, no explanatory text before or between tool calls
 `;
-  prompt2 += `2. NEVER use any other format like <|tool_calls_section_begin|> or special markers
+  prompt2 += `2. You can output multiple tool calls in sequence
 `;
-  prompt2 += `3. ALWAYS wrap the JSON in triple backticks with 'json' language identifier
+  prompt2 += `3. After seeing tool results, continue with next steps if needed
 `;
-  prompt2 += `4. You can invoke multiple tools by outputting multiple JSON code blocks in sequence
-`;
-  prompt2 += `5. DO NOT output raw text explanations before or between tool calls
-`;
-  prompt2 += `6. When multiple tools are needed, output them one after another in separate code blocks
+  prompt2 += `4. When task is complete, summarize what was done
 
 `;
-  prompt2 += `=== RESPONSE FORMAT ===
+  prompt2 += `=== WORKFLOW ===
 `;
-  prompt2 += `When you need to use tools, your ENTIRE response must be ONLY the JSON code block(s).
+  prompt2 += `1. Analyze the user's request
 `;
-  prompt2 += `Do not include any explanatory text before, between, or after the tool calls.
+  prompt2 += `2. Use the provided PROJECT STRUCTURE to understand the codebase
 `;
-  prompt2 += `Example of CORRECT response with multiple tools:
+  prompt2 += `3. If tools are needed, output the tool call(s)
 `;
-  prompt2 += `\`\`\`json
-{"tool": "list_directory", "arguments": {"path": "/project"}}
-\`\`\`
-\`\`\`json
-{"tool": "read_file", "arguments": {"path": "/project/package.json"}}
-\`\`\`
+  prompt2 += `4. Wait for tool results (you will see them in the next message)
+`;
+  prompt2 += `5. Based on results, either:
+`;
+  prompt2 += `   - Output more tool calls if more work is needed
+`;
+  prompt2 += `   - Provide a summary if the task is complete
 
 `;
-  prompt2 += `Example of INCORRECT response (do NOT do this):
+  prompt2 += `NOTE: The PROJECT STRUCTURE above shows the current project layout. Use this information to:
 `;
-  prompt2 += `Let me check the directory first:
-\`\`\`json
-{"tool": "list_directory", "arguments": {"path": "/project"}}
-\`\`\`
-Now let me read the file...
-\`\`\`json
-{"tool": "read_file", "arguments": {"path": "/project/package.json"}}
-\`\`\`
+  prompt2 += `- Understand project organization without needing to list directories
+`;
+  prompt2 += `- Find relevant files quickly
+`;
+  prompt2 += `- Know which files exist before trying to read them
 
 `;
-  if (commands.length > 0) {
-    prompt2 += `=== AVAILABLE COMMANDS ===
+  prompt2 += `=== LARGE FILE HANDLING ===
 `;
-    prompt2 += `Users can type /command_name to execute these:
-`;
-    commands.slice(0, 20).forEach((cmd) => {
-      prompt2 += `  /${cmd.name} - ${cmd.responsibility}
-`;
-    });
-    prompt2 += `
-`;
-  }
-  prompt2 += `=== WORKFLOW GUIDELINES ===
-`;
-  prompt2 += `When creating projects or modifying files:
-`;
-  prompt2 += `1. **Explore First**: Use list_directory to understand the current structure
-`;
-  prompt2 += `2. **Plan Ahead**: Think about the complete set of changes needed
-`;
-  prompt2 += `3. **Execute**: Use write_file, edit_file, and execute_bash as needed
-`;
-  prompt2 += `4. **Verify**: Check that changes were applied correctly
-`;
-  prompt2 += `5. **Summarize**: Provide a brief summary of what was accomplished
-
-`;
-  prompt2 += `=== PROCESS MANAGEMENT GUIDELINES ===
-`;
-  prompt2 += `When user asks to stop, restart, or manage running services/processes:
-`;
-  prompt2 += `1. **DO NOT USE pkill or kill commands** - These won't work properly with the terminal system
-`;
-  prompt2 += `2. **DO NOT assume process status** - Always use tools to check actual process status
-`;
-  prompt2 += `3. **MUST USE TOOLS** - You MUST call get_running_processes() first, then stop_process() to actually stop a process
-`;
-  prompt2 += `4. **NEVER say process is stopped without using stop_process tool** - Always use the tool
-`;
-  prompt2 += `
-**REQUIRED WORKFLOW to stop a process:**
-`;
-  prompt2 += `Step 1: Get current running processes:
-`;
-  prompt2 += `  {"tool": "get_running_processes", "arguments": {}}
-`;
-  prompt2 += `Step 2: Find the process ID from the output
-`;
-  prompt2 += `Step 3: Call stop_process with the actual process ID:
-`;
-  prompt2 += `  {"tool": "stop_process", "arguments": {"process_id": "actual-process-id-from-step-1"}}
-`;
-  prompt2 += `Step 4: Call get_running_processes again to verify the process is actually stopped
-
-`;
-  prompt2 += `**CRITICAL**: If user says "帮我中断/停止 server", you MUST:
-`;
-  prompt2 += `1. Call get_running_processes() to get the process ID
-`;
-  prompt2 += `2. Call stop_process(process_id) with the actual ID
-`;
-  prompt2 += `3. Call get_running_processes() again to verify
-`;
-  prompt2 += `4. Only then report success/failure based on actual tool results
-
-`;
-  prompt2 += `=== NODE.JS PROJECT STARTUP GUIDELINES ===
-`;
-  prompt2 += `When starting a Node.js/TypeScript project:
-`;
-  prompt2 += `1. **ALWAYS read package.json first** - Check the "scripts" section to find the correct start command
-`;
-  prompt2 += `2. **Check if dist/index.js exists** - If the project uses TypeScript and the compiled file doesn't exist, run 'npm run build' first
-`;
-  prompt2 += `3. **Common start commands:**
-`;
-  prompt2 += `   - npm start (most common)
-`;
-  prompt2 += `   - npm run dev (for development)
-`;
-  prompt2 += `   - node dist/index.js (if already compiled)
-`;
-  prompt2 += `   - npm run serve (for Vue/React projects)
-`;
-  prompt2 += `4. **DO NOT guess the entry file** - Don't use 'node app.js' unless you see it in package.json
-`;
-  prompt2 += `5. **Example workflow to start a project:**
-`;
-  prompt2 += `   {"tool": "read_file", "arguments": {"path": "/path/to/project/package.json"}}
-`;
-  prompt2 += `   Then use the appropriate start command from the scripts section
-
-`;
-  prompt2 += `=== SAFETY & SECURITY ===
-`;
-  prompt2 += `- Never execute destructive commands without user confirmation
-`;
-  prompt2 += `- Be careful with file deletions and overwrites
-`;
-  prompt2 += `- Respect user privacy and data
+  prompt2 += `For files > 8KB, use write_file to create initial file, then append_file to add content.
 
 `;
   prompt2 += `=== RESPONSE LANGUAGE ===
@@ -54001,20 +53922,40 @@ function App() {
         }
         if (commands2.length === 0) {
           console.log("Loading commands via HTTP API...");
-          const commandsRes = await fetch(`${API_BASE}/commands`);
-          if (commandsRes.ok) {
-            const commandsData = await commandsRes.json();
-            commands2 = commandsData.commands || [];
-            console.log("Loaded commands via HTTP:", commands2.length);
+          try {
+            const portCommandsRes = await fetch(`${API_BASE}/port/commands`);
+            if (portCommandsRes.ok) {
+              const commandsData = await portCommandsRes.json();
+              commands2 = commandsData.commands || [];
+              console.log("Loaded commands via Port API:", commands2.length);
+            }
+          } catch (portError) {
+            console.log("Port API not available, falling back to legacy API");
+            const commandsRes = await fetch(`${API_BASE}/commands`);
+            if (commandsRes.ok) {
+              const commandsData = await commandsRes.json();
+              commands2 = commandsData.commands || [];
+              console.log("Loaded commands via HTTP:", commands2.length);
+            }
           }
         }
         if (tools2.length === 0) {
           console.log("Loading tools via HTTP API...");
-          const toolsRes = await fetch(`${API_BASE}/tools`);
-          if (toolsRes.ok) {
-            const toolsData = await toolsRes.json();
-            tools2 = toolsData.tools || [];
-            console.log("Loaded tools via HTTP:", tools2.length);
+          try {
+            const portToolsRes = await fetch(`${API_BASE}/port/tools`);
+            if (portToolsRes.ok) {
+              const toolsData = await portToolsRes.json();
+              tools2 = toolsData.tools || [];
+              console.log("Loaded tools via Port API:", tools2.length);
+            }
+          } catch (portError) {
+            console.log("Port API not available, falling back to legacy API");
+            const toolsRes = await fetch(`${API_BASE}/tools`);
+            if (toolsRes.ok) {
+              const toolsData = await toolsRes.json();
+              tools2 = toolsData.tools || [];
+              console.log("Loaded tools via HTTP:", tools2.length);
+            }
           }
         }
         if (commands2.length > 0) {
@@ -54065,15 +54006,128 @@ function App() {
     }
     setIsLoading(false);
   };
+  const handleContinueExecution = async () => {
+    if (!pendingContinuation) {
+      console.error("[handleContinueExecution] No pending continuation");
+      return;
+    }
+    console.log("[handleContinueExecution] Continuing execution...");
+    setIsLoading(true);
+    try {
+      const enabledProvider = providers.find((p2) => p2.enabled);
+      const providerApiKey = enabledProvider?.apiKey || apiKey;
+      if (!providerApiKey) {
+        addMessage({ role: "assistant", content: "请先在设置中配置 API 密钥" });
+        setIsLoading(false);
+        return;
+      }
+      let currentCwd = projectPath || "/";
+      if (!currentCwd || currentCwd === "/") {
+        try {
+          const cwdRes = await fetch(`${API_BASE}/cwd`);
+          if (cwdRes.ok) {
+            const cwdData = await cwdRes.json();
+            currentCwd = cwdData.cwd || "/";
+          }
+        } catch (e) {
+          console.error("Failed to get cwd:", e);
+        }
+      }
+      const userOriginalRequest = pendingContinuation.userOriginalRequest;
+      const currentIterations = pendingContinuation.iterations;
+      const currentWrittenFiles = pendingContinuation.writtenFiles;
+      const currentConversationHistory = pendingContinuation.conversationHistory;
+      let projectContextStr = "";
+      if (projectPath) {
+        projectContextStr = await fetchProjectContext(projectPath);
+      }
+      const systemPrompt = buildSystemPrompt(commands, tools, currentCwd, projectContextStr);
+      let apiMessages = [];
+      if (currentConversationHistory && currentConversationHistory.length > 0) {
+        apiMessages = [...currentConversationHistory];
+        console.log("[handleContinueExecution] Using saved conversation history, length:", apiMessages.length);
+      } else {
+        if (systemPrompt) {
+          apiMessages.push({ role: "user", content: systemPrompt });
+          apiMessages.push({ role: "assistant", content: " understood. I will use the available commands and tools when needed." });
+        }
+        messages2.forEach((m2) => {
+          apiMessages.push({ role: m2.role, content: m2.content });
+        });
+      }
+      apiMessages.push({
+        role: "user",
+        content: "请继续完成之前的任务。如果需要，可以使用工具继续处理。"
+      });
+      console.log("[handleContinueExecution] Continuing with iterations:", currentIterations, "writtenFiles:", currentWrittenFiles.length);
+      const result = await processWithTools(
+        apiMessages,
+        userOriginalRequest,
+        currentCwd,
+        providerApiKey,
+        100,
+        // maxIterations - this is the max for this batch
+        true,
+        // isContinuation
+        {
+          conversationHistory: currentConversationHistory,
+          iterations: 0,
+          // Reset iterations for new batch
+          writtenFiles: currentWrittenFiles
+        }
+      );
+      setPendingContinuation(null);
+      await handleProcessResult(result, userOriginalRequest, currentSession);
+      if (result.needsContinuation || result.error) {
+        setPendingContinuation({
+          conversationHistory: result.conversationHistory || [],
+          userOriginalRequest,
+          iterations: 100,
+          writtenFiles: result.writtenFiles,
+          lastContent: result.content
+        });
+        addMessage({
+          role: "assistant",
+          content: `${result.content}
+
+---
+
+⚠️ **${result.error ? "执行过程中发生异常" : "已达到最大迭代次数（100次）"}**
+
+任务可能尚未完成。请选择：
+- 点击 **"继续执行"** 按钮继续处理
+- 或直接发送新消息以其他方式继续`,
+          needsAction: "continue"
+        });
+      } else {
+        console.log("[handleContinueExecution] Task completed successfully");
+        addMessage({
+          role: "assistant",
+          content: `## ✅ 任务完成
+
+${result.content}`
+        });
+      }
+    } catch (error) {
+      console.error("[handleContinueExecution] Error:", error);
+      updateLastMessage(`继续执行出错: ${String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
   reactExports.useEffect(() => {
     const initSession = async () => {
       if (!currentSession) {
         try {
           const res = await fetch(`${API_BASE}/sessions`, { method: "POST" });
           const session = await res.json();
-          addSession(session);
-          selectSession(session.id);
-          clearMessages();
+          const sessionId = session.id;
+          if (sessionId) {
+            addSession({ id: sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), messageCount: 0 });
+            selectSession(sessionId);
+            clearMessages();
+            console.log("Created session via legacy API:", sessionId);
+          }
         } catch (error) {
           console.error("Failed to create initial session:", error);
         }
@@ -54081,15 +54135,86 @@ function App() {
     };
     initSession();
   }, [currentSession, addSession, selectSession, clearMessages]);
+  const handleProcessResult = async (result, userContent, sessionId) => {
+    console.log("[handleSendMessage] processWithTools returned:", result.content?.substring(0, 100));
+    console.log("[handleSendMessage] writtenFiles:", result.writtenFiles);
+    updateTokens(userContent.length / 4, result.content.length / 4);
+    if (result.writtenFiles.length > 0) {
+      const lastFile = result.writtenFiles[result.writtenFiles.length - 1];
+      try {
+        const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(lastFile)}`);
+        if (readRes.ok) {
+          const fileData = await readRes.json();
+          setSelectedFilePath(lastFile);
+          setSelectedFileContent(fileData.content || "");
+        }
+      } catch (readError) {
+        console.error("Failed to auto-open file:", readError);
+      }
+    }
+    if (sessionId) {
+      try {
+        await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "user", content: userContent })
+        });
+        await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role: "assistant", content: result.content })
+        });
+      } catch (error) {
+        console.error("Failed to save messages to session:", error);
+      }
+    }
+  };
+  const fetchProjectContext = reactExports.useCallback(async (projectPath2) => {
+    if (cachedProjectContext && cachedProjectPath === projectPath2) {
+      console.log("[ProjectContext] Using cached context for:", projectPath2);
+      return cachedProjectContext;
+    }
+    try {
+      console.log("[ProjectContext] Fetching context for:", projectPath2);
+      const res = await fetch(`${API_BASE}/project-context?path=${encodeURIComponent(projectPath2)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.context) {
+          cachedProjectContext = data.context;
+          cachedProjectPath = projectPath2;
+          console.log("[ProjectContext] Context fetched successfully, length:", data.context.length);
+          return data.context;
+        }
+      }
+    } catch (error) {
+      console.error("[ProjectContext] Failed to fetch context:", error);
+    }
+    return "";
+  }, []);
+  reactExports.useEffect(() => {
+    if (projectPath) {
+      fetchProjectContext(projectPath);
+    }
+  }, [projectPath, fetchProjectContext]);
   const handleNewSession = reactExports.useCallback(async () => {
-    const res = await fetch(`${API_BASE}/sessions`, { method: "POST" });
-    const session = await res.json();
-    addSession(session);
-    selectSession(session.id);
-    clearMessages();
+    try {
+      const res = await fetch(`${API_BASE}/sessions`, { method: "POST" });
+      const session = await res.json();
+      const sessionId = session.id;
+      if (sessionId) {
+        addSession({ id: sessionId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), messageCount: 0 });
+        selectSession(sessionId);
+        clearMessages();
+        console.log("Created new session:", sessionId);
+      }
+    } catch (error) {
+      console.error("Failed to create new session:", error);
+    }
   }, [addSession, selectSession, clearMessages]);
   const parseToolCalls = (text2) => {
     const toolCalls = [];
+    console.log("[parseToolCalls] Input text length:", text2.length);
+    console.log("[parseToolCalls] Input text preview:", text2.substring(0, 300));
     const toolCallsSectionRegex = /<\|tool_calls_section_begin\|>([\s\S]*?)<\|tool_calls_section_end\|>/g;
     let sectionMatch;
     while ((sectionMatch = toolCallsSectionRegex.exec(text2)) !== null) {
@@ -54108,16 +54233,45 @@ function App() {
         }
       }
     }
-    const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/g;
-    let match;
-    while ((match = codeBlockRegex.exec(text2)) !== null) {
-      const blockContent = match[1].trim();
+    const codeBlockMarker = "```";
+    let searchIndex = 0;
+    let matchCount = 0;
+    console.log("[parseToolCalls] Searching for code blocks, text length:", text2.length);
+    console.log("[parseToolCalls] First 500 chars:", text2.substring(0, 500));
+    const firstBacktick = text2.indexOf("`");
+    console.log("[parseToolCalls] First backtick position:", firstBacktick);
+    if (firstBacktick !== -1) {
+      console.log("[parseToolCalls] Text around first backtick:", text2.substring(firstBacktick, firstBacktick + 20));
+    }
+    while (true) {
+      const blockStart = text2.indexOf(codeBlockMarker, searchIndex);
+      if (blockStart === -1) {
+        console.log("[parseToolCalls] No more code block markers found after position", searchIndex);
+        break;
+      }
+      console.log("[parseToolCalls] Found code block marker at position:", blockStart);
+      console.log("[parseToolCalls] Text at marker:", text2.substring(blockStart, blockStart + 20));
+      const blockEnd = text2.indexOf(codeBlockMarker, blockStart + codeBlockMarker.length);
+      if (blockEnd === -1) {
+        console.log("[parseToolCalls] No closing marker found");
+        break;
+      }
+      matchCount++;
+      text2.substring(blockStart, blockEnd + codeBlockMarker.length);
+      const hasJsonMarker = text2.substring(blockStart, blockStart + 7) === "```json";
+      const contentStart = hasJsonMarker ? blockStart + 7 : blockStart + 3;
+      const blockContent = text2.substring(contentStart, blockEnd).trim();
+      console.log(`[parseToolCalls] Found code block #${matchCount} at ${blockStart}-${blockEnd}, hasJsonMarker: ${hasJsonMarker}`);
+      console.log(`[parseToolCalls] Block content preview:`, blockContent.substring(0, 100));
       try {
         const parsed = JSON.parse(blockContent);
+        console.log(`[parseToolCalls] Parsed JSON from code block #${matchCount}:`, parsed);
         if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
           toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
+          console.log(`[parseToolCalls] Added tool call from code block #${matchCount}:`, parsed.tool);
         }
       } catch (e) {
+        console.log(`[parseToolCalls] Failed to parse code block #${matchCount} as single JSON, trying line by line`);
         const lines = blockContent.split("\n");
         for (const line of lines) {
           const trimmedLine = line.trim();
@@ -54126,6 +54280,7 @@ function App() {
             const parsed = JSON.parse(trimmedLine);
             if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
               toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
+              console.log(`[parseToolCalls] Added tool call from line:`, parsed.tool);
             }
           } catch (e2) {
             const jsonStart = trimmedLine.indexOf("{");
@@ -54136,6 +54291,7 @@ function App() {
                 const parsed = JSON.parse(jsonStr);
                 if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
                   toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
+                  console.log(`[parseToolCalls] Added tool call from JSON in line:`, parsed.tool);
                 }
               } catch (e3) {
               }
@@ -54143,7 +54299,9 @@ function App() {
           }
         }
       }
+      searchIndex = blockEnd + codeBlockMarker.length;
     }
+    console.log(`[parseToolCalls] Total code blocks found: ${matchCount}`);
     const jsonObjectRegex = /\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/g;
     let jsonMatch;
     while ((jsonMatch = jsonObjectRegex.exec(text2)) !== null) {
@@ -54163,155 +54321,471 @@ function App() {
     }
     return toolCalls.length > 0 ? toolCalls : null;
   };
-  const processWithTools = async (apiMessages, userContent, workingDir, providerApiKey, maxIterations = 10) => {
-    let iterations = 0;
+  const [pendingContinuation, setPendingContinuation] = reactExports.useState(null);
+  const processWithTools = async (apiMessages, userContent, workingDir, providerApiKey, maxIterations = 100, isContinuation = false, previousState) => {
+    console.log("[processWithTools] Starting execution, isContinuation:", isContinuation);
+    let iterations = previousState?.iterations || 0;
+    let conversationHistory = previousState?.conversationHistory && previousState.conversationHistory.length > 0 ? [...previousState.conversationHistory] : [...apiMessages];
+    console.log("[processWithTools] conversationHistory length:", conversationHistory.length, "from previousState:", previousState?.conversationHistory?.length);
+    const writtenFiles = previousState?.writtenFiles ? [...previousState.writtenFiles] : [];
     let finalContent = "";
-    addMessage({ role: "assistant", content: "🔄 正在分析请求并准备工具调用..." });
+    let consecutiveTruncations = 0;
+    const MAX_CONSECUTIVE_TRUNCATIONS = 3;
+    const userOriginalRequest = apiMessages[apiMessages.length - 1]?.content || "";
+    if (!isContinuation) {
+      addMessage({ role: "assistant", content: "🔄 正在处理..." });
+    }
     abortControllerRef.current = new AbortController();
-    while (iterations < maxIterations) {
-      iterations++;
-      if (abortControllerRef.current.signal.aborted) {
-        throw new Error("Generation stopped by user");
-      }
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apiKey: providerApiKey,
-          model,
-          messages: apiMessages,
-          stream: false
-        }),
-        signal: abortControllerRef.current.signal
-      });
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
-      }
-      const data = await res.json();
-      const responseText = data.content?.[0]?.text || data.content || "";
-      const textContent = typeof responseText === "string" ? responseText : JSON.stringify(responseText);
-      console.log("AI Response:", textContent.substring(0, 500));
-      console.log("AI Response data:", data);
-      let toolCalls = [];
-      if (data.tool_calls && Array.isArray(data.tool_calls) && data.tool_calls.length > 0) {
-        toolCalls = data.tool_calls.map((tc2) => {
-          if (tc2.function) {
-            return {
-              tool: tc2.function.name,
-              arguments: typeof tc2.function.arguments === "string" ? JSON.parse(tc2.function.arguments) : tc2.function.arguments
-            };
-          } else if (tc2.name) {
-            return {
-              tool: tc2.name,
-              arguments: tc2.arguments || {}
-            };
-          }
-          return null;
-        }).filter(Boolean);
-        console.log("Using structured tool_calls from API:", toolCalls);
-      } else {
-        const parsedToolCalls = parseToolCalls(textContent);
-        toolCalls = parsedToolCalls || [];
-        console.log("Parsed tool calls from text:", toolCalls);
-      }
-      if (toolCalls.length === 0) {
-        finalContent = textContent;
-        updateLastMessage(textContent);
-        break;
-      }
-      const toolNames = toolCalls.map((t2) => t2.tool).join(", ");
-      const debugInfo = `
+    try {
+      console.log("[ToolLoop] Starting processWithTools, maxIterations:", maxIterations);
+      while (iterations < maxIterations) {
+        iterations++;
+        console.log("[ToolLoop] Iteration", iterations, "/", maxIterations);
+        if (abortControllerRef.current.signal.aborted) {
+          throw new Error("Generation stopped by user");
+        }
+        console.log("[ToolLoop] Calling LLM with", conversationHistory.length, "messages");
+        const MAX_HISTORY_MESSAGES = 20;
+        if (conversationHistory.length > MAX_HISTORY_MESSAGES) {
+          console.log("[ToolLoop] Conversation history too long, compressing...");
+          const readFileResults = conversationHistory.filter((m2, i) => m2.role === "user" && i > 0).map((m2) => {
+            const match = m2.content.match(/工具执行结果.*?read_file.*?```\n([\s\S]*?)```/);
+            if (match) {
+              const fileMatch = m2.content.match(/path[:\s]*([^\s]+)/);
+              const path2 = fileMatch ? fileMatch[1] : "unknown";
+              const preview = match[1].substring(0, 500);
+              return { path: path2, preview };
+            }
+            return null;
+          }).filter(Boolean).slice(-5);
+          const contextSummary = readFileResults.length > 0 ? readFileResults.map((r2) => `已读取文件: ${r2?.path}
+内容摘要:
+${r2?.preview}...`).join("\n\n") : "（无文件读取记录）";
+          const systemMessages = conversationHistory.slice(0, 2);
+          const recentMessages = conversationHistory.slice(-8);
+          const compressedContext = {
+            role: "user",
+            content: `[系统提示：对话历史已被智能压缩以节省空间。以下是关键信息摘要：
 
-**[调试] 发现 ${toolCalls.length} 个工具调用:** ${toolNames}
+【用户原始请求】
+${userOriginalRequest.substring(0, 500)}${userOriginalRequest.length > 500 ? "..." : ""}
 
-**工作目录:** ${workingDir}
+【已读取的文件】
+${contextSummary}
 
-**工具详情:**
-${toolCalls.map((t2) => `- ${t2.tool}: ${JSON.stringify(t2.arguments)}`).join("\n")}`;
-      console.log("Updating message with debug info:", debugInfo);
-      updateLastMessage(textContent + debugInfo);
-      const results = [];
-      for (const toolCall of toolCalls) {
-        console.log(`Executing tool: ${toolCall.tool}`, toolCall.arguments, "in cwd:", workingDir);
+【当前任务状态】
+- 已迭代次数: ${iterations}
+- 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(", ") : "无"}
+- 任务进行中，请继续完成用户请求
+
+可用工具：
+- read_file: 读取文件，支持 offset 和 limit 参数
+- write_file: 写入文件  
+- edit_file: 编辑文件
+- execute_bash: 执行命令
+
+工具调用格式：
+\`\`\`json
+{"tool": "tool_name", "arguments": {"arg1": "value1"}}
+\`\`\`
+
+请基于以上信息继续完成任务。]`
+          };
+          conversationHistory = [...systemMessages, compressedContext, ...recentMessages];
+          console.log("[ToolLoop] Compressed conversation history to", conversationHistory.length, "messages");
+        }
+        let data;
         try {
-          const execRes = await fetch(`${API_BASE}/tools/execute-direct`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tool: toolCall.tool,
-              arguments: toolCall.arguments,
-              cwd: workingDir
-            })
-          });
-          if (execRes.ok) {
-            const execData = await execRes.json();
-            console.log(`Tool ${toolCall.tool} result:`, execData.result);
-            results.push({ tool: toolCall.tool, result: execData.result });
-            if ((toolCall.tool === "write_file" || toolCall.tool === "edit_file") && execData.result.success) {
-              const filePath = toolCall.arguments.path;
-              if (filePath && typeof filePath === "string") {
-                try {
-                  const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(filePath)}`);
-                  if (readRes.ok) {
-                    const fileData = await readRes.json();
-                    setSelectedFilePath(filePath);
-                    setSelectedFileContent(fileData.content || "");
-                    console.log(`Auto-opened file: ${filePath}`);
-                  }
-                } catch (readError) {
-                  console.error("Failed to auto-open file:", readError);
+          const availableTools = [
+            {
+              type: "function",
+              function: {
+                name: "read_file",
+                description: "Read file contents",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    path: { type: "string", description: "File path" },
+                    offset: { type: "number", description: "Start line offset" },
+                    limit: { type: "number", description: "Number of lines to read" }
+                  },
+                  required: ["path"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "write_file",
+                description: "Create or overwrite files",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    path: { type: "string", description: "File path" },
+                    content: { type: "string", description: "File content" }
+                  },
+                  required: ["path", "content"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "edit_file",
+                description: "Replace specific text in a file",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    path: { type: "string", description: "File path" },
+                    old_string: { type: "string", description: "Text to replace" },
+                    new_string: { type: "string", description: "Replacement text" }
+                  },
+                  required: ["path", "old_string", "new_string"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "append_file",
+                description: "Append content to existing file",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    path: { type: "string", description: "File path" },
+                    content: { type: "string", description: "Content to append" }
+                  },
+                  required: ["path", "content"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "delete_file",
+                description: "Delete a file or directory",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    path: { type: "string", description: "File or directory path" }
+                  },
+                  required: ["path"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "list_directory",
+                description: "List directory contents",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    path: { type: "string", description: "Directory path" }
+                  },
+                  required: ["path"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "execute_bash",
+                description: "Execute shell commands",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    command: { type: "string", description: "Command to execute" },
+                    cwd: { type: "string", description: "Working directory" }
+                  },
+                  required: ["command"]
+                }
+              }
+            },
+            {
+              type: "function",
+              function: {
+                name: "search_code",
+                description: "Search for code patterns",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    query: { type: "string", description: "Search query" }
+                  },
+                  required: ["query"]
                 }
               }
             }
-          } else {
-            const errorText = await execRes.text();
-            console.error(`Tool ${toolCall.tool} failed:`, errorText);
-            results.push({ tool: toolCall.tool, result: { success: false, output: "", error: `HTTP ${execRes.status}: ${errorText}` } });
+          ];
+          const res = await fetch(`${API_BASE}/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              apiKey: providerApiKey,
+              model,
+              messages: conversationHistory,
+              tools: availableTools,
+              tool_choice: "auto",
+              stream: false
+            }),
+            signal: abortControllerRef.current.signal
+          });
+          if (!res.ok) {
+            const errorData = await res.json();
+            console.error("[ToolLoop] LLM API error:", res.status, errorData);
+            throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
           }
-        } catch (error) {
-          console.error(`Tool ${toolCall.tool} error:`, error);
-          results.push({ tool: toolCall.tool, result: { success: false, output: "", error: `Exception: ${String(error)}` } });
+          data = await res.json();
+        } catch (llmError) {
+          console.error("[ToolLoop] LLM call failed:", llmError);
+          throw llmError;
+        }
+        let content2 = data.content;
+        if (typeof content2 === "string") {
+          try {
+            const parsed = JSON.parse(content2);
+            if (Array.isArray(parsed)) {
+              content2 = parsed;
+            }
+          } catch (e) {
+          }
+        }
+        const responseText = Array.isArray(content2) ? content2[0]?.text || "" : content2 || "";
+        const textContent = typeof responseText === "string" ? responseText : JSON.stringify(responseText);
+        console.log("AI Response:", textContent.substring(0, 500));
+        console.log("[ToolLoop] data.tool_calls:", data.tool_calls ? JSON.stringify(data.tool_calls).substring(0, 500) : "undefined");
+        let toolCalls = [];
+        if (data.tool_calls && Array.isArray(data.tool_calls) && data.tool_calls.length > 0) {
+          console.log("[ToolLoop] Found structured tool_calls:", data.tool_calls.length);
+          toolCalls = data.tool_calls.map((tc2) => {
+            if (tc2.function) {
+              return {
+                tool: tc2.function.name,
+                arguments: typeof tc2.function.arguments === "string" ? JSON.parse(tc2.function.arguments) : tc2.function.arguments
+              };
+            } else if (tc2.name) {
+              return { tool: tc2.name, arguments: tc2.arguments || {} };
+            }
+            return null;
+          }).filter(Boolean);
+        } else {
+          console.log("[ToolLoop] No structured tool_calls, parsing from text...");
+          const parsedToolCalls = parseToolCalls(textContent);
+          toolCalls = parsedToolCalls || [];
+        }
+        conversationHistory.push({ role: "assistant", content: textContent });
+        if (toolCalls.length === 0) {
+          const toolIntentPatterns = [
+            /让.*读取.*文件/i,
+            /让.*获取.*文件/i,
+            /让我.*读取/i,
+            /让我.*获取/i,
+            /让我.*查看/i,
+            /让我.*检查/i,
+            /让我.*列出/i,
+            /使用.*read_file/i,
+            /使用.*write_file/i,
+            /使用.*edit_file/i,
+            /使用.*execute_bash/i,
+            /使用.*list_directory/i,
+            /使用.*search_code/i,
+            /继续读取/i,
+            /继续获取/i,
+            /查看.*目录/i,
+            /查看.*文件/i,
+            /检查.*目录/i,
+            /检查.*文件/i,
+            /列出.*目录/i,
+            /列出.*文件/i
+          ];
+          const hasToolIntent = toolIntentPatterns.some((pattern) => pattern.test(textContent));
+          const jsonBlockStart = textContent.indexOf("```json");
+          const hasIncompleteToolCall = jsonBlockStart !== -1 && !textContent.includes("```", jsonBlockStart + 7);
+          if (hasIncompleteToolCall) {
+            consecutiveTruncations++;
+            console.log(`[ToolLoop] Detected incomplete tool call (truncated JSON), count: ${consecutiveTruncations}`);
+            if (consecutiveTruncations >= MAX_CONSECUTIVE_TRUNCATIONS) {
+              console.log("[ToolLoop] Too many consecutive truncations, stopping loop");
+              finalContent = textContent + "\n\n⚠️ AI 响应连续多次被截断，请尝试：\n1. 简化您的请求\n2. 使用支持更长上下文的模型\n3. 减少一次请求中需要处理的文件数量";
+              updateLastMessage(finalContent);
+              break;
+            }
+            const promptMessage = `请使用简洁的格式调用工具（确保 JSON 完整）：
+
+\`\`\`json
+{"tool": "tool_name", "arguments": {"arg1": "value1"}}
+\`\`\``;
+            conversationHistory.push({ role: "user", content: promptMessage });
+            updateLastMessage(`${textContent}
+
+🔄 响应截断，重新尝试 (${consecutiveTruncations}/${MAX_CONSECUTIVE_TRUNCATIONS})...`);
+            continue;
+          }
+          consecutiveTruncations = 0;
+          if (hasToolIntent && iterations < maxIterations - 1) {
+            console.log("[ToolLoop] AI expressed tool intent but no tool calls found, prompting for correct format");
+            const promptMessage = `请使用以下格式调用工具：
+
+\`\`\`json
+{"tool": "tool_name", "arguments": {"arg1": "value1"}}
+\`\`\`
+
+可用工具：
+- read_file: 读取文件，参数: path, offset, limit
+- write_file: 写入文件，参数: path, content
+- edit_file: 编辑文件，参数: path, old_string, new_string
+- execute_bash: 执行命令，参数: command
+
+请直接输出工具调用代码块。`;
+            conversationHistory.push({ role: "user", content: promptMessage });
+            updateLastMessage(`${textContent}
+
+🔄 等待工具调用...`);
+            continue;
+          }
+          console.log("[ToolLoop] No tool calls found, breaking loop");
+          console.log("[ToolLoop] textContent:", textContent.substring(0, 200));
+          console.log("[ToolLoop] data:", JSON.stringify(data).substring(0, 200));
+          finalContent = textContent;
+          updateLastMessage(textContent);
+          break;
+        }
+        const toolNames = toolCalls.map((t2) => t2.tool).join(", ");
+        updateLastMessage(`🔄 正在执行: ${toolNames}...`);
+        const results = [];
+        console.log(`[ToolLoop] Starting execution of ${toolCalls.length} tool calls`);
+        for (const toolCall of toolCalls) {
+          const maxRetries = 3;
+          const toolTimeout = 6e4;
+          let retryCount = 0;
+          let lastError = "";
+          let toolResult = null;
+          const toolStartTime = Date.now();
+          console.log(`[ToolLoop] Tool ${toolCall.tool} started at`, toolStartTime);
+          while (retryCount < maxRetries) {
+            const elapsedTime = Date.now() - toolStartTime;
+            if (elapsedTime > toolTimeout) {
+              lastError = `工具执行超时 (${toolTimeout / 1e3}秒)`;
+              console.error(`[ToolLoop] Tool ${toolCall.tool} timeout after ${elapsedTime}ms`);
+              break;
+            }
+            try {
+              console.log(`[ToolLoop] Executing tool: ${toolCall.tool} (attempt ${retryCount + 1}/${maxRetries})`, toolCall.arguments);
+              console.log(`[ToolLoop] Sending request to API...`);
+              const execRes = await fetch(`${API_BASE}/tools/execute-direct`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  tool: toolCall.tool,
+                  arguments: toolCall.arguments,
+                  cwd: workingDir
+                })
+              });
+              if (execRes.ok) {
+                const execData = await execRes.json();
+                toolResult = execData.result;
+                if ((toolCall.tool === "write_file" || toolCall.tool === "edit_file") && execData.result.success) {
+                  const filePath = toolCall.arguments.path;
+                  if (filePath && typeof filePath === "string") {
+                    writtenFiles.push(filePath);
+                    console.log("[ToolLoop] Recorded written file:", filePath);
+                  }
+                }
+              } else {
+                const errorText = await execRes.text();
+                lastError = `HTTP ${execRes.status}: ${errorText}`;
+                console.error(`[ToolLoop] Tool ${toolCall.tool} failed:`, lastError);
+              }
+            } catch (error) {
+              lastError = `Exception: ${String(error)}`;
+              console.error(`[ToolLoop] Tool ${toolCall.tool} exception:`, error);
+            }
+            if (toolResult && toolResult.success) {
+              console.log(`[ToolLoop] Tool ${toolCall.tool} succeeded`);
+              break;
+            } else {
+              retryCount++;
+              if (retryCount < maxRetries) {
+                console.log(`[ToolLoop] Tool ${toolCall.tool} failed, retrying... (${retryCount}/${maxRetries})`);
+                await new Promise((resolve) => setTimeout(resolve, 1e3));
+              }
+            }
+          }
+          if (toolResult) {
+            results.push({ tool: toolCall.tool, result: toolResult });
+          } else {
+            results.push({ tool: toolCall.tool, result: { success: false, output: "", error: lastError || "Unknown error after retries" } });
+            console.error(`[ToolLoop] Tool ${toolCall.tool} failed after ${maxRetries} attempts:`, lastError);
+          }
+        }
+        console.log(`[ToolLoop] All tool calls completed, results:`, results);
+        console.log(`[ToolLoop] Preparing to call LLM again with tool results...`);
+        if (results.length !== toolCalls.length) {
+          console.error(`[ToolLoop] WARNING: Expected ${toolCalls.length} results but got ${results.length}`);
+          for (let i = results.length; i < toolCalls.length; i++) {
+            results.push({
+              tool: toolCalls[i].tool,
+              result: { success: false, output: "", error: "工具执行结果丢失" }
+            });
+          }
+        }
+        const resultsText = results.map((r2) => {
+          const status = r2.result?.success ? "成功" : "失败";
+          const output = r2.result?.output ? `
+输出: ${r2.result.output.substring(0, 1e3)}` : "";
+          const error = r2.result?.error ? `
+错误: ${r2.result.error.substring(0, 500)}` : "";
+          return `[${r2.tool}] ${status}${output}${error}`;
+        }).join("\n\n");
+        const toolResultMessage = `工具执行结果:
+
+${resultsText}`;
+        conversationHistory.push({ role: "user", content: toolResultMessage });
+        console.log("[ToolLoop] Added tool result to conversation history, now", conversationHistory.length, "messages");
+        const resultsSummary = results.map((r2) => {
+          const status = r2.result?.success ? "✅" : "❌";
+          const output = r2.result?.output ? `
+\`\`\`
+${r2.result.output.substring(0, 300)}${r2.result.output.length > 300 ? "..." : ""}
+\`\`\`` : "";
+          const error = r2.result?.error ? `
+⚠️ ${r2.result.error.substring(0, 200)}` : "";
+          return `${status} **${r2.tool}**${output}${error}`;
+        }).join("\n\n");
+        const allSuccess = results.every((r2) => r2.result?.success);
+        const successCount = results.filter((r2) => r2.result?.success).length;
+        const statusEmoji = allSuccess ? "✅" : successCount > 0 ? "⚠️" : "❌";
+        updateLastMessage(`${statusEmoji} 工具执行完成 (${successCount}/${results.length})`);
+        console.log("[ToolLoop] Tool execution cycle completed, continuing to next iteration...");
+        console.log("[ToolLoop] Current iteration:", iterations, "of max", maxIterations);
+      }
+      const reachedMaxIterations = iterations >= maxIterations;
+      if (!finalContent) {
+        const lastAssistantMsg = conversationHistory.slice().reverse().find((m2) => m2.role === "assistant");
+        if (lastAssistantMsg) {
+          finalContent = lastAssistantMsg.content;
+          console.log("[ToolLoop] Using last assistant message as finalContent");
+        } else {
+          finalContent = "处理完成（无最终响应）";
         }
       }
-      apiMessages.push({
-        role: "assistant",
-        content: textContent
-      });
-      const resultsText = results.map(
-        (r2) => `Tool: ${r2.tool}
-Success: ${r2.result.success}
-Output: ${r2.result.output}${r2.result.error ? "\nError: " + r2.result.error : ""}`
-      ).join("\n\n");
-      apiMessages.push({
-        role: "user",
-        content: `Tool execution results:
-
-${resultsText}
-
-Continue with the task based on these results.`
-      });
-      const resultsSummary = results.map((r2) => {
-        const status = r2.result.success ? "✅" : "❌";
-        const output = r2.result.output ? `
-\`\`\`
-${r2.result.output.substring(0, 500)}${r2.result.output.length > 500 ? "..." : ""}
-\`\`\`` : "";
-        const error = r2.result.error ? `
-⚠️ 错误: ${r2.result.error.substring(0, 200)}` : "";
-        return `${status} **${r2.tool}**${output}${error}`;
-      }).join("\n\n");
-      updateLastMessage(`${textContent}
-
----
-
-**[调试] 工具执行结果:**
-
-${resultsSummary}
-
-**继续下一步...**`);
+      if (reachedMaxIterations) {
+        console.log("[ToolLoop] Reached max iterations, returning needsContinuation=true");
+        return {
+          content: finalContent,
+          writtenFiles,
+          needsContinuation: true
+        };
+      }
+      console.log("[ToolLoop] Exiting while loop, returning finalContent:", finalContent.substring(0, 100));
+      return { content: finalContent, writtenFiles, needsContinuation: false, error: null, conversationHistory };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("[ToolLoop] processWithTools error:", errorMessage);
+      console.error("[ToolLoop] Stack:", error instanceof Error ? error.stack : "no stack");
+      updateLastMessage(`执行出错: ${errorMessage}`);
+      return { content: `执行出错: ${errorMessage}`, writtenFiles, needsContinuation: false, error: errorMessage, conversationHistory: conversationHistory.length > 0 ? conversationHistory : apiMessages };
     }
-    return finalContent;
   };
   const handleSendMessage = async (content2) => {
     if (!content2.trim()) return;
@@ -54327,13 +54801,31 @@ ${resultsSummary}
       const command = commands.find((cmd) => cmd.name.toLowerCase() === commandName.toLowerCase());
       if (command) {
         try {
-          const execRes = await fetch(`${API_BASE}/commands/execute`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ command: command.name, prompt: content2 })
-          });
-          if (execRes.ok) {
-            const execData = await execRes.json();
+          let execData;
+          try {
+            const portExecRes = await fetch(`${API_BASE}/port/exec-command`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: command.name, prompt: content2 })
+            });
+            if (portExecRes.ok) {
+              execData = await portExecRes.json();
+              console.log("Executed command via Port API:", command.name);
+            }
+          } catch (portError) {
+            console.log("Port API not available, falling back to legacy API");
+          }
+          if (!execData) {
+            const execRes = await fetch(`${API_BASE}/commands/execute`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ command: command.name, prompt: content2 })
+            });
+            if (execRes.ok) {
+              execData = await execRes.json();
+            }
+          }
+          if (execData?.result) {
             commandResult = execData.result;
           }
         } catch (error) {
@@ -54357,17 +54849,23 @@ ${resultsSummary}
     }
     const isCodeRequest = true;
     try {
-      let currentCwd = "/";
-      try {
-        const cwdRes = await fetch(`${API_BASE}/cwd`);
-        if (cwdRes.ok) {
-          const cwdData = await cwdRes.json();
-          currentCwd = cwdData.cwd || "/";
+      let currentCwd = projectPath || "/";
+      if (!currentCwd || currentCwd === "/") {
+        try {
+          const cwdRes = await fetch(`${API_BASE}/cwd`);
+          if (cwdRes.ok) {
+            const cwdData = await cwdRes.json();
+            currentCwd = cwdData.cwd || "/";
+          }
+        } catch (e) {
+          console.error("Failed to get cwd:", e);
         }
-      } catch (e) {
-        console.error("Failed to get cwd:", e);
       }
-      const systemPrompt = buildSystemPrompt(commands, tools, currentCwd);
+      let projectContextStr = "";
+      if (projectPath) {
+        projectContextStr = await fetchProjectContext(projectPath);
+      }
+      const systemPrompt = buildSystemPrompt(commands, tools, currentCwd, projectContextStr);
       const apiMessages = [];
       if (systemPrompt) {
         apiMessages.push({ role: "user", content: systemPrompt });
@@ -54378,28 +54876,90 @@ ${resultsSummary}
       });
       apiMessages.push({ role: "user", content: content2 });
       if (isCodeRequest) {
-        const finalContent = await processWithTools(apiMessages, content2, currentCwd, providerApiKey);
-        updateTokens(content2.length / 4, finalContent.length / 4);
-        if (currentSession) {
-          try {
-            await fetch(`${API_BASE}/sessions/${currentSession}/messages`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ role: "user", content: content2 })
+        if (pendingContinuation) {
+          console.log("[handleSendMessage] Continuing from pending state...");
+          const result = await processWithTools(
+            apiMessages,
+            pendingContinuation.userOriginalRequest,
+            currentCwd,
+            providerApiKey,
+            100,
+            // maxIterations
+            true,
+            // isContinuation
+            {
+              conversationHistory: pendingContinuation.conversationHistory,
+              iterations: pendingContinuation.iterations,
+              writtenFiles: pendingContinuation.writtenFiles
+            }
+          );
+          setPendingContinuation(null);
+          await handleProcessResult(result, content2, currentSession);
+        } else {
+          console.log("[handleSendMessage] Calling processWithTools...");
+          const result = await processWithTools(apiMessages, content2, currentCwd, providerApiKey);
+          console.log("[handleSendMessage] processWithTools returned:", result.content?.substring(0, 100));
+          console.log("[handleSendMessage] writtenFiles:", result.writtenFiles);
+          if (result.needsContinuation) {
+            console.log("[handleSendMessage] Tool execution needs continuation");
+            setPendingContinuation({
+              conversationHistory: result.conversationHistory || [],
+              userOriginalRequest: content2,
+              iterations: 100,
+              writtenFiles: result.writtenFiles,
+              lastContent: result.content
             });
-            await fetch(`${API_BASE}/sessions/${currentSession}/messages`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ role: "assistant", content: finalContent })
+            addMessage({
+              role: "assistant",
+              content: `${result.content}
+
+---
+
+⚠️ **已达到最大迭代次数（100次）**
+
+任务可能尚未完成。请选择：
+- 点击 **"继续执行"** 按钮继续处理
+- 或直接发送新消息以其他方式继续`,
+              needsAction: "continue"
             });
-          } catch (error) {
-            console.error("Failed to save messages to session:", error);
+            setIsLoading(false);
+            return;
           }
+          if (result.error) {
+            console.log("[handleSendMessage] Tool execution encountered error");
+            setPendingContinuation({
+              conversationHistory: result.conversationHistory || [],
+              userOriginalRequest: content2,
+              iterations: 100,
+              // Assume max reached or error occurred
+              writtenFiles: result.writtenFiles,
+              lastContent: result.content
+            });
+            addMessage({
+              role: "assistant",
+              content: `${result.content}
+
+---
+
+⚠️ **执行过程中发生异常**
+
+任务可能尚未完成。请选择：
+- 点击 **"继续执行"** 按钮尝试继续处理
+- 或直接发送新消息以其他方式继续`,
+              needsAction: "continue"
+            });
+            setIsLoading(false);
+            return;
+          }
+          await handleProcessResult(result, content2, currentSession);
         }
+        return;
       }
     } catch (error) {
+      console.error("[handleSendMessage] Error caught:", error);
       updateLastMessage(`Error: ${String(error)}`);
     } finally {
+      console.log("[handleSendMessage] Finally block, setting isLoading to false");
       setIsLoading(false);
     }
   };
@@ -54507,7 +55067,9 @@ ${resultsSummary}
           outputTokens,
           providers,
           model,
-          onModelChange: setModel
+          onModelChange: setModel,
+          onContinueExecution: handleContinueExecution,
+          showContinueButton: !!pendingContinuation
         }
       )
     ] }),
@@ -54526,5 +55088,5 @@ ${resultsSummary}
   ] });
 }
 client.createRoot(document.getElementById("root")).render(
-  /* @__PURE__ */ jsxRuntimeExports.jsx(React$2.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
+  /* @__PURE__ */ jsxRuntimeExports.jsx(App, {})
 );

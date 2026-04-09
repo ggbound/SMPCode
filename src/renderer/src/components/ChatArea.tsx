@@ -19,6 +19,8 @@ interface ChatAreaProps {
   providers?: ProviderConfig[]
   model?: string
   onModelChange?: (model: string) => void
+  onContinueExecution?: () => void
+  showContinueButton?: boolean
 }
 
 function ChatArea({
@@ -33,7 +35,9 @@ function ChatArea({
   outputTokens = 0,
   providers = [],
   model = '',
-  onModelChange
+  onModelChange,
+  onContinueExecution,
+  showContinueButton
 }: ChatAreaProps) {
   const [input, setInput] = useState('')
 
@@ -315,6 +319,30 @@ function ChatArea({
                     >
                       {msg.content}
                     </ReactMarkdown>
+                    {/* Show continue button for messages that need action */}
+                    {msg.needsAction === 'continue' && onContinueExecution && (
+                      <div className="continue-action-container">
+                        <button
+                          className="continue-button"
+                          onClick={onContinueExecution}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <>
+                              <span className="spinner-small" />
+                              继续执行中...
+                            </>
+                          ) : (
+                            <>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M5 12h14M12 5l7 7-7 7"/>
+                              </svg>
+                              继续执行
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

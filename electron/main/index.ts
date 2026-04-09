@@ -13,20 +13,38 @@ import {
 } from './config-service'
 import { initTerminalService, cleanupTerminals } from './services/terminal-service'
 import { processBridge } from './services/process-terminal-bridge'
+import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
 
 // Configure logging
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
 log.info('Application starting...')
 
-// Global exception handler
+// Global exception handler - 改进：不再直接退出进程，而是记录错误并尝试恢复
 process.on('uncaughtException', (error) => {
   log.error('Uncaught exception:', error)
-  app.exit(1)
+  // 不再直接退出，而是记录错误信息让用户知道出了问题
+  // app.exit(1)  // 注释掉，避免直接退出
+  
+  // 如果主窗口存在，尝试显示错误
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app-error', {
+      type: 'uncaughtException',
+      message: String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+  }
 })
 
 process.on('unhandledRejection', (reason) => {
   log.error('Unhandled rejection:', reason)
+  // 同样不直接退出，记录错误
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('app-error', {
+      type: 'unhandledRejection',
+      message: String(reason)
+    })
+  }
 })
 
 let mainWindow: BrowserWindow | null = null
@@ -268,30 +286,101 @@ function setupIpcHandlers(): void {
     ]
   })
 
-  // Route prompt handler
+  // Route prompt handler - 使用新的 CLI 运行时引擎
   ipcMain.handle('route-prompt', (_event, prompt: string) => {
-    // Simple routing based on keywords
-    const commands = ['add-dir', 'agents', 'branch', 'btw', 'git', 'npm', 'docker', 'build', 'test', 'deploy']
-    const tools = ['bash', 'file', 'glob', 'grep', 'edit', 'write', 'read', 'mcp']
+    const matches = runtimeEngine.routePrompt(prompt, 5)
+    return matches
+  })
 
-    const matches: Array<{ kind: string; name: string; score: number }> = []
-    const lowerPrompt = prompt.toLowerCase()
-
-    // Check commands
-    for (const cmd of commands) {
-      if (lowerPrompt.includes(cmd)) {
-        matches.push({ kind: 'command', name: cmd, score: 1 })
+  // CLI 命令执行 handler
+  ipcMain.handle('cli:execute-command', async (_event, { name, prompt, cwd }: { name: string; prompt: string; cwd: string }) => {
+    try {
+      const result = await commandRegistry.execute(name, prompt, {
+        cwd,
+        sessionId: undefined,
+        config: {}
+      })
+      return result
+    } catch (error) {
+      log.error('Failed to execute command:', error)
+      return {
+        success: false,
+        handled: false,
+        message: `Error: ${String(error)}`
       }
     }
+  })
 
-    // Check tools
-    for (const tool of tools) {
-      if (lowerPrompt.includes(tool)) {
-        matches.push({ kind: 'tool', name: tool, score: 1 })
+  // CLI 工具执行 handler
+  ipcMain.handle('cli:execute-tool', async (_event, { name, args, cwd }: { name: string; args: Record<string, unknown>; cwd: string }) => {
+    try {
+      const result = await toolRegistry.execute(name, args, {
+        cwd,
+        sessionId: undefined,
+        permissionMode: 'moderate'
+      })
+      return result
+    } catch (error) {
+      log.error('Failed to execute tool:', error)
+      return {
+        success: false,
+        output: '',
+        error: String(error)
       }
     }
+  })
 
-    return matches.slice(0, 5)
+  // CLI 会话创建 handler
+  ipcMain.handle('cli:create-session', (_event, { prompt, cwd }: { prompt: string; cwd: string }) => {
+    const session = runtimeEngine.createSession(prompt, cwd)
+    return {
+      id: session.id,
+      prompt: session.prompt,
+      cwd: session.cwd,
+      createdAt: session.createdAt.toISOString()
+    }
+  })
+
+  // CLI 回合执行 handler
+  ipcMain.handle('cli:execute-turn', async (_event, { sessionId, prompt }: { sessionId: string; prompt: string }) => {
+    try {
+      const result = await runtimeEngine.executeTurn(sessionId, prompt)
+      return result
+    } catch (error) {
+      log.error('Failed to execute turn:', error)
+      return {
+        prompt,
+        output: `Error: ${String(error)}`,
+        matchedCommands: [],
+        matchedTools: [],
+        permissionDenials: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        stopReason: 'error'
+      }
+    }
+  })
+
+  // CLI 获取所有命令 handler
+  ipcMain.handle('cli:get-commands', () => {
+    return commandRegistry.getAll().map(cmd => ({
+      name: cmd.name,
+      description: cmd.description,
+      sourceHint: cmd.sourceHint,
+      responsibility: cmd.responsibility
+    }))
+  })
+
+  // CLI 获取所有工具 handler
+  ipcMain.handle('cli:get-tools', () => {
+    return toolRegistry.getAll().map(tool => ({
+      name: tool.name,
+      description: tool.description,
+      sourceHint: tool.sourceHint,
+      responsibility: tool.responsibility,
+      parameters: tool.parameters,
+      required: tool.required
+    }))
   })
 
   // Window control handlers
@@ -412,9 +501,311 @@ function setupProcessBridgeHandlers(): void {
   log.info('Process bridge handlers registered')
 }
 
+// 初始化 CLI 注册表
+function initializeCLIRegistries(): void {
+  // 注册内置命令
+  commandRegistry.register({
+    name: 'help',
+    description: 'Show help information',
+    sourceHint: 'builtin',
+    responsibility: 'Provide help and documentation',
+    execute: async () => ({
+      success: true,
+      handled: true,
+      message: 'Available commands: help, version, status, clear. Use --help for more details.'
+    })
+  })
+
+  commandRegistry.register({
+    name: 'version',
+    description: 'Show version information',
+    sourceHint: 'builtin',
+    responsibility: 'Display application version',
+    execute: async () => ({
+      success: true,
+      handled: true,
+      message: `SMP Code v${app.getVersion() || '0.1.0'}`
+    })
+  })
+
+  commandRegistry.register({
+    name: 'clear',
+    description: 'Clear the screen',
+    sourceHint: 'builtin',
+    responsibility: 'Clear terminal output',
+    execute: async () => ({
+      success: true,
+      handled: true,
+      message: '\x1Bc' // ANSI clear screen
+    })
+  })
+
+  commandRegistry.register({
+    name: 'pwd',
+    description: 'Print working directory',
+    sourceHint: 'builtin',
+    responsibility: 'Show current working directory',
+    execute: async (_prompt, context) => ({
+      success: true,
+      handled: true,
+      message: context.cwd
+    })
+  })
+
+  // 注册内置工具
+  toolRegistry.register({
+    name: 'echo',
+    description: 'Echo a message',
+    sourceHint: 'builtin',
+    responsibility: 'Echo input back to the user',
+    parameters: {
+      message: {
+        type: 'string',
+        description: 'The message to echo',
+        required: true
+      }
+    },
+    required: ['message'],
+    execute: async (args) => ({
+      success: true,
+      output: String(args.message || ''),
+      data: { echoed: args.message }
+    })
+  })
+
+  toolRegistry.register({
+    name: 'file_read',
+    description: 'Read file contents',
+    sourceHint: 'builtin',
+    responsibility: 'Read the contents of a file',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file to read',
+        required: true
+      }
+    },
+    required: ['path'],
+    execute: async (args, context) => {
+      try {
+        const fs = require('fs')
+        const path = require('path')
+        const filePath = path.resolve(context.cwd, String(args.path))
+        const content = fs.readFileSync(filePath, 'utf-8')
+        return {
+          success: true,
+          output: content,
+          data: { path: filePath, size: content.length }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          output: '',
+          error: String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
+    name: 'file_write',
+    description: 'Write content to a file',
+    sourceHint: 'builtin',
+    responsibility: 'Write content to a file',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file to write',
+        required: true
+      },
+      content: {
+        type: 'string',
+        description: 'The content to write',
+        required: true
+      }
+    },
+    required: ['path', 'content'],
+    execute: async (args, context) => {
+      try {
+        const fs = require('fs')
+        const path = require('path')
+        const filePath = path.resolve(context.cwd, String(args.path))
+        fs.writeFileSync(filePath, String(args.content), 'utf-8')
+        return {
+          success: true,
+          output: `File written: ${filePath}`,
+          data: { path: filePath }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          output: '',
+          error: String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
+    name: 'bash',
+    description: 'Execute a bash command',
+    sourceHint: 'builtin',
+    responsibility: 'Execute bash commands in the terminal',
+    parameters: {
+      command: {
+        type: 'string',
+        description: 'The bash command to execute',
+        required: true
+      },
+      timeout: {
+        type: 'number',
+        description: 'Timeout in milliseconds',
+        required: false
+      }
+    },
+    required: ['command'],
+    execute: async (args, context) => {
+      // 在严格模式下拒绝
+      if (context.permissionMode === 'strict') {
+        return {
+          success: false,
+          output: '',
+          error: 'bash execution is gated in strict permission mode'
+        }
+      }
+
+      try {
+        const { execSync } = require('child_process')
+        const command = String(args.command)
+        const timeout = (args.timeout as number) || 30000
+        const output = execSync(command, {
+          cwd: context.cwd,
+          encoding: 'utf-8',
+          timeout,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        return {
+          success: true,
+          output: output,
+          data: { command, cwd: context.cwd }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          output: '',
+          error: String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
+    name: 'glob',
+    description: 'Find files matching a pattern',
+    sourceHint: 'builtin',
+    responsibility: 'Find files using glob patterns',
+    parameters: {
+      pattern: {
+        type: 'string',
+        description: 'The glob pattern to match',
+        required: true
+      }
+    },
+    required: ['pattern'],
+    execute: async (args, context) => {
+      try {
+        const glob = require('glob')
+        const pattern = String(args.pattern)
+        const files = glob.sync(pattern, { cwd: context.cwd })
+        return {
+          success: true,
+          output: files.join('\n'),
+          data: { pattern, matches: files.length, files }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          output: '',
+          error: String(error)
+        }
+      }
+    }
+  })
+
+  log.info(`CLI registries initialized: ${commandRegistry.getAll().length} commands, ${toolRegistry.getAll().length} tools`)
+}
+
+// 检查是否以 CLI 模式运行
+function isCLIMode(): boolean {
+  // 获取所有参数（包括 Electron 内部参数）
+  const args = process.argv
+  
+  // 检查是否是打包后的应用启动
+  // 打包后的应用：process.argv[0] 是 Electron 可执行文件，process.argv[1] 是主脚本
+  // 开发模式：process.argv 可能包含更多参数
+  const isPackaged = app.isPackaged
+  
+  // 如果是打包后的应用且没有额外的命令行参数，则是 GUI 模式
+  if (isPackaged && args.length <= 2) {
+    return false
+  }
+  
+  // 获取用户传入的参数（排除 Electron 内部参数）
+  const userArgs = args.slice(2)
+  
+  // 如果没有用户参数，则是 GUI 模式
+  if (userArgs.length === 0) {
+    return false
+  }
+  
+  // 如果包含 --cli 参数或明确的子命令，则启用 CLI 模式
+  return userArgs.includes('--cli') || 
+         userArgs.includes('chat') || 
+         userArgs.includes('run') || 
+         userArgs.includes('exec') ||
+         userArgs.includes('status') ||
+         userArgs.includes('config') ||
+         userArgs.includes('commands') ||
+         userArgs.includes('tools') ||
+         userArgs.includes('session') ||
+         userArgs.includes('route')
+}
+
+// 运行 CLI 模式
+async function runCLIMode(): Promise<void> {
+  log.info('Starting CLI mode...')
+  
+  // 移除 --cli 参数
+  const args = process.argv.slice(2).filter(arg => arg !== '--cli')
+  
+  // 初始化 CLI 注册表
+  initializeCLIRegistries()
+  
+  // 动态导入 CLI 程序（避免在 GUI 模式下初始化）
+  try {
+    const { getCLIProgram } = await import('./cli/cli-entry')
+    const cliProgram = getCLIProgram()
+    await cliProgram.parseAsync(args.length > 0 ? args : ['--help'])
+  } catch (error) {
+    log.error('CLI error:', error)
+    console.error('Error:', error)
+    process.exit(1)
+  }
+  
+  // 清理并退出
+  runtimeEngine.cleanup()
+  process.exit(0)
+}
+
 // App lifecycle
 app.whenReady().then(async () => {
   log.info('App ready, initializing...')
+
+  // 检查是否以 CLI 模式运行
+  if (isCLIMode()) {
+    await runCLIMode()
+    return
+  }
 
   // Start API server
   try {
@@ -423,6 +814,9 @@ app.whenReady().then(async () => {
   } catch (error) {
     log.error('Failed to start API server:', error)
   }
+
+  // 初始化 CLI 注册表（GUI 模式下也初始化，以便 IPC 调用）
+  initializeCLIRegistries()
 
   setupIpcHandlers()
   createWindow()

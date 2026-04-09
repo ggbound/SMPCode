@@ -247,9 +247,33 @@ export async function executeBash(args: string[]): Promise<CommandResult> {
 
     log.info(`Executing on ${platform}: ${shell} ${shellArgs.join(' ')}`)
 
+    // Build PATH environment variable with common directories
+    const pathDirs = [
+      '/usr/local/bin',
+      '/usr/bin',
+      '/bin',
+      '/usr/sbin',
+      '/sbin',
+      '/opt/homebrew/bin',
+      '/opt/homebrew/sbin',
+      `${process.env.HOME}/.local/bin`,
+      `${process.env.HOME}/bin`,
+      `${process.env.HOME}/.npm-global/bin`,
+      '/usr/local/share/npm/bin',
+      process.env.PATH || ''
+    ].filter(Boolean)
+
+    const env = {
+      ...process.env,
+      PATH: pathDirs.join(':')
+    }
+
+    log.info(`[executeBash] PATH: ${env.PATH}`)
+
     const { stdout, stderr } = await execPromise(`${shell} ${shellArgs.map(a => `"${a}"`).join(' ')}`, {
       cwd: currentWorkingDirectory,
-      timeout: 60000
+      timeout: 60000,
+      env
     })
 
     return {

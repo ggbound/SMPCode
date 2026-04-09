@@ -33,6 +33,7 @@ const events = require("events");
 const pty = require("node-pty");
 const os = require("os");
 const Store = require("electron-store");
+const commander = require("commander");
 function _interopNamespaceDefault(e) {
   const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
   if (e) {
@@ -52,6 +53,7 @@ function _interopNamespaceDefault(e) {
 const path__namespace = /* @__PURE__ */ _interopNamespaceDefault(path);
 const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs);
 const pty__namespace = /* @__PURE__ */ _interopNamespaceDefault(pty);
+const os__namespace = /* @__PURE__ */ _interopNamespaceDefault(os);
 const OPENAI_API_URL = "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
 const ANTHROPIC_API_URL = "https://coding.dashscope.aliyuncs.com/apps/anthropic/v1/messages";
 const ANTHROPIC_MODELS = [
@@ -73,7 +75,7 @@ async function sendOpenAIMessage(apiKey, model, messages, tools, stream = false)
   const requestBody = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream
   };
   if (tools && tools.length > 0) {
@@ -122,7 +124,7 @@ async function sendAnthropicMessage(apiKey, model, messages, tools, stream = fal
   const requestBody = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream
   };
   if (tools && tools.length > 0) {
@@ -169,21 +171,18 @@ async function sendAnthropicMessage(apiKey, model, messages, tools, stream = fal
 async function* streamChatMessage(request) {
   const { apiKey, model, messages, tools } = request;
   if (isAnthropicModel(model)) {
-    yield* streamAnthropicMessage(apiKey, model, messages, tools);
+    yield* streamAnthropicMessage(apiKey, model, messages);
   } else {
-    yield* streamOpenAIMessage(apiKey, model, messages, tools);
+    yield* streamOpenAIMessage(apiKey, model, messages);
   }
 }
 async function* streamOpenAIMessage(apiKey, model, messages, tools) {
   const requestBody = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream: true
   };
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools;
-  }
   try {
     const response = await fetch(OPENAI_API_URL, {
       method: "POST",
@@ -236,12 +235,9 @@ async function* streamAnthropicMessage(apiKey, model, messages, tools) {
   const requestBody = {
     model,
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
     stream: true
   };
-  if (tools && tools.length > 0) {
-    requestBody.tools = tools;
-  }
   try {
     const response = await fetch(ANTHROPIC_API_URL, {
       method: "POST",
@@ -656,9 +652,29 @@ async function executeBash(args) {
     const shell = getShellCommand();
     const shellArgs = getShellArgs(command);
     log.info(`Executing on ${platform}: ${shell} ${shellArgs.join(" ")}`);
+    const pathDirs = [
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+      "/usr/sbin",
+      "/sbin",
+      "/opt/homebrew/bin",
+      "/opt/homebrew/sbin",
+      `${process.env.HOME}/.local/bin`,
+      `${process.env.HOME}/bin`,
+      `${process.env.HOME}/.npm-global/bin`,
+      "/usr/local/share/npm/bin",
+      process.env.PATH || ""
+    ].filter(Boolean);
+    const env = {
+      ...process.env,
+      PATH: pathDirs.join(":")
+    };
+    log.info(`[executeBash] PATH: ${env.PATH}`);
     const { stdout, stderr } = await execPromise$1(`${shell} ${shellArgs.map((a) => `"${a}"`).join(" ")}`, {
       cwd: currentWorkingDirectory,
-      timeout: 6e4
+      timeout: 6e4,
+      env
     });
     return {
       success: !stderr,
@@ -773,7 +789,7 @@ const MIRRORED_COMMANDS = [
 function isMirroredCommand(name) {
   return MIRRORED_COMMANDS.includes(name.toLowerCase());
 }
-async function executeCommand(commandName, prompt) {
+async function executeCommand$1(commandName, prompt) {
   log.info(`Executing command: ${commandName}, prompt: ${prompt}`);
   const parts = parseArgs(prompt);
   const args = parts.slice(1);
@@ -894,189 +910,309 @@ function writeFile(filePath, content) {
     throw error;
   }
 }
-const CODE_TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "read_file",
-      description: "Read the contents of a file at the specified path. Use this to examine existing code before editing.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "The absolute path to the file to read"
-          }
-        },
-        required: ["path"]
+let ToolRegistry$1 = class ToolRegistry {
+  tools = /* @__PURE__ */ new Map();
+  middlewares = [];
+  /**
+   * 注册工具
+   */
+  register(tool) {
+    this.tools.set(tool.name, tool);
+    log.info(`[ToolRegistry] Registered tool: ${tool.name}`);
+  }
+  /**
+   * 注销工具
+   */
+  unregister(name) {
+    this.tools.delete(name);
+    log.info(`[ToolRegistry] Unregistered tool: ${name}`);
+  }
+  /**
+   * 获取工具
+   */
+  get(name) {
+    return this.tools.get(name);
+  }
+  /**
+   * 获取所有工具
+   */
+  getAll() {
+    return Array.from(this.tools.values());
+  }
+  /**
+   * 检查工具是否存在
+   */
+  has(name) {
+    return this.tools.has(name);
+  }
+  /**
+   * 获取工具数量
+   */
+  count() {
+    return this.tools.size;
+  }
+  /**
+   * 转换为 OpenAI 格式的工具定义
+   */
+  toOpenAIDefinitions() {
+    return this.getAll().map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: "object",
+          properties: tool.parameters,
+          required: tool.required
+        }
       }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "write_file",
-      description: "Create a new file or overwrite an existing file with the specified content. Use this to create new files or completely replace file contents.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "The absolute path where the file should be created"
-          },
-          content: {
-            type: "string",
-            description: "The complete content to write to the file"
-          }
-        },
-        required: ["path", "content"]
+    }));
+  }
+  /**
+   * 添加中间件
+   */
+  use(middleware) {
+    this.middlewares.push(middleware);
+  }
+  /**
+   * 获取中间件
+   */
+  getMiddlewares() {
+    return [...this.middlewares];
+  }
+  /**
+   * 清空所有工具和中间件
+   */
+  clear() {
+    this.tools.clear();
+    this.middlewares = [];
+  }
+};
+const toolRegistry$1 = new ToolRegistry$1();
+async function executeToolWithMiddleware(toolName, args, context) {
+  const tool = toolRegistry$1.get(toolName);
+  if (!tool) {
+    return {
+      success: false,
+      output: "",
+      error: `Unknown tool: ${toolName}`,
+      metadata: {
+        toolName,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
       }
+    };
+  }
+  const middlewares = toolRegistry$1.getMiddlewares();
+  const middlewareContext = {
+    toolName,
+    args,
+    executionContext: context
+  };
+  let index = 0;
+  const executeNext = async () => {
+    if (index < middlewares.length) {
+      const middleware = middlewares[index++];
+      return middleware(middlewareContext, executeNext);
     }
-  },
-  {
-    type: "function",
-    function: {
-      name: "edit_file",
-      description: "Replace specific text in a file with new text. Use this for targeted modifications when you only need to change part of a file. The old_string must match exactly (including whitespace) for the replacement to work.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "The absolute path to the file to edit"
-          },
-          old_string: {
-            type: "string",
-            description: "The exact text to find and replace (must match exactly including whitespace)"
-          },
-          new_string: {
-            type: "string",
-            description: "The new text to replace the old_string with"
-          }
-        },
-        required: ["path", "old_string", "new_string"]
+    const startTime = Date.now();
+    const result = await tool.execute(args, context);
+    const executionTime = Date.now() - startTime;
+    return {
+      ...result,
+      metadata: {
+        ...result.metadata,
+        executionTime,
+        toolName,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
       }
+    };
+  };
+  return executeNext();
+}
+function validateToolArgs(toolName, args, executor) {
+  const errors = [];
+  for (const required of executor.required) {
+    if (!(required in args) || args[required] === void 0 || args[required] === null) {
+      errors.push(`Missing required parameter: ${required}`);
     }
-  },
-  {
-    type: "function",
-    function: {
-      name: "list_directory",
-      description: "List the contents of a directory. Use this to explore the project structure and find files.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "The absolute path to the directory to list"
-          }
-        },
-        required: ["path"]
+  }
+  for (const [key, value] of Object.entries(args)) {
+    const paramDef = executor.parameters[key];
+    if (!paramDef) {
+      errors.push(`Unknown parameter: ${key}`);
+      continue;
+    }
+    if (paramDef.type === "string" && typeof value !== "string") {
+      errors.push(`Parameter ${key} must be a string`);
+    } else if (paramDef.type === "number" && typeof value !== "number") {
+      errors.push(`Parameter ${key} must be a number`);
+    } else if (paramDef.type === "boolean" && typeof value !== "boolean") {
+      errors.push(`Parameter ${key} must be a boolean`);
+    } else if (paramDef.type === "array" && !Array.isArray(value)) {
+      errors.push(`Parameter ${key} must be an array`);
+    } else if (paramDef.type === "object" && (typeof value !== "object" || value === null || Array.isArray(value))) {
+      errors.push(`Parameter ${key} must be an object`);
+    }
+    if (paramDef.enum && !paramDef.enum.includes(String(value))) {
+      errors.push(`Parameter ${key} must be one of: ${paramDef.enum.join(", ")}`);
+    }
+  }
+  return { valid: errors.length === 0, errors };
+}
+function formatToolResult(result) {
+  if (result.success) {
+    return result.output;
+  }
+  return `Error: ${result.error || "Unknown error"}`;
+}
+function toToolResult(toolCallId, toolName, result) {
+  return {
+    tool_call_id: toolCallId,
+    role: "tool",
+    name: toolName,
+    content: formatToolResult(result)
+  };
+}
+function parseToolCallsFromText(text) {
+  const toolCalls = [];
+  const codeBlockCalls = parseCodeBlocks(text);
+  toolCalls.push(...codeBlockCalls);
+  const inlineCalls = parseInlineJSON(text);
+  toolCalls.push(...inlineCalls);
+  const seen = /* @__PURE__ */ new Set();
+  return toolCalls.filter((tc) => {
+    const key = `${tc.tool}:${JSON.stringify(tc.arguments)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+function parseCodeBlocks(text) {
+  const calls = [];
+  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/g;
+  let match;
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    const blockContent = match[1].trim();
+    try {
+      const parsed = JSON.parse(blockContent);
+      if (isValidToolCall(parsed)) {
+        calls.push({ tool: parsed.tool, arguments: parsed.arguments });
+        continue;
       }
+    } catch (e) {
     }
-  },
-  {
-    type: "function",
-    function: {
-      name: "delete_file",
-      description: "Delete a file or directory at the specified path. Use this to remove files or directories that are no longer needed.",
-      parameters: {
-        type: "object",
-        properties: {
-          path: {
-            type: "string",
-            description: "The absolute path to the file or directory to delete"
+    const lines = blockContent.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("//")) continue;
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (isValidToolCall(parsed)) {
+          calls.push({ tool: parsed.tool, arguments: parsed.arguments });
+        }
+      } catch (e) {
+        const jsonMatch = extractJSONObject(trimmed);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch);
+            if (isValidToolCall(parsed)) {
+              calls.push({ tool: parsed.tool, arguments: parsed.arguments });
+            }
+          } catch (e2) {
           }
-        },
-        required: ["path"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "execute_bash",
-      description: "Execute a bash/shell command. Use this to run commands like npm install, git operations, build commands, etc.",
-      parameters: {
-        type: "object",
-        properties: {
-          command: {
-            type: "string",
-            description: "The bash command to execute"
-          }
-        },
-        required: ["command"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "search_code",
-      description: "Search for code patterns in the project using grep. Use this to find specific functions, variables, or patterns across multiple files.",
-      parameters: {
-        type: "object",
-        properties: {
-          pattern: {
-            type: "string",
-            description: "The regex pattern to search for"
-          },
-          path: {
-            type: "string",
-            description: "The directory path to search in (optional, defaults to current working directory)"
-          }
-        },
-        required: ["pattern"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_running_processes",
-      description: "Get a list of all currently running processes managed by the application. Use this to check which services are running and get their process IDs for management.",
-      parameters: {
-        type: "object",
-        properties: {},
-        required: []
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "stop_process",
-      description: "Stop a running process by its process ID. Use this to terminate specific services or processes that were started through the application.",
-      parameters: {
-        type: "object",
-        properties: {
-          process_id: {
-            type: "string",
-            description: "The process ID of the process to stop"
-          }
-        },
-        required: ["process_id"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "restart_process",
-      description: "Restart a running process by its process ID. This will stop the process and start it again. Use this to restart services after code changes.",
-      parameters: {
-        type: "object",
-        properties: {
-          process_id: {
-            type: "string",
-            description: "The process ID of the process to restart"
-          }
-        },
-        required: ["process_id"]
+        }
       }
     }
   }
-];
+  return calls;
+}
+function parseInlineJSON(text) {
+  const calls = [];
+  const jsonObjectRegex = /\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/g;
+  let match;
+  while ((match = jsonObjectRegex.exec(text)) !== null) {
+    try {
+      const parsed = JSON.parse(match[0]);
+      if (isValidToolCall(parsed)) {
+        calls.push({ tool: parsed.tool, arguments: parsed.arguments });
+      }
+    } catch (e) {
+    }
+  }
+  return calls;
+}
+function isValidToolCall(obj) {
+  return typeof obj === "object" && obj !== null && "tool" in obj && typeof obj.tool === "string" && "arguments" in obj && typeof obj.arguments === "object" && obj.arguments !== null;
+}
+function extractJSONObject(text) {
+  const jsonStart = text.indexOf("{");
+  if (jsonStart === -1) return null;
+  let braceCount = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = jsonStart; i < text.length; i++) {
+    const char = text[i];
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (char === "\\") {
+      escapeNext = true;
+      continue;
+    }
+    if (char === '"' && !escapeNext) {
+      inString = !inString;
+      continue;
+    }
+    if (!inString) {
+      if (char === "{") braceCount++;
+      else if (char === "}") {
+        braceCount--;
+        if (braceCount === 0) {
+          return text.substring(jsonStart, i + 1);
+        }
+      }
+    }
+  }
+  return null;
+}
+function createExecutionContext(cwd, options) {
+  return {
+    cwd,
+    sessionId: options?.sessionId,
+    userId: options?.userId,
+    requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    startTime: Date.now(),
+    metadata: options?.metadata
+  };
+}
+function createSuccessResult(output, metadata) {
+  return {
+    success: true,
+    output,
+    metadata
+  };
+}
+function createErrorResult(error, output = "", metadata) {
+  return {
+    success: false,
+    output,
+    error,
+    metadata
+  };
+}
+const toolsCore = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  createErrorResult,
+  createExecutionContext,
+  createSuccessResult,
+  executeToolWithMiddleware,
+  formatToolResult,
+  parseToolCallsFromText,
+  toToolResult,
+  toolRegistry: toolRegistry$1,
+  validateToolArgs
+}, Symbol.toStringTag, { value: "Module" }));
 const terminals = /* @__PURE__ */ new Map();
 let windowRef = null;
 function getShell() {
@@ -1184,10 +1320,17 @@ function initTerminalService(mainWindow2) {
         id,
         name: options?.name || `Terminal ${terminals.size + 1}`,
         pty: ptyProcess,
-        createdAt: /* @__PURE__ */ new Date()
+        createdAt: /* @__PURE__ */ new Date(),
+        outputBuffer: [],
+        onDataCallbacks: /* @__PURE__ */ new Set()
       };
       terminals.set(id, session);
       ptyProcess.onData((data) => {
+        session.outputBuffer.push(data);
+        if (session.outputBuffer.length > 1e4) {
+          session.outputBuffer = session.outputBuffer.slice(-5e3);
+        }
+        session.onDataCallbacks.forEach((callback) => callback(data));
         if (windowRef && !windowRef.isDestroyed()) {
           windowRef.webContents.send("terminal:data", { id, data });
         }
@@ -1262,13 +1405,24 @@ function writeToTerminal(id, data) {
   }
   return false;
 }
+function onTerminalData(id, callback) {
+  const session = terminals.get(id);
+  if (session) {
+    session.onDataCallbacks.add(callback);
+    return () => {
+      session.onDataCallbacks.delete(callback);
+    };
+  }
+  return null;
+}
 const TERMINAL_PROCESS_PATTERNS = [
   /npm\s+(run|start|dev|serve)/i,
   /npm\s+run\s+\w+/i,
+  /npm\s+(install|i|add|remove|uninstall|ci)/i,
   /node\s+/i,
   /npx\s+/i,
-  /yarn\s+(run|start|dev|serve)/i,
-  /pnpm\s+(run|start|dev|serve)/i,
+  /yarn\s+(run|start|dev|serve|install|add|remove)/i,
+  /pnpm\s+(run|start|dev|serve|install|add|remove)/i,
   /python\w*\s+/i,
   /pip\s+/i,
   /^java\s+/i,
@@ -1473,6 +1627,15 @@ class ProcessTerminalBridge extends events.EventEmitter {
       };
       this.processes.set(processId, managedProcess);
       this.commandTypeMap.set(commandTypeKey, processId);
+      if (targetTerminalId) {
+        const unsubscribe = onTerminalData(targetTerminalId, (data) => {
+          managedProcess.output.push(data);
+          if (managedProcess.output.length > 1e4) {
+            managedProcess.output = managedProcess.output.slice(-5e3);
+          }
+        });
+        managedProcess.unsubscribeTerminal = unsubscribe;
+      }
       const foregroundCommand = command.replace(/\s*>\s*[^&]+?\s*2>&1\s*&?\s*$/, "").replace(/\s*>\s*[^&]+?\s*&?\s*$/, "").replace(/\s*2>&1\s*&?\s*$/, "").replace(/\s*&\s*$/, "").trim();
       writeToTerminal(targetTerminalId, "\n");
       await new Promise((resolve) => setTimeout(resolve, 200));
@@ -1610,6 +1773,47 @@ class ProcessTerminalBridge extends events.EventEmitter {
   getProcess(processId) {
     return this.processes.get(processId);
   }
+  // 等待进程执行完成
+  async waitForProcess(processId, timeoutMs = 12e4) {
+    const startTime = Date.now();
+    const managedProcess = this.processes.get(processId);
+    if (!managedProcess) {
+      return { success: false, output: "", error: "Process not found" };
+    }
+    log.info(`[ProcessBridge] Waiting for process ${processId} to complete (timeout: ${timeoutMs}ms)`);
+    while (true) {
+      if (Date.now() - startTime > timeoutMs) {
+        log.warn(`[ProcessBridge] Process ${processId} timed out after ${timeoutMs}ms`);
+        const unsubscribe = managedProcess.unsubscribeTerminal;
+        if (unsubscribe) {
+          unsubscribe();
+        }
+        return {
+          success: false,
+          output: managedProcess.output.join("\n"),
+          error: `Process timed out after ${timeoutMs}ms`,
+          exitCode: -1
+        };
+      }
+      const isRunning = await this.isProcessActuallyRunning(processId);
+      if (!isRunning) {
+        const unsubscribe = managedProcess.unsubscribeTerminal;
+        if (unsubscribe) {
+          unsubscribe();
+          log.info(`[ProcessBridge] Unsubscribed terminal data for process ${processId}`);
+        }
+        const exitCode = managedProcess.exitCode ?? 0;
+        const output = managedProcess.output.join("\n");
+        log.info(`[ProcessBridge] Process ${processId} completed with exit code ${exitCode}, output length: ${output.length}`);
+        return {
+          success: exitCode === 0,
+          output: output || "(no output)",
+          exitCode
+        };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
   // 获取AI意图上下文
   getAIIntentContext(processId) {
     const process2 = this.processes.get(processId);
@@ -1652,9 +1856,21 @@ class ProcessTerminalBridge extends events.EventEmitter {
     if (managedProcess.terminalId) {
       const terminals2 = getTerminals();
       if (!terminals2.has(managedProcess.terminalId)) {
-        log.info(`[ProcessBridge] isProcessActuallyRunning: terminal ${managedProcess.terminalId} not found`);
+        log.info(`[ProcessBridge] isProcessActuallyRunning: terminal ${managedProcess.terminalId} not found, process ended`);
+        managedProcess.isRunning = false;
         return false;
       }
+      if (!managedProcess._startTimeForTimeout) {
+        managedProcess._startTimeForTimeout = Date.now();
+      }
+      const runningTime = Date.now() - (managedProcess._startTimeForTimeout || Date.now());
+      if (!managedProcess.port && runningTime > 3e4) {
+        log.info(`[ProcessBridge] isProcessActuallyRunning: process ${processId} running for ${runningTime}ms without port, assuming completed`);
+        managedProcess.isRunning = false;
+        managedProcess.exitCode = 0;
+        return false;
+      }
+      return managedProcess.isRunning;
     }
     if (managedProcess.port) {
       const portInUse = await this.checkPortInUse(managedProcess.port);
@@ -1745,97 +1961,48 @@ class ProcessTerminalBridge extends events.EventEmitter {
 }
 const processBridge = new ProcessTerminalBridge();
 const execPromise = util.promisify(child_process.exec);
+const pathParam = {
+  type: "string",
+  description: "The absolute path to the file or directory",
+  required: true
+};
+const contentParam = {
+  type: "string",
+  description: "The complete content to write to the file",
+  required: true
+};
+const oldStringParam = {
+  type: "string",
+  description: "The exact text to find and replace (must match exactly including whitespace)",
+  required: true
+};
+const newStringParam = {
+  type: "string",
+  description: "The new text to replace the old_string with",
+  required: true
+};
+const commandParam = {
+  type: "string",
+  description: "The bash command to execute",
+  required: true
+};
+const patternParam = {
+  type: "string",
+  description: "The regex pattern to search for",
+  required: true
+};
+const searchPathParam = {
+  type: "string",
+  description: "The directory path to search in (optional, defaults to current working directory)",
+  required: false
+};
+const processIdParam = {
+  type: "string",
+  description: "The process ID of the process to manage",
+  required: true
+};
 const recentCommands = /* @__PURE__ */ new Map();
 const COMMAND_DEDUP_WINDOW = 5e3;
-async function executeReadFile(filePath) {
-  try {
-    const targetPath = path__namespace.resolve(getCurrentWorkingDirectory(), filePath);
-    if (!fs__namespace.existsSync(targetPath)) {
-      return { success: false, output: "", error: `File does not exist: ${filePath}` };
-    }
-    const stats = fs__namespace.statSync(targetPath);
-    if (stats.isDirectory()) {
-      return { success: false, output: "", error: `Path is a directory: ${filePath}` };
-    }
-    const content = fs__namespace.readFileSync(targetPath, "utf-8");
-    return { success: true, output: content };
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
-async function executeWriteFile(filePath, content) {
-  try {
-    const targetPath = path__namespace.resolve(getCurrentWorkingDirectory(), filePath);
-    const parentDir = path__namespace.dirname(targetPath);
-    if (!fs__namespace.existsSync(parentDir)) {
-      fs__namespace.mkdirSync(parentDir, { recursive: true });
-    }
-    fs__namespace.writeFileSync(targetPath, content, "utf-8");
-    return { success: true, output: `File written successfully: ${targetPath}` };
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
-async function executeEditFile(filePath, oldString, newString) {
-  try {
-    const targetPath = path__namespace.resolve(getCurrentWorkingDirectory(), filePath);
-    if (!fs__namespace.existsSync(targetPath)) {
-      return { success: false, output: "", error: `File does not exist: ${filePath}` };
-    }
-    let content = fs__namespace.readFileSync(targetPath, "utf-8");
-    if (!content.includes(oldString)) {
-      return {
-        success: false,
-        output: "",
-        error: `Could not find the exact text to replace in ${filePath}. The text must match exactly including whitespace.`
-      };
-    }
-    content = content.replace(oldString, newString);
-    fs__namespace.writeFileSync(targetPath, content, "utf-8");
-    return { success: true, output: `File edited successfully: ${targetPath}` };
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
-async function executeListDirectory(dirPath) {
-  try {
-    const targetPath = path__namespace.resolve(getCurrentWorkingDirectory(), dirPath);
-    if (!fs__namespace.existsSync(targetPath)) {
-      return { success: false, output: "", error: `Directory does not exist: ${dirPath}` };
-    }
-    const stats = fs__namespace.statSync(targetPath);
-    if (!stats.isDirectory()) {
-      return { success: false, output: "", error: `Path is not a directory: ${dirPath}` };
-    }
-    const items = fs__namespace.readdirSync(targetPath);
-    const output = items.filter((item) => !item.startsWith(".") && item !== "node_modules").map((item) => {
-      const itemPath = path__namespace.join(targetPath, item);
-      const itemStats = fs__namespace.statSync(itemPath);
-      return itemStats.isDirectory() ? `${item}/` : item;
-    }).join("\n");
-    return { success: true, output: output || "(empty directory)" };
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
-async function executeDeleteFile(filePath) {
-  try {
-    const targetPath = path__namespace.resolve(getCurrentWorkingDirectory(), filePath);
-    if (!fs__namespace.existsSync(targetPath)) {
-      return { success: false, output: "", error: `Path does not exist: ${filePath}` };
-    }
-    const stats = fs__namespace.statSync(targetPath);
-    if (stats.isDirectory()) {
-      fs__namespace.rmdirSync(targetPath, { recursive: true });
-      return { success: true, output: `Removed directory: ${targetPath}` };
-    } else {
-      fs__namespace.unlinkSync(targetPath);
-      return { success: true, output: `Removed file: ${targetPath}` };
-    }
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
 function extractCwdFromCommand(command, defaultCwd) {
   const cdMatch = command.match(/^cd\s+(\S+)\s*(&&|;|\n)/);
   if (cdMatch) {
@@ -1847,181 +2014,1817 @@ function extractCwdFromCommand(command, defaultCwd) {
   }
   return defaultCwd;
 }
-async function executeExecuteBash(command) {
-  const baseCwd = getCurrentWorkingDirectory();
-  const cwd = extractCwdFromCommand(command, baseCwd);
-  const commandKey = `${cwd}:${command}`;
-  const now = Date.now();
-  const lastExecution = recentCommands.get(commandKey);
-  if (lastExecution && now - lastExecution < COMMAND_DEDUP_WINDOW) {
-    const commandTypeKey = processBridge.getCommandTypeKey(command, cwd);
-    const runningProcesses = processBridge.getAllProcesses().filter(
-      (p) => p.isRunning && p.terminalId === `terminal-${commandTypeKey}`
-    );
-    if (runningProcesses.length > 0) {
-      log.warn(`Duplicate command detected and process is running, skipping: ${command}`);
-      return {
-        success: true,
-        output: `Command is already running (duplicate detected). Process ID: ${runningProcesses[0].id}`
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const DEFAULT_MAX_LINES = 100;
+const MAX_OUTPUT_LENGTH = 5e4;
+const readFileTool = {
+  name: "read_file",
+  description: "Read the contents of a file at the specified path. Use this to examine existing code before editing. Supports offset and limit for large files.",
+  parameters: {
+    path: pathParam,
+    offset: {
+      type: "number",
+      description: "The line offset to start reading from (0-based)",
+      required: false
+    },
+    limit: {
+      type: "number",
+      description: "The maximum number of lines to read",
+      required: false
+    }
+  },
+  required: ["path"],
+  execute: async (args, context) => {
+    try {
+      const filePath = args.path;
+      const offset = args.offset;
+      const limit = args.limit;
+      const targetPath = path__namespace.resolve(context.cwd, filePath);
+      log.info(`[read_file] Reading file: ${targetPath}, offset: ${offset}, limit: ${limit}`);
+      if (!fs__namespace.existsSync(targetPath)) {
+        log.warn(`[read_file] File does not exist: ${targetPath}`);
+        return createErrorResult(`File does not exist: ${filePath}`);
+      }
+      const stats = fs__namespace.statSync(targetPath);
+      if (stats.isDirectory()) {
+        return createErrorResult(`Path is a directory: ${filePath}`);
+      }
+      if (stats.size > MAX_FILE_SIZE) {
+        log.warn(`[read_file] File too large: ${stats.size} bytes, max: ${MAX_FILE_SIZE}`);
+        return createErrorResult(`File is too large (${stats.size} bytes). Maximum file size is ${MAX_FILE_SIZE / 1024 / 1024}MB. Use offset and limit parameters to read partial content.`);
+      }
+      let content = fs__namespace.readFileSync(targetPath, "utf-8");
+      const lines = content.split("\n");
+      const totalLines = lines.length;
+      const startLine = offset || 0;
+      const lineLimit = limit !== void 0 ? limit : DEFAULT_MAX_LINES;
+      const endLine = Math.min(startLine + lineLimit, totalLines);
+      const limitedLines = lines.slice(startLine, endLine);
+      content = limitedLines.join("\n");
+      if (content.length > MAX_OUTPUT_LENGTH) {
+        content = content.substring(0, MAX_OUTPUT_LENGTH) + "\n\n... (内容已截断，使用 offset 和 limit 参数读取更多内容)";
+      }
+      const isPartial = endLine < totalLines;
+      return createSuccessResult(content, {
+        filePath: targetPath,
+        size: stats.size,
+        startLine: startLine + 1,
+        // Convert to 1-based
+        endLine,
+        totalLines,
+        isPartial,
+        hasMore: isPartial
+      });
+    } catch (error) {
+      log.error(`[read_file] Error reading file:`, error);
+      return createErrorResult(String(error));
+    }
+  }
+};
+const writeFileTool = {
+  name: "write_file",
+  description: "Create a new file or overwrite an existing file with the specified content. Use this to create new files or completely replace file contents.",
+  parameters: {
+    path: pathParam,
+    content: contentParam
+  },
+  required: ["path", "content"],
+  execute: async (args, context) => {
+    try {
+      const filePath = args.path;
+      const content = args.content;
+      const targetPath = path__namespace.resolve(context.cwd, filePath);
+      const parentDir = path__namespace.dirname(targetPath);
+      if (!fs__namespace.existsSync(parentDir)) {
+        fs__namespace.mkdirSync(parentDir, { recursive: true });
+      }
+      fs__namespace.writeFileSync(targetPath, content, "utf-8");
+      return createSuccessResult(`File written successfully: ${targetPath}`, { filePath: targetPath });
+    } catch (error) {
+      return createErrorResult(String(error));
+    }
+  }
+};
+const editFileTool = {
+  name: "edit_file",
+  description: "Replace specific text in a file with new text. Use this for targeted modifications when you only need to change part of a file. The old_string must match exactly (including whitespace) for the replacement to work. If the file does not exist, it will be created with the new_string content.",
+  parameters: {
+    path: pathParam,
+    old_string: oldStringParam,
+    new_string: newStringParam
+  },
+  required: ["path", "old_string", "new_string"],
+  execute: async (args, context) => {
+    try {
+      const filePath = args.path;
+      const oldString = args.old_string;
+      const newString = args.new_string;
+      const targetPath = path__namespace.resolve(context.cwd, filePath);
+      const parentDir = path__namespace.dirname(targetPath);
+      if (!fs__namespace.existsSync(parentDir)) {
+        fs__namespace.mkdirSync(parentDir, { recursive: true });
+      }
+      if (!fs__namespace.existsSync(targetPath)) {
+        fs__namespace.writeFileSync(targetPath, newString, "utf-8");
+        return createSuccessResult(`File created (did not exist): ${targetPath}`, { filePath: targetPath, created: true });
+      }
+      let content = fs__namespace.readFileSync(targetPath, "utf-8");
+      if (!content.includes(oldString)) {
+        return createErrorResult(
+          `Could not find the exact text to replace in ${filePath}. The text must match exactly including whitespace.`
+        );
+      }
+      content = content.replace(oldString, newString);
+      fs__namespace.writeFileSync(targetPath, content, "utf-8");
+      return createSuccessResult(`File edited successfully: ${targetPath}`, { filePath: targetPath });
+    } catch (error) {
+      return createErrorResult(String(error));
+    }
+  }
+};
+const appendFileTool = {
+  name: "append_file",
+  description: "Append content to the end of an existing file. Use this to add content to large files without rewriting the entire file. If the file does not exist, it will be created.",
+  parameters: {
+    path: pathParam,
+    content: contentParam
+  },
+  required: ["path", "content"],
+  execute: async (args, context) => {
+    try {
+      const filePath = args.path;
+      const content = args.content;
+      const targetPath = path__namespace.resolve(context.cwd, filePath);
+      const parentDir = path__namespace.dirname(targetPath);
+      if (!fs__namespace.existsSync(parentDir)) {
+        fs__namespace.mkdirSync(parentDir, { recursive: true });
+      }
+      fs__namespace.appendFileSync(targetPath, content, "utf-8");
+      const action = fs__namespace.existsSync(targetPath) ? "Appended to" : "Created";
+      return createSuccessResult(`${action} file: ${targetPath}`, { filePath: targetPath });
+    } catch (error) {
+      return createErrorResult(String(error));
+    }
+  }
+};
+const listDirectoryTool = {
+  name: "list_directory",
+  description: "List the contents of a directory. Use this to explore the project structure and find files.",
+  parameters: {
+    path: pathParam
+  },
+  required: ["path"],
+  execute: async (args, context) => {
+    try {
+      const dirPath = args.path;
+      const targetPath = path__namespace.resolve(context.cwd, dirPath);
+      if (!fs__namespace.existsSync(targetPath)) {
+        return createErrorResult(`Directory does not exist: ${dirPath}`);
+      }
+      const stats = fs__namespace.statSync(targetPath);
+      if (!stats.isDirectory()) {
+        return createErrorResult(`Path is not a directory: ${dirPath}`);
+      }
+      const items = fs__namespace.readdirSync(targetPath);
+      const output = items.filter((item) => !item.startsWith(".") && item !== "node_modules").map((item) => {
+        const itemPath = path__namespace.join(targetPath, item);
+        const itemStats = fs__namespace.statSync(itemPath);
+        return itemStats.isDirectory() ? `${item}/` : item;
+      }).join("\n");
+      return createSuccessResult(output || "(empty directory)", { dirPath: targetPath, itemCount: items.length });
+    } catch (error) {
+      return createErrorResult(String(error));
+    }
+  }
+};
+const deleteFileTool = {
+  name: "delete_file",
+  description: "Delete a file or directory at the specified path. Use this to remove files or directories that are no longer needed.",
+  parameters: {
+    path: pathParam
+  },
+  required: ["path"],
+  execute: async (args, context) => {
+    try {
+      const filePath = args.path;
+      const targetPath = path__namespace.resolve(context.cwd, filePath);
+      if (!fs__namespace.existsSync(targetPath)) {
+        return createErrorResult(`Path does not exist: ${filePath}`);
+      }
+      const stats = fs__namespace.statSync(targetPath);
+      if (stats.isDirectory()) {
+        fs__namespace.rmdirSync(targetPath, { recursive: true });
+        return createSuccessResult(`Removed directory: ${targetPath}`, { path: targetPath, type: "directory" });
+      } else {
+        fs__namespace.unlinkSync(targetPath);
+        return createSuccessResult(`Removed file: ${targetPath}`, { path: targetPath, type: "file" });
+      }
+    } catch (error) {
+      return createErrorResult(String(error));
+    }
+  }
+};
+const executeBashTool = {
+  name: "execute_bash",
+  description: "Execute a bash/shell command. Use this to run commands like npm install, git operations, build commands, etc.",
+  parameters: {
+    command: commandParam
+  },
+  required: ["command"],
+  execute: async (args) => {
+    try {
+      const command = args.command;
+      const baseCwd = getCurrentWorkingDirectory();
+      const cwd = extractCwdFromCommand(command, baseCwd);
+      const commandKey = `${cwd}:${command}`;
+      const now = Date.now();
+      const lastExecution = recentCommands.get(commandKey);
+      if (lastExecution && now - lastExecution < COMMAND_DEDUP_WINDOW) {
+        const runningProcesses = processBridge.getAllProcesses().filter((p) => {
+          if (!p.isRunning || !p.terminalId) return false;
+          return p.cwd === cwd;
+        });
+        if (runningProcesses.length > 0) {
+          log.warn(`Duplicate command detected and process is running, skipping: ${command}`);
+          return createSuccessResult(
+            `Command is already running (duplicate detected). Process ID: ${runningProcesses[0].id}`,
+            { processId: runningProcesses[0].id, duplicate: true }
+          );
+        }
+      }
+      recentCommands.set(commandKey, now);
+      for (const [key, timestamp] of recentCommands.entries()) {
+        if (now - timestamp > COMMAND_DEDUP_WINDOW) {
+          recentCommands.delete(key);
+        }
+      }
+      log.info(`Executing bash command: ${command} in ${cwd} (base: ${baseCwd})`);
+      const shouldRunInTerminal = processBridge.shouldRunInTerminal(command);
+      const isBackgroundCommand = /&\s*$/.test(command.trim()) || /&\s*\n/.test(command);
+      const isDevServerCommand = /npm\s+run\s+(dev|serve|start)|vite|next\s+dev|nuxt\s+dev|vue-cli-service\s+serve/i.test(command);
+      if (shouldRunInTerminal && !isBackgroundCommand) {
+        const result = await processBridge.startProcess(command, cwd);
+        if (result.success) {
+          if (isDevServerCommand) {
+            log.info(`[execute_bash] Dev server command started, not waiting for completion: ${result.processId}`);
+            await new Promise((resolve) => setTimeout(resolve, 3e3));
+            const initialOutput = processBridge.getProcessOutput(result.processId);
+            const outputText = initialOutput ? initialOutput.join("\n") : "Process started in terminal";
+            return createSuccessResult(
+              `Development server started in terminal.
+
+Initial output:
+${outputText}`,
+              { processId: result.processId, terminal: true, devServer: true }
+            );
+          }
+          log.info(`[execute_bash] Waiting for process ${result.processId} to complete...`);
+          const waitResult = await processBridge.waitForProcess(result.processId, 12e4);
+          if (waitResult.success) {
+            return createSuccessResult(
+              waitResult.output,
+              { processId: result.processId, terminal: true, exitCode: waitResult.exitCode }
+            );
+          } else {
+            return createErrorResult(
+              waitResult.error || "Process execution failed",
+              waitResult.output
+            );
+          }
+        } else {
+          return createErrorResult(`Failed to start process in terminal: ${result.error}`);
+        }
+      }
+      if (isBackgroundCommand) {
+        log.info(`[execute_bash] Background command detected, executing directly: ${command.substring(0, 100)}`);
+      }
+      const pathDirs = [
+        "/usr/local/bin",
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+        "/opt/homebrew/bin",
+        "/opt/homebrew/sbin",
+        `${process.env.HOME}/.local/bin`,
+        `${process.env.HOME}/bin`,
+        `${process.env.HOME}/.npm-global/bin`,
+        "/usr/local/share/npm/bin",
+        process.env.PATH || ""
+      ].filter(Boolean);
+      const env = {
+        ...process.env,
+        PATH: pathDirs.join(":")
       };
-    } else {
-      log.info(`Command was recently executed but process not running, allowing re-execution: ${command}`);
+      log.info(`[execute_bash] Direct execution PATH: ${env.PATH}`);
+      const { stdout, stderr } = await execPromise(command, {
+        cwd,
+        timeout: 6e4,
+        maxBuffer: 10 * 1024 * 1024,
+        env
+      });
+      return createSuccessResult(stdout || "(no output)", { stderr: stderr || void 0 });
+    } catch (error) {
+      return createErrorResult(
+        error.stderr || error.message || String(error),
+        error.stdout || ""
+      );
     }
   }
-  recentCommands.set(commandKey, now);
-  for (const [key, timestamp] of recentCommands.entries()) {
-    if (now - timestamp > COMMAND_DEDUP_WINDOW) {
-      recentCommands.delete(key);
+};
+const searchCodeTool = {
+  name: "search_code",
+  description: "Search for code patterns in the project using grep. Use this to find specific functions, variables, or patterns across multiple files.",
+  parameters: {
+    pattern: patternParam,
+    path: searchPathParam
+  },
+  required: ["pattern"],
+  execute: async (args, context) => {
+    try {
+      const pattern = args.pattern;
+      const searchPath = args.path;
+      const targetPath = searchPath ? path__namespace.resolve(context.cwd, searchPath) : context.cwd;
+      if (!fs__namespace.existsSync(targetPath)) {
+        return createErrorResult(`Path does not exist: ${searchPath || "."}`);
+      }
+      const { stdout, stderr } = await execPromise(
+        `grep -r "${pattern.replace(/"/g, '\\"')}" "${targetPath}" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.java" --include="*.go" --include="*.rs" -l 2>/dev/null || true`,
+        { timeout: 3e4 }
+      );
+      if (stderr && !stdout) {
+        return createErrorResult(stderr);
+      }
+      const files = stdout.trim().split("\n").filter((f) => f);
+      if (files.length === 0) {
+        return createSuccessResult("No matches found");
+      }
+      return createSuccessResult(files.join("\n"), { matchCount: files.length });
+    } catch (error) {
+      return createErrorResult(String(error));
     }
   }
-  log.info(`Executing bash command: ${command} in ${cwd} (base: ${baseCwd})`);
-  const shouldRunInTerminal = processBridge.shouldRunInTerminal(command);
-  if (shouldRunInTerminal) {
-    const result = await processBridge.startProcess(command, cwd);
-    if (result.success) {
-      return {
-        success: true,
-        output: `Started process in terminal (PID: ${result.processId}). Command: ${command}`
-      };
-    } else {
-      return {
-        success: false,
-        output: "",
-        error: `Failed to start process in terminal: ${result.error}`
-      };
-    }
-  }
-  try {
-    const { stdout, stderr } = await execPromise(command, {
-      cwd,
-      timeout: 6e4,
-      maxBuffer: 10 * 1024 * 1024
-    });
-    return {
-      success: true,
-      output: stdout || "(no output)",
-      error: stderr || void 0
-    };
-  } catch (error) {
-    return {
-      success: false,
-      output: error.stdout || "",
-      error: error.stderr || error.message || String(error)
-    };
-  }
-}
-async function executeSearchCode(pattern, searchPath) {
-  try {
-    const targetPath = searchPath ? path__namespace.resolve(getCurrentWorkingDirectory(), searchPath) : getCurrentWorkingDirectory();
-    if (!fs__namespace.existsSync(targetPath)) {
-      return { success: false, output: "", error: `Path does not exist: ${searchPath || "."}` };
-    }
-    const { stdout, stderr } = await execPromise(
-      `grep -r "${pattern.replace(/"/g, '\\"')}" "${targetPath}" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.java" --include="*.go" --include="*.rs" -l 2>/dev/null || true`,
-      { timeout: 3e4 }
-    );
-    if (stderr && !stdout) {
-      return { success: false, output: "", error: stderr };
-    }
-    const files = stdout.trim().split("\n").filter((f) => f);
-    if (files.length === 0) {
-      return { success: true, output: "No matches found" };
-    }
-    return { success: true, output: files.join("\n") };
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
-async function executeGetRunningProcesses() {
-  try {
-    const processes = processBridge.getAllProcesses();
-    const runningProcesses = processes.filter((p) => p.isRunning);
-    if (runningProcesses.length === 0) {
-      return { success: true, output: "No running processes found" };
-    }
-    const output = runningProcesses.map((p) => {
-      const startTime = new Date(p.startTime).toLocaleString();
-      return `Process ID: ${p.id}
+};
+const getRunningProcessesTool = {
+  name: "get_running_processes",
+  description: "Get a list of all currently running processes managed by the application. Use this to check which services are running and get their process IDs for management.",
+  parameters: {},
+  required: [],
+  execute: async () => {
+    try {
+      const processes = processBridge.getAllProcesses();
+      const runningProcesses = processes.filter((p) => p.isRunning);
+      if (runningProcesses.length === 0) {
+        return createSuccessResult("No running processes found");
+      }
+      const output = runningProcesses.map((p) => {
+        const startTime = new Date(p.startTime).toLocaleString();
+        return `Process ID: ${p.id}
 Command: ${p.command}
 Working Directory: ${p.cwd}
 Started: ${startTime}
 Terminal ID: ${p.terminalId || "N/A"}
 ---`;
-    }).join("\n");
-    return { success: true, output };
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
-  }
-}
-async function executeStopProcess(processId) {
-  try {
-    if (!processId) {
-      return { success: false, output: "", error: "Process ID is required" };
+      }).join("\n");
+      return createSuccessResult(output, { processCount: runningProcesses.length });
+    } catch (error) {
+      return createErrorResult(String(error));
     }
-    const result = await processBridge.stopProcess(processId);
-    if (result.success) {
-      if (result.actuallyStopped) {
-        return { success: true, output: `Process ${processId} stopped successfully` };
-      } else {
-        return {
-          success: true,
-          output: `Stop signal sent to process ${processId}, but could not verify if process actually stopped. Please check the terminal to confirm.`
-        };
+  }
+};
+const stopProcessTool = {
+  name: "stop_process",
+  description: "Stop a running process by its process ID. Use this to terminate specific services or processes that were started through the application.",
+  parameters: {
+    process_id: processIdParam
+  },
+  required: ["process_id"],
+  execute: async (args) => {
+    try {
+      const processId = args.process_id;
+      if (!processId) {
+        return createErrorResult("Process ID is required");
       }
-    } else {
-      return { success: false, output: "", error: result.error || "Failed to stop process" };
+      const result = await processBridge.stopProcess(processId);
+      if (result.success) {
+        if (result.actuallyStopped) {
+          return createSuccessResult(`Process ${processId} stopped successfully`, { processId });
+        } else {
+          return createSuccessResult(
+            `Stop signal sent to process ${processId}, but could not verify if process actually stopped. Please check the terminal to confirm.`,
+            { processId, verified: false }
+          );
+        }
+      } else {
+        return createErrorResult(result.error || "Failed to stop process", "", { processId });
+      }
+    } catch (error) {
+      return createErrorResult(String(error));
     }
-  } catch (error) {
-    return { success: false, output: "", error: String(error) };
   }
+};
+const restartProcessTool = {
+  name: "restart_process",
+  description: "Restart a running process by its process ID. This will stop the process and start it again. Use this to restart services after code changes.",
+  parameters: {
+    process_id: processIdParam
+  },
+  required: ["process_id"],
+  execute: async (args) => {
+    try {
+      const processId = args.process_id;
+      if (!processId) {
+        return createErrorResult("Process ID is required");
+      }
+      const result = await processBridge.restartProcess(processId);
+      if (result.success) {
+        return createSuccessResult(
+          `Process ${processId} restarted successfully. New process ID: ${result.processId}`,
+          { oldProcessId: processId, newProcessId: result.processId }
+        );
+      } else {
+        return createErrorResult(result.error || "Failed to restart process", "", { processId });
+      }
+    } catch (error) {
+      return createErrorResult(String(error));
+    }
+  }
+};
+function registerAllTools() {
+  toolRegistry$1.register(readFileTool);
+  toolRegistry$1.register(writeFileTool);
+  toolRegistry$1.register(editFileTool);
+  toolRegistry$1.register(appendFileTool);
+  toolRegistry$1.register(listDirectoryTool);
+  toolRegistry$1.register(deleteFileTool);
+  toolRegistry$1.register(executeBashTool);
+  toolRegistry$1.register(searchCodeTool);
+  toolRegistry$1.register(getRunningProcessesTool);
+  toolRegistry$1.register(stopProcessTool);
+  toolRegistry$1.register(restartProcessTool);
+  log.info(`[ToolDefinitions] Registered ${toolRegistry$1.count()} tools`);
 }
-async function executeRestartProcess(processId) {
+const CODE_TOOLS = toolRegistry$1.toOpenAIDefinitions();
+async function executeTool$1(name, args, cwd) {
+  const { executeToolWithMiddleware: executeToolWithMiddleware2, createExecutionContext: createExecutionContext2 } = await Promise.resolve().then(() => toolsCore);
+  const context = createExecutionContext2(cwd || getCurrentWorkingDirectory());
+  return executeToolWithMiddleware2(name, args, context);
+}
+async function executeToolCalls(toolCalls, options) {
+  const context = createExecutionContext(options.cwd, {
+    sessionId: options.sessionId,
+    userId: options.userId,
+    metadata: options.metadata
+  });
+  const results = [];
+  for (const toolCall of toolCalls) {
+    try {
+      let args;
+      if (typeof toolCall.function.arguments === "string") {
+        try {
+          args = JSON.parse(toolCall.function.arguments);
+        } catch (e) {
+          results.push({
+            tool_call_id: toolCall.id,
+            role: "tool",
+            name: toolCall.function.name,
+            content: `Error: Failed to parse tool arguments: ${String(e)}`
+          });
+          continue;
+        }
+      } else {
+        args = toolCall.function.arguments;
+      }
+      const result = await executeToolWithMiddleware(toolCall.function.name, args, context);
+      results.push(toToolResult(toolCall.id, toolCall.function.name, result));
+    } catch (error) {
+      results.push({
+        tool_call_id: toolCall.id,
+        role: "tool",
+        name: toolCall.function.name,
+        content: `Error executing tool: ${String(error)}`
+      });
+    }
+  }
+  return results;
+}
+const loggingMiddleware = async (context, next) => {
+  const startTime = Date.now();
+  log.info(`[ToolExecution] Starting ${context.toolName}`, {
+    args: context.args,
+    cwd: context.executionContext.cwd,
+    requestId: context.executionContext.requestId
+  });
   try {
-    if (!processId) {
-      return { success: false, output: "", error: "Process ID is required" };
-    }
-    const result = await processBridge.restartProcess(processId);
-    if (result.success) {
-      return { success: true, output: `Process ${processId} restarted successfully. New process ID: ${result.processId}` };
-    } else {
-      return { success: false, output: "", error: result.error || "Failed to restart process" };
-    }
+    const result = await next();
+    const duration = Date.now() - startTime;
+    log.info(`[ToolExecution] Completed ${context.toolName}`, {
+      success: result.success,
+      duration,
+      requestId: context.executionContext.requestId
+    });
+    return result;
   } catch (error) {
-    return { success: false, output: "", error: String(error) };
+    const duration = Date.now() - startTime;
+    log.error(`[ToolExecution] Failed ${context.toolName}`, {
+      error: String(error),
+      duration,
+      requestId: context.executionContext.requestId
+    });
+    throw error;
+  }
+};
+const validationMiddleware = async (context, next) => {
+  const tool = toolRegistry$1.get(context.toolName);
+  if (!tool) {
+    return createErrorResult(`Unknown tool: ${context.toolName}`);
+  }
+  const validation = validateToolArgs(context.toolName, context.args, tool);
+  if (!validation.valid) {
+    return createErrorResult(`Validation failed: ${validation.errors.join(", ")}`);
+  }
+  return next();
+};
+const errorHandlingMiddleware = async (context, next) => {
+  try {
+    return await next();
+  } catch (error) {
+    log.error(`[ToolExecution] Unhandled error in ${context.toolName}:`, error);
+    return createErrorResult(`Unexpected error: ${String(error)}`);
+  }
+};
+const formattingMiddleware = async (context, next) => {
+  const result = await next();
+  const MAX_OUTPUT_LENGTH2 = 1e5;
+  if (result.output && result.output.length > MAX_OUTPUT_LENGTH2) {
+    return {
+      ...result,
+      output: result.output.substring(0, MAX_OUTPUT_LENGTH2) + "\n\n[Output truncated due to length]"
+    };
+  }
+  return result;
+};
+function initializeToolExecutor() {
+  toolRegistry$1.use(errorHandlingMiddleware);
+  toolRegistry$1.use(validationMiddleware);
+  toolRegistry$1.use(loggingMiddleware);
+  toolRegistry$1.use(formattingMiddleware);
+  log.info("[ToolExecutor] Initialized with default middlewares");
+}
+initializeToolExecutor();
+const IGNORE_PATTERNS = [
+  /^\./,
+  // 隐藏文件
+  /^node_modules$/,
+  // Node.js 依赖
+  /^dist$/,
+  // 构建输出
+  /^build$/,
+  // 构建输出
+  /^out$/,
+  // 输出目录
+  /^\.git$/,
+  // Git 目录
+  /^\.svn$/,
+  // SVN 目录
+  /^\.hg$/,
+  // Mercurial 目录
+  /^__pycache__$/,
+  // Python 缓存
+  /^\.pytest_cache$/,
+  // Pytest 缓存
+  /^target$/,
+  // Rust 构建输出
+  /^\.idea$/,
+  // IntelliJ IDEA
+  /^\.vscode$/,
+  // VS Code 配置
+  /^coverage$/,
+  // 测试覆盖率报告
+  /^\.next$/,
+  // Next.js 构建输出
+  /^\.nuxt$/,
+  // Nuxt.js 构建输出
+  /^vendor$/,
+  // 依赖目录
+  /^bin$/,
+  // 二进制目录
+  /^obj$/
+  // 编译输出
+];
+const CACHEABLE_EXTENSIONS = /* @__PURE__ */ new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".py",
+  ".java",
+  ".go",
+  ".rs",
+  ".json",
+  ".md",
+  ".txt",
+  ".yaml",
+  ".yml",
+  ".html",
+  ".css",
+  ".scss",
+  ".less",
+  ".vue",
+  ".svelte",
+  ".php",
+  ".rb"
+]);
+let projectContext = null;
+let currentRootPath = null;
+function shouldIgnore(name) {
+  return IGNORE_PATTERNS.some((pattern) => pattern.test(name));
+}
+function shouldCacheContent(filePath) {
+  const ext = path__namespace.extname(filePath).toLowerCase();
+  return CACHEABLE_EXTENSIONS.has(ext);
+}
+async function scanDirectory(dirPath, relativePath = "", maxDepth = 10, currentDepth = 0) {
+  if (currentDepth >= maxDepth) {
+    return [];
+  }
+  const nodes = [];
+  try {
+    const entries = await fs__namespace.promises.readdir(dirPath, { withFileTypes: true });
+    for (const entry of entries) {
+      if (shouldIgnore(entry.name)) {
+        continue;
+      }
+      const fullPath = path__namespace.join(dirPath, entry.name);
+      const entryRelativePath = relativePath ? path__namespace.join(relativePath, entry.name) : entry.name;
+      if (entry.isDirectory()) {
+        const children = await scanDirectory(fullPath, entryRelativePath, maxDepth, currentDepth + 1);
+        const stat = await fs__namespace.promises.stat(fullPath);
+        nodes.push({
+          name: entry.name,
+          path: entryRelativePath,
+          isDirectory: true,
+          children,
+          modifiedAt: stat.mtime.getTime()
+        });
+      } else {
+        const stat = await fs__namespace.promises.stat(fullPath);
+        nodes.push({
+          name: entry.name,
+          path: entryRelativePath,
+          isDirectory: false,
+          size: stat.size,
+          modifiedAt: stat.mtime.getTime()
+        });
+      }
+    }
+    nodes.sort((a, b) => {
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  } catch (error) {
+    log.error(`[ProjectContext] Error scanning directory ${dirPath}:`, error);
+  }
+  return nodes;
+}
+function calculateStats(fileTree) {
+  let totalFiles = 0;
+  let totalDirectories = 0;
+  let totalSize = 0;
+  const fileTypes = {};
+  function traverse(nodes) {
+    for (const node of nodes) {
+      if (node.isDirectory) {
+        totalDirectories++;
+        if (node.children) {
+          traverse(node.children);
+        }
+      } else {
+        totalFiles++;
+        totalSize += node.size || 0;
+        const ext = path__namespace.extname(node.name).toLowerCase() || "(no extension)";
+        fileTypes[ext] = (fileTypes[ext] || 0) + 1;
+      }
+    }
+  }
+  traverse(fileTree);
+  return { totalFiles, totalDirectories, totalSize, fileTypes };
+}
+async function cacheImportantFiles(rootPath, fileTree, maxCacheSize = 1024 * 1024) {
+  const fileContents = /* @__PURE__ */ new Map();
+  let currentCacheSize = 0;
+  const priorityFiles = [
+    "package.json",
+    "tsconfig.json",
+    "README.md",
+    "Cargo.toml",
+    "pyproject.toml",
+    "requirements.txt",
+    "main.ts",
+    "index.ts",
+    "app.ts",
+    "server.ts",
+    "main.py",
+    "app.py",
+    "manage.py"
+  ];
+  async function traverseAndCache(nodes) {
+    for (const node of nodes) {
+      if (node.isDirectory && node.children) {
+        await traverseAndCache(node.children);
+      } else if (shouldCacheContent(node.path)) {
+        const fullPath = path__namespace.join(rootPath, node.path);
+        const isPriority = priorityFiles.includes(node.name.toLowerCase());
+        if (isPriority || node.size && node.size < 5e4) {
+          try {
+            const content = await fs__namespace.promises.readFile(fullPath, "utf-8");
+            const contentSize = Buffer.byteLength(content, "utf8");
+            if (currentCacheSize + contentSize < maxCacheSize) {
+              fileContents.set(node.path, content);
+              currentCacheSize += contentSize;
+            }
+          } catch (error) {
+          }
+        }
+      }
+    }
+  }
+  await traverseAndCache(fileTree);
+  log.info(`[ProjectContext] Cached ${fileContents.size} files (${Math.round(currentCacheSize / 1024)}KB)`);
+  return fileContents;
+}
+async function scanProject(rootPath) {
+  log.info(`[ProjectContext] Scanning project: ${rootPath}`);
+  const startTime = Date.now();
+  const fileTree = await scanDirectory(rootPath);
+  const stats = calculateStats(fileTree);
+  const fileContents = await cacheImportantFiles(rootPath, fileTree);
+  projectContext = {
+    rootPath,
+    scannedAt: Date.now(),
+    fileTree,
+    stats,
+    fileContents
+  };
+  currentRootPath = rootPath;
+  const duration = Date.now() - startTime;
+  log.info(`[ProjectContext] Scan completed in ${duration}ms:`, {
+    files: stats.totalFiles,
+    directories: stats.totalDirectories,
+    cachedFiles: fileContents.size
+  });
+  return projectContext;
+}
+function getProjectContext() {
+  return projectContext;
+}
+function getFileTreeText(maxDepth = 3, maxFiles = 100) {
+  if (!projectContext) {
+    return "(No project context available)";
+  }
+  const lines = [];
+  let fileCount = 0;
+  function renderNode(node, depth, isLast, prefix = "") {
+    if (depth > maxDepth) return;
+    if (!node.isDirectory && fileCount >= maxFiles) return;
+    const connector = isLast ? "└── " : "├── ";
+    const line = prefix + connector + node.name + (node.isDirectory ? "/" : "");
+    lines.push(line);
+    if (!node.isDirectory) {
+      fileCount++;
+    }
+    if (node.children && depth < maxDepth) {
+      const childPrefix = prefix + (isLast ? "    " : "│   ");
+      node.children.forEach((child, index) => {
+        renderNode(child, depth + 1, index === node.children.length - 1, childPrefix);
+      });
+    }
+  }
+  lines.push(path__namespace.basename(projectContext.rootPath) + "/");
+  projectContext.fileTree.forEach((node, index) => {
+    renderNode(node, 0, index === projectContext.fileTree.length - 1);
+  });
+  if (fileCount >= maxFiles) {
+    lines.push("... (truncated)");
+  }
+  return lines.join("\n");
+}
+function getProjectOverview() {
+  if (!projectContext) {
+    return "";
+  }
+  const { stats, rootPath } = projectContext;
+  const topFileTypes = Object.entries(stats.fileTypes).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([ext, count]) => `${ext}: ${count}`).join(", ");
+  return `Project: ${path__namespace.basename(rootPath)}
+Location: ${rootPath}
+Files: ${stats.totalFiles}, Directories: ${stats.totalDirectories}
+Main file types: ${topFileTypes}`;
+}
+function getCachedFileContent(filePath) {
+  if (!projectContext) return void 0;
+  if (projectContext.fileContents.has(filePath)) {
+    return projectContext.fileContents.get(filePath);
+  }
+  const relativePath = path__namespace.relative(projectContext.rootPath, filePath);
+  return projectContext.fileContents.get(relativePath);
+}
+function shouldRefreshContext(rootPath) {
+  if (!projectContext) return true;
+  if (currentRootPath !== rootPath) return true;
+  const age = Date.now() - projectContext.scannedAt;
+  const maxAge = 5 * 60 * 1e3;
+  return age > maxAge;
+}
+async function refreshProjectContext(rootPath) {
+  log.info(`[ProjectContext] Refreshing context for: ${rootPath}`);
+  return scanProject(rootPath);
+}
+function clearProjectContext() {
+  projectContext = null;
+  currentRootPath = null;
+  log.info("[ProjectContext] Context cleared");
+}
+function getProjectStructureForAI(includeFileTree = true, maxTreeDepth = 3) {
+  if (!projectContext) {
+    return "";
+  }
+  const parts = [];
+  parts.push("=== PROJECT OVERVIEW ===");
+  parts.push(getProjectOverview());
+  parts.push("");
+  if (includeFileTree) {
+    parts.push("=== PROJECT STRUCTURE ===");
+    parts.push(getFileTreeText(maxTreeDepth));
+    parts.push("");
+  }
+  const keyFiles = [];
+  const importantFiles = ["package.json", "tsconfig.json", "README.md", "Cargo.toml"];
+  for (const fileName of importantFiles) {
+    const content = getCachedFileContent(fileName);
+    if (content) {
+      keyFiles.push(`=== ${fileName} ===
+${content.substring(0, 1e3)}${content.length > 1e3 ? "\n... (truncated)" : ""}`);
+    }
+  }
+  if (keyFiles.length > 0) {
+    parts.push("=== KEY FILES ===");
+    parts.push(keyFiles.join("\n\n"));
+    parts.push("");
+  }
+  return parts.join("\n");
+}
+function createPortingModule(name, responsibility, sourceHint, status = "mirrored") {
+  return {
+    name,
+    responsibility,
+    sourceHint,
+    status
+  };
+}
+class HistoryLogImpl {
+  entries = [];
+  add(type, message) {
+    this.entries.push({
+      type,
+      message,
+      timestamp: Date.now()
+    });
+  }
+  asMarkdown() {
+    const lines = ["## History Log", ""];
+    for (const entry of this.entries) {
+      const time = new Date(entry.timestamp).toISOString();
+      lines.push(`- [${entry.type}] ${time}: ${entry.message}`);
+    }
+    return lines.join("\n");
   }
 }
-async function executeTool(name, args) {
-  log.info(`Executing tool: ${name} with args:`, args);
-  switch (name) {
-    case "read_file":
-      return executeReadFile(args.path);
-    case "write_file":
-      return executeWriteFile(args.path, args.content);
-    case "edit_file":
-      return executeEditFile(args.path, args.old_string, args.new_string);
-    case "delete_file":
-      return executeDeleteFile(args.path);
-    case "list_directory":
-      return executeListDirectory(args.path);
-    case "execute_bash":
-      return executeExecuteBash(args.command);
-    case "search_code":
-      return executeSearchCode(args.pattern, args.path);
-    case "get_running_processes":
-      return executeGetRunningProcesses();
-    case "stop_process":
-      return executeStopProcess(args.process_id);
-    case "restart_process":
-      return executeRestartProcess(args.process_id);
-    default:
-      return { success: false, output: "", error: `Unknown tool: ${name}` };
+class UsageSummaryImpl {
+  inputTokens;
+  outputTokens;
+  constructor(inputTokens = 0, outputTokens = 0) {
+    this.inputTokens = inputTokens;
+    this.outputTokens = outputTokens;
+  }
+  addTurn(prompt, output) {
+    const inputTokens = Math.ceil(prompt.length / 4);
+    const outputTokens = Math.ceil(output.length / 4);
+    return new UsageSummaryImpl(
+      this.inputTokens + inputTokens,
+      this.outputTokens + outputTokens
+    );
+  }
+}
+class TranscriptStoreImpl {
+  entries = [];
+  flushed = false;
+  append(entry) {
+    this.entries.push(entry);
+  }
+  compact(limit) {
+    if (this.entries.length > limit) {
+      this.entries = this.entries.slice(-limit);
+    }
+  }
+  replay() {
+    return [...this.entries];
+  }
+  flush() {
+    this.flushed = true;
+  }
+}
+const SNAPSHOT_PATH$1 = path__namespace.join(__dirname, "..", "..", "..", "resources", "reference_data", "commands_snapshot.json");
+let commandSnapshotCache = null;
+function loadCommandSnapshot() {
+  if (commandSnapshotCache) {
+    return commandSnapshotCache;
+  }
+  try {
+    const rawEntries = JSON.parse(fs__namespace.readFileSync(SNAPSHOT_PATH$1, "utf-8"));
+    const modules = rawEntries.map(
+      (entry) => createPortingModule(
+        entry.name,
+        entry.responsibility,
+        entry.source_hint,
+        "mirrored"
+      )
+    );
+    commandSnapshotCache = modules;
+    return modules;
+  } catch (error) {
+    console.error("Failed to load command snapshot:", error);
+    return [];
+  }
+}
+const PORTED_COMMANDS = loadCommandSnapshot();
+function getCommand(name) {
+  const needle = name.toLowerCase();
+  for (const module2 of PORTED_COMMANDS) {
+    if (module2.name.toLowerCase() === needle) {
+      return module2;
+    }
+  }
+  return null;
+}
+function getCommands(cwd, includePluginCommands = true, includeSkillCommands = true) {
+  let commands = [...PORTED_COMMANDS];
+  if (!includePluginCommands) {
+    commands = commands.filter((module2) => !module2.sourceHint.toLowerCase().includes("plugin"));
+  }
+  if (!includeSkillCommands) {
+    commands = commands.filter((module2) => !module2.sourceHint.toLowerCase().includes("skills"));
+  }
+  return commands;
+}
+function findCommands(query, limit = 20) {
+  const needle = query.toLowerCase();
+  const matches = PORTED_COMMANDS.filter(
+    (module2) => module2.name.toLowerCase().includes(needle) || module2.sourceHint.toLowerCase().includes(needle)
+  );
+  return matches.slice(0, limit);
+}
+function executeCommand(name, prompt = "") {
+  const module2 = getCommand(name);
+  if (module2 === null) {
+    return {
+      name,
+      sourceHint: "",
+      prompt,
+      handled: false,
+      message: `Unknown mirrored command: ${name}`
+    };
+  }
+  const action = `Mirrored command '${module2.name}' from ${module2.sourceHint} would handle prompt ${JSON.stringify(prompt)}.`;
+  return {
+    name: module2.name,
+    sourceHint: module2.sourceHint,
+    prompt,
+    handled: true,
+    message: action
+  };
+}
+const SNAPSHOT_PATH = path__namespace.join(__dirname, "..", "..", "..", "resources", "reference_data", "tools_snapshot.json");
+let toolSnapshotCache = null;
+function loadToolSnapshot() {
+  if (toolSnapshotCache) {
+    return toolSnapshotCache;
+  }
+  try {
+    const rawEntries = JSON.parse(fs__namespace.readFileSync(SNAPSHOT_PATH, "utf-8"));
+    const modules = rawEntries.map(
+      (entry) => createPortingModule(
+        entry.name,
+        entry.responsibility,
+        entry.source_hint,
+        "mirrored"
+      )
+    );
+    toolSnapshotCache = modules;
+    return modules;
+  } catch (error) {
+    console.error("Failed to load tool snapshot:", error);
+    return [];
+  }
+}
+const PORTED_TOOLS = loadToolSnapshot();
+function getTool(name) {
+  const needle = name.toLowerCase();
+  for (const module2 of PORTED_TOOLS) {
+    if (module2.name.toLowerCase() === needle) {
+      return module2;
+    }
+  }
+  return null;
+}
+function getTools(simpleMode = false, includeMcp = true, permissionContext) {
+  let tools = [...PORTED_TOOLS];
+  if (!includeMcp) {
+    tools = tools.filter((module2) => !module2.sourceHint.toLowerCase().includes("mcp"));
+  }
+  if (permissionContext) {
+    tools = tools.filter((module2) => !permissionContext.blocks(module2.name));
+  }
+  if (simpleMode) {
+    const basicToolNames = ["read_file", "write_file", "edit_file", "search_codebase", "grep_code"];
+    tools = tools.filter((module2) => basicToolNames.includes(module2.name.toLowerCase()));
+  }
+  return tools;
+}
+function findTools(query, limit = 20) {
+  const needle = query.toLowerCase();
+  const matches = PORTED_TOOLS.filter(
+    (module2) => module2.name.toLowerCase().includes(needle) || module2.sourceHint.toLowerCase().includes(needle)
+  );
+  return matches.slice(0, limit);
+}
+function executeTool(name, payload = "") {
+  const module2 = getTool(name);
+  if (module2 === null) {
+    return {
+      name,
+      sourceHint: "",
+      payload,
+      handled: false,
+      message: `Unknown mirrored tool: ${name}`
+    };
+  }
+  const action = `Mirrored tool '${module2.name}' from ${module2.sourceHint} would process payload ${JSON.stringify(payload)}.`;
+  return {
+    name: module2.name,
+    sourceHint: module2.sourceHint,
+    payload,
+    handled: true,
+    message: action
+  };
+}
+function buildPortContext(cwd) {
+  const workingDir = process.cwd();
+  let pythonFileCount = 0;
+  try {
+    const entries = fs__namespace.readdirSync(workingDir);
+    for (const entry of entries) {
+      if (entry.endsWith(".py")) {
+        pythonFileCount++;
+      }
+    }
+  } catch {
+  }
+  const archiveAvailable = fs__namespace.existsSync(path__namespace.join(workingDir, ".claude", "archive"));
+  return {
+    pythonFileCount,
+    archiveAvailable,
+    cwd: workingDir
+  };
+}
+function renderContext(context) {
+  return [
+    `- Python files: ${context.pythonFileCount}`,
+    `- Archive available: ${context.archiveAvailable}`,
+    `- Working directory: ${context.cwd}`
+  ].join("\n");
+}
+function runSetup(trusted = false) {
+  const setup = {
+    pythonVersion: process.version,
+    implementation: "Node.js",
+    platformName: `${os__namespace.platform()} ${os__namespace.arch()}`,
+    testCommand: "npm test"
+  };
+  return {
+    setup,
+    startupSteps: [
+      "Loaded command snapshot",
+      "Loaded tool snapshot",
+      "Initialized query engine",
+      "Built port context",
+      trusted ? "Running in trusted mode" : "Running in standard mode"
+    ]
+  };
+}
+function buildSystemInitMessage(trusted = false) {
+  const lines = [
+    "System initialized successfully.",
+    "",
+    "Available capabilities:",
+    "- Command routing and execution",
+    "- Tool routing and execution",
+    "- Multi-turn conversation loop",
+    "- Session persistence",
+    "- Stream processing",
+    ""
+  ];
+  if (trusted) {
+    lines.push("Running in trusted mode with elevated permissions.");
+  }
+  return lines.join("\n");
+}
+class PortManifestImpl {
+  topLevelModules = [];
+  constructor() {
+    this.buildFromWorkspace();
+  }
+  buildFromWorkspace() {
+    const coreDir = path__namespace.resolve(__dirname);
+    if (fs__namespace.existsSync(coreDir)) {
+      const entries = fs__namespace.readdirSync(coreDir);
+      for (const entry of entries) {
+        const entryPath = path__namespace.join(coreDir, entry);
+        const stat = fs__namespace.statSync(entryPath);
+        if (stat.isFile() && entry.endsWith(".ts")) {
+          this.topLevelModules.push({
+            name: entry.replace(".ts", ""),
+            fileCount: 1,
+            notes: "Core module"
+          });
+        }
+      }
+    }
+  }
+  toMarkdown() {
+    const lines = [
+      "# Port Manifest",
+      "",
+      `## Top Level Modules (${this.topLevelModules.length})`,
+      ""
+    ];
+    for (const module2 of this.topLevelModules) {
+      lines.push(`- ${module2.name}: ${module2.fileCount} files - ${module2.notes}`);
+    }
+    return lines.join("\n");
+  }
+}
+function buildPortManifest() {
+  return new PortManifestImpl();
+}
+const SESSIONS_DIR = path__namespace.join(electron.app.getPath("userData"), "sessions");
+function ensureSessionsDir() {
+  if (!fs__namespace.existsSync(SESSIONS_DIR)) {
+    fs__namespace.mkdirSync(SESSIONS_DIR, { recursive: true });
+  }
+}
+function saveSession$1(session) {
+  ensureSessionsDir();
+  const filePath = path__namespace.join(SESSIONS_DIR, `${session.sessionId}.json`);
+  const data = {
+    ...session,
+    updatedAt: Date.now()
+  };
+  fs__namespace.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  return filePath;
+}
+function loadSession(sessionId) {
+  const filePath = path__namespace.join(SESSIONS_DIR, `${sessionId}.json`);
+  if (!fs__namespace.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const data = JSON.parse(fs__namespace.readFileSync(filePath, "utf-8"));
+    return {
+      sessionId: data.sessionId,
+      messages: data.messages || [],
+      inputTokens: data.inputTokens || 0,
+      outputTokens: data.outputTokens || 0,
+      createdAt: data.createdAt || Date.now(),
+      updatedAt: data.updatedAt || Date.now()
+    };
+  } catch (error) {
+    console.error(`Failed to load session ${sessionId}:`, error);
+    return null;
+  }
+}
+function listSessions() {
+  ensureSessionsDir();
+  const sessions2 = [];
+  const files = fs__namespace.readdirSync(SESSIONS_DIR);
+  for (const file of files) {
+    if (file.endsWith(".json")) {
+      const sessionId = file.replace(".json", "");
+      const session = loadSession(sessionId);
+      if (session) {
+        sessions2.push(session);
+      }
+    }
+  }
+  return sessions2.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+function deleteSession(sessionId) {
+  const filePath = path__namespace.join(SESSIONS_DIR, `${sessionId}.json`);
+  if (!fs__namespace.existsSync(filePath)) {
+    return false;
+  }
+  try {
+    fs__namespace.unlinkSync(filePath);
+    return true;
+  } catch (error) {
+    console.error(`Failed to delete session ${sessionId}:`, error);
+    return false;
+  }
+}
+function createStoredSession(sessionId, messages = [], inputTokens = 0, outputTokens = 0) {
+  const now = Date.now();
+  return {
+    sessionId,
+    messages,
+    inputTokens,
+    outputTokens,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+class QueryEnginePort {
+  manifest;
+  config;
+  sessionId;
+  mutableMessages = [];
+  permissionDenials = [];
+  totalUsage;
+  transcriptStore;
+  constructor(manifest, config, sessionId) {
+    this.manifest = manifest;
+    this.config = config || {
+      maxTurns: 8,
+      maxBudgetTokens: 2e3,
+      compactAfterTurns: 12,
+      structuredOutput: false,
+      structuredRetryLimit: 2
+    };
+    this.sessionId = sessionId || uuid.v4().replace(/-/g, "");
+    this.totalUsage = new UsageSummaryImpl();
+    this.transcriptStore = new TranscriptStoreImpl();
+  }
+  static fromWorkspace() {
+    return new QueryEnginePort(buildPortManifest());
+  }
+  static fromSavedSession(sessionId) {
+    const stored = loadSession(sessionId);
+    if (!stored) {
+      return null;
+    }
+    const transcript = new TranscriptStoreImpl();
+    transcript.entries = [...stored.messages];
+    transcript.flushed = true;
+    const engine = new QueryEnginePort(buildPortManifest(), void 0, sessionId);
+    engine.mutableMessages = [...stored.messages];
+    engine.totalUsage = new UsageSummaryImpl(stored.inputTokens, stored.outputTokens);
+    engine.transcriptStore = transcript;
+    return engine;
+  }
+  submitMessage(prompt, matchedCommands = [], matchedTools = [], deniedTools = []) {
+    if (this.mutableMessages.length >= this.config.maxTurns) {
+      const output2 = `Max turns reached before processing prompt: ${prompt}`;
+      return {
+        prompt,
+        output: output2,
+        matchedCommands,
+        matchedTools,
+        permissionDenials: deniedTools,
+        usage: this.totalUsage,
+        stopReason: "max_turns_reached"
+      };
+    }
+    const summaryLines = [
+      `Prompt: ${prompt}`,
+      `Matched commands: ${matchedCommands.length > 0 ? matchedCommands.join(", ") : "none"}`,
+      `Matched tools: ${matchedTools.length > 0 ? matchedTools.join(", ") : "none"}`,
+      `Permission denials: ${deniedTools.length}`
+    ];
+    const output = this.formatOutput(summaryLines);
+    const projectedUsage = this.totalUsage.addTurn(prompt, output);
+    let stopReason = "completed";
+    if (projectedUsage.inputTokens + projectedUsage.outputTokens > this.config.maxBudgetTokens) {
+      stopReason = "max_budget_reached";
+    }
+    this.mutableMessages.push(prompt);
+    this.transcriptStore.append(prompt);
+    this.permissionDenials.push(...deniedTools);
+    this.totalUsage = projectedUsage;
+    this.compactMessagesIfNeeded();
+    return {
+      prompt,
+      output,
+      matchedCommands,
+      matchedTools,
+      permissionDenials: deniedTools,
+      usage: this.totalUsage,
+      stopReason
+    };
+  }
+  *streamSubmitMessage(prompt, matchedCommands = [], matchedTools = [], deniedTools = []) {
+    yield { type: "message_start", sessionId: this.sessionId, prompt };
+    if (matchedCommands.length > 0) {
+      yield { type: "command_match", commands: matchedCommands };
+    }
+    if (matchedTools.length > 0) {
+      yield { type: "tool_match", tools: matchedTools };
+    }
+    if (deniedTools.length > 0) {
+      yield { type: "permission_denial", denials: deniedTools.map((d) => d.toolName) };
+    }
+    const result = this.submitMessage(prompt, matchedCommands, matchedTools, deniedTools);
+    yield { type: "message_delta", text: result.output };
+    yield {
+      type: "message_stop",
+      usage: { inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens },
+      stopReason: result.stopReason,
+      transcriptSize: this.transcriptStore.entries.length
+    };
+  }
+  compactMessagesIfNeeded() {
+    if (this.mutableMessages.length > this.config.compactAfterTurns) {
+      this.mutableMessages = this.mutableMessages.slice(-this.config.compactAfterTurns);
+    }
+    this.transcriptStore.compact(this.config.compactAfterTurns);
+  }
+  replayUserMessages() {
+    return this.transcriptStore.replay();
+  }
+  flushTranscript() {
+    this.transcriptStore.flush();
+  }
+  persistSession() {
+    this.flushTranscript();
+    const session = createStoredSession(
+      this.sessionId,
+      this.mutableMessages,
+      this.totalUsage.inputTokens,
+      this.totalUsage.outputTokens
+    );
+    return saveSession$1(session);
+  }
+  formatOutput(summaryLines) {
+    if (this.config.structuredOutput) {
+      const payload = {
+        summary: summaryLines,
+        sessionId: this.sessionId
+      };
+      return this.renderStructuredOutput(payload);
+    }
+    return summaryLines.join("\n");
+  }
+  renderStructuredOutput(payload) {
+    let lastError = null;
+    for (let i = 0; i < this.config.structuredRetryLimit; i++) {
+      try {
+        return JSON.stringify(payload, null, 2);
+      } catch (exc) {
+        lastError = exc;
+        payload = { summary: ["structured output retry"], sessionId: this.sessionId };
+      }
+    }
+    throw new Error("structured output rendering failed", { cause: lastError });
+  }
+  renderSummary() {
+    const sections = [
+      "# Query Engine Summary",
+      "",
+      this.manifest.toMarkdown(),
+      "",
+      `Session id: ${this.sessionId}`,
+      `Conversation turns stored: ${this.mutableMessages.length}`,
+      `Permission denials tracked: ${this.permissionDenials.length}`,
+      `Usage totals: in=${this.totalUsage.inputTokens} out=${this.totalUsage.outputTokens}`,
+      `Max turns: ${this.config.maxTurns}`,
+      `Max budget tokens: ${this.config.maxBudgetTokens}`,
+      `Transcript flushed: ${this.transcriptStore.flushed}`
+    ];
+    return sections.join("\n");
+  }
+}
+class ExecutionRegistry {
+  commands = /* @__PURE__ */ new Map();
+  tools = /* @__PURE__ */ new Map();
+  registerCommand(executor) {
+    this.commands.set(executor.name.toLowerCase(), executor);
+  }
+  registerTool(executor) {
+    this.tools.set(executor.name.toLowerCase(), executor);
+  }
+  getCommand(name) {
+    return this.commands.get(name.toLowerCase());
+  }
+  getTool(name) {
+    return this.tools.get(name.toLowerCase());
+  }
+  hasCommand(name) {
+    return this.commands.has(name.toLowerCase());
+  }
+  hasTool(name) {
+    return this.tools.has(name.toLowerCase());
+  }
+  unregisterCommand(name) {
+    return this.commands.delete(name.toLowerCase());
+  }
+  unregisterTool(name) {
+    return this.tools.delete(name.toLowerCase());
+  }
+  getCommandNames() {
+    return Array.from(this.commands.keys());
+  }
+  getToolNames() {
+    return Array.from(this.tools.keys());
+  }
+  clear() {
+    this.commands.clear();
+    this.tools.clear();
+  }
+}
+let globalRegistry = null;
+function buildExecutionRegistry() {
+  if (!globalRegistry) {
+    globalRegistry = new ExecutionRegistry();
+  }
+  return globalRegistry;
+}
+class ToolPermissionContextImpl {
+  deniedTools = [];
+  deniedPrefixes = [];
+  static fromIterables(deniedTools = [], deniedPrefixes = []) {
+    const context = new ToolPermissionContextImpl();
+    context.deniedTools = deniedTools.map((t) => t.toLowerCase());
+    context.deniedPrefixes = deniedPrefixes.map((p) => p.toLowerCase());
+    return context;
+  }
+  blocks(toolName) {
+    const lowerName = toolName.toLowerCase();
+    if (this.deniedTools.includes(lowerName)) {
+      return true;
+    }
+    for (const prefix of this.deniedPrefixes) {
+      if (lowerName.startsWith(prefix)) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+function inferPermissionDenials(toolNames, context) {
+  const denials = [];
+  for (const toolName of toolNames) {
+    if (toolName.toLowerCase().includes("bash") || toolName.toLowerCase().includes("shell")) {
+      if (context.blocks(toolName)) {
+        denials.push({
+          toolName,
+          reason: "Destructive shell execution remains gated"
+        });
+      }
+    }
+  }
+  return denials;
+}
+class RuntimeSessionImpl {
+  prompt;
+  context;
+  setup;
+  setupReport;
+  systemInitMessage;
+  history;
+  routedMatches;
+  turnResult;
+  commandExecutionMessages;
+  toolExecutionMessages;
+  streamEvents;
+  persistedSessionPath;
+  constructor(prompt, context, setup, setupReport, systemInitMessage, history, routedMatches, turnResult, commandExecutionMessages, toolExecutionMessages, streamEvents, persistedSessionPath) {
+    this.prompt = prompt;
+    this.context = context;
+    this.setup = setup;
+    this.setupReport = setupReport;
+    this.systemInitMessage = systemInitMessage;
+    this.history = history;
+    this.routedMatches = routedMatches;
+    this.turnResult = turnResult;
+    this.commandExecutionMessages = commandExecutionMessages;
+    this.toolExecutionMessages = toolExecutionMessages;
+    this.streamEvents = streamEvents;
+    this.persistedSessionPath = persistedSessionPath;
+  }
+  asMarkdown() {
+    const lines = [
+      "# Runtime Session",
+      "",
+      `Prompt: ${this.prompt}`,
+      "",
+      "## Context",
+      renderContext(this.context),
+      "",
+      "## Setup",
+      `- Node.js: ${this.setup.pythonVersion} (${this.setup.implementation})`,
+      `- Platform: ${this.setup.platformName}`,
+      `- Test command: ${this.setup.testCommand}`,
+      "",
+      "## Startup Steps",
+      ...this.setupReport.startupSteps.map((step) => `- ${step}`),
+      "",
+      "## System Init",
+      this.systemInitMessage,
+      "",
+      "## Routed Matches",
+      ...this.routedMatches.length > 0 ? this.routedMatches.map(
+        (match) => `- [${match.kind}] ${match.name} (${match.score}) — ${match.sourceHint}`
+      ) : ["- none"],
+      "",
+      "## Command Execution",
+      ...this.commandExecutionMessages.length > 0 ? this.commandExecutionMessages : ["none"],
+      "",
+      "## Tool Execution",
+      ...this.toolExecutionMessages.length > 0 ? this.toolExecutionMessages : ["none"],
+      "",
+      "## Stream Events",
+      ...this.streamEvents.map((event) => `- ${event.type}: ${JSON.stringify(event)}`),
+      "",
+      "## Turn Result",
+      this.turnResult.output,
+      "",
+      `Persisted session path: ${this.persistedSessionPath}`,
+      "",
+      this.history.asMarkdown()
+    ];
+    return lines.join("\n");
+  }
+}
+class PortRuntime {
+  routePrompt(prompt, limit = 5) {
+    const tokens = new Set(
+      prompt.toLowerCase().replace(/[/\-]/g, " ").split(/\s+/).filter((token) => token.length > 0)
+    );
+    const byKind = {
+      command: this.collectMatches(tokens, PORTED_COMMANDS, "command"),
+      tool: this.collectMatches(tokens, PORTED_TOOLS, "tool")
+    };
+    const selected = [];
+    for (const kind of ["command", "tool"]) {
+      if (byKind[kind].length > 0) {
+        selected.push(byKind[kind].shift());
+      }
+    }
+    const leftovers = [...byKind["command"], ...byKind["tool"]].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);
+      return a.name.localeCompare(b.name);
+    });
+    selected.push(...leftovers.slice(0, Math.max(0, limit - selected.length)));
+    return selected.slice(0, limit);
+  }
+  bootstrapSession(prompt, limit = 5) {
+    const context = buildPortContext();
+    const setupReport = runSetup(true);
+    const setup = setupReport.setup;
+    const history = new HistoryLogImpl();
+    const engine = QueryEnginePort.fromWorkspace();
+    history.add("context", `python_files=${context.pythonFileCount}, archive_available=${context.archiveAvailable}`);
+    history.add("registry", `commands=${PORTED_COMMANDS.length}, tools=${PORTED_TOOLS.length}`);
+    const matches = this.routePrompt(prompt, limit);
+    const registry = buildExecutionRegistry();
+    const commandExecs = [];
+    const toolExecs = [];
+    for (const match of matches) {
+      if (match.kind === "command") {
+        const executor = registry.getCommand(match.name);
+        if (executor) {
+          commandExecs.push(executor.execute(prompt));
+        }
+      } else if (match.kind === "tool") {
+        const executor = registry.getTool(match.name);
+        if (executor) {
+          toolExecs.push(executor.execute(prompt));
+        }
+      }
+    }
+    const denials = this.inferPermissionDenials(matches);
+    const streamEvents = [];
+    const streamGenerator = engine.streamSubmitMessage(
+      prompt,
+      matches.filter((m) => m.kind === "command").map((m) => m.name),
+      matches.filter((m) => m.kind === "tool").map((m) => m.name),
+      denials
+    );
+    for (const event of streamGenerator) {
+      streamEvents.push(event);
+    }
+    const turnResult = engine.submitMessage(
+      prompt,
+      matches.filter((m) => m.kind === "command").map((m) => m.name),
+      matches.filter((m) => m.kind === "tool").map((m) => m.name),
+      denials
+    );
+    const persistedSessionPath = engine.persistSession();
+    history.add("routing", `matches=${matches.length} for prompt=${JSON.stringify(prompt)}`);
+    history.add("execution", `command_execs=${commandExecs.length} tool_execs=${toolExecs.length}`);
+    history.add(
+      "turn",
+      `commands=${turnResult.matchedCommands.length} tools=${turnResult.matchedTools.length} denials=${turnResult.permissionDenials.length} stop=${turnResult.stopReason}`
+    );
+    history.add("session_store", persistedSessionPath);
+    return new RuntimeSessionImpl(
+      prompt,
+      context,
+      setup,
+      setupReport,
+      buildSystemInitMessage(true),
+      history,
+      matches,
+      turnResult,
+      commandExecs,
+      toolExecs,
+      streamEvents,
+      persistedSessionPath
+    );
+  }
+  runTurnLoop(prompt, limit = 5, maxTurns = 3, structuredOutput = false) {
+    const engine = QueryEnginePort.fromWorkspace();
+    engine.config = {
+      ...engine.config,
+      maxTurns,
+      structuredOutput
+    };
+    const matches = this.routePrompt(prompt, limit);
+    const commandNames = matches.filter((m) => m.kind === "command").map((m) => m.name);
+    const toolNames = matches.filter((m) => m.kind === "tool").map((m) => m.name);
+    const results = [];
+    for (let turn = 0; turn < maxTurns; turn++) {
+      const turnPrompt = turn === 0 ? prompt : `${prompt} [turn ${turn + 1}]`;
+      const result = engine.submitMessage(turnPrompt, commandNames, toolNames, []);
+      results.push(result);
+      if (result.stopReason !== "completed") {
+        break;
+      }
+    }
+    return results;
+  }
+  inferPermissionDenials(matches) {
+    const toolNames = matches.filter((m) => m.kind === "tool").map((m) => m.name);
+    const context = new ToolPermissionContextImpl();
+    return inferPermissionDenials(toolNames, context);
+  }
+  collectMatches(tokens, modules, kind) {
+    const matches = [];
+    for (const module2 of modules) {
+      const score = this.score(tokens, module2);
+      if (score > 0) {
+        matches.push({
+          kind,
+          name: module2.name,
+          sourceHint: module2.sourceHint,
+          score
+        });
+      }
+    }
+    matches.sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    });
+    return matches;
+  }
+  score(tokens, module2) {
+    const haystacks = [
+      module2.name.toLowerCase(),
+      module2.sourceHint.toLowerCase(),
+      module2.responsibility.toLowerCase()
+    ];
+    let score = 0;
+    for (const token of tokens) {
+      if (haystacks.some((haystack) => haystack.includes(token))) {
+        score++;
+      }
+    }
+    return score;
   }
 }
 let server = null;
 const sessions = /* @__PURE__ */ new Map();
 const managedProcesses = /* @__PURE__ */ new Map();
+function getDebugLogPath() {
+  const dir = path__namespace.join(electron.app.getPath("userData"), "logs");
+  if (!fs__namespace.existsSync(dir)) {
+    fs__namespace.mkdirSync(dir, { recursive: true });
+  }
+  return path__namespace.join(dir, "api-debug.log");
+}
+function writeDebugLog(label, data) {
+  const logPath = getDebugLogPath();
+  const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+  const logEntry = `[${timestamp}] ${label}:
+${typeof data === "string" ? data : JSON.stringify(data, null, 2)}
+
+`;
+  try {
+    fs__namespace.appendFileSync(logPath, logEntry, "utf-8");
+  } catch (e) {
+    console.error("Failed to write debug log:", e);
+  }
+}
+function convertSpecialFormatToJSON(text) {
+  const specialSectionPattern = /<\|tool_calls_section_begin\|>[\s\S]*?<\|tool_calls_section_end\|>/g;
+  const callPattern = /<\|tool_call_begin\|>functions\.([\w-]+)(?::\d+)?<\|tool_call_args\|>([\s\S]*?)<\|tool_call_end\|>/g;
+  let result = text;
+  result = result.replace(specialSectionPattern, (section) => {
+    const toolCalls = [];
+    let match;
+    callPattern.lastIndex = 0;
+    while ((match = callPattern.exec(section)) !== null) {
+      const toolName = match[1];
+      const argsJson = match[2].trim();
+      try {
+        const args = JSON.parse(argsJson);
+        toolCalls.push(`\`\`\`json
+{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}
+\`\`\``);
+      } catch (e) {
+        log.warn("[FormatConverter] Failed to parse args:", argsJson);
+      }
+    }
+    return toolCalls.length > 0 ? toolCalls.join("\n\n") : "";
+  });
+  const standalonePattern = /<\|tool_call_begin\|>functions\.([\w-]+)(?::\d+)?<\|tool_call_args\|>([\s\S]*?)<\|tool_call_end\|>/g;
+  result = result.replace(standalonePattern, (match, toolName, argsJson) => {
+    try {
+      const args = JSON.parse(argsJson.trim());
+      return `\`\`\`json
+{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}
+\`\`\``;
+    } catch (e) {
+      log.warn("[FormatConverter] Failed to parse standalone args:", argsJson);
+      return match;
+    }
+  });
+  const markdownToolPattern = /```\s*functions\.([a-zA-Z0-9_-]+)\s*(\{[\s\S]*?\})\s*```/g;
+  result = result.replace(markdownToolPattern, (match, toolName, argsJson) => {
+    try {
+      let braceCount = 0;
+      let jsonEnd = 0;
+      for (let i = 0; i < argsJson.length; i++) {
+        if (argsJson[i] === "{") braceCount++;
+        else if (argsJson[i] === "}") {
+          braceCount--;
+          if (braceCount === 0) {
+            jsonEnd = i + 1;
+            break;
+          }
+        }
+      }
+      const validJson = argsJson.substring(0, jsonEnd);
+      const args = JSON.parse(validJson.trim());
+      return `\`\`\`json
+{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}
+\`\`\``;
+    } catch (e) {
+      log.warn("[FormatConverter] Failed to parse markdown tool args:", argsJson);
+      return match;
+    }
+  });
+  const inlineToolPattern = /```functions\.([a-zA-Z0-9_-]+):(\d+)\s*(\{[\s\S]*?\})\s*```/g;
+  result = result.replace(inlineToolPattern, (match, toolName, index, argsJson) => {
+    try {
+      const args = JSON.parse(argsJson.trim());
+      return `\`\`\`json
+{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}
+\`\`\``;
+    } catch (e) {
+      log.warn("[FormatConverter] Failed to parse inline tool args:", argsJson);
+      return match;
+    }
+  });
+  const simpleInlinePattern = /functions\.([a-zA-Z0-9_-]+)(?::\d+)?\s*(\{[^\n]*?\})/g;
+  result = result.replace(simpleInlinePattern, (match, toolName, argsJson) => {
+    try {
+      const openBraces = (argsJson.match(/\{/g) || []).length;
+      const closeBraces = (argsJson.match(/\}/g) || []).length;
+      if (openBraces !== closeBraces || openBraces === 0) {
+        return match;
+      }
+      const args = JSON.parse(argsJson.trim());
+      return `\`\`\`json
+{"tool": "${toolName}", "arguments": ${JSON.stringify(args)}}
+\`\`\``;
+    } catch (e) {
+      return match;
+    }
+  });
+  return result;
+}
 function getSessionsDir() {
-  const dir = path.join(electron.app.getPath("userData"), "sessions");
+  const dir = path__namespace.join(electron.app.getPath("userData"), "sessions");
   if (!fs__namespace.existsSync(dir)) {
     fs__namespace.mkdirSync(dir, { recursive: true });
   }
@@ -2029,7 +3832,7 @@ function getSessionsDir() {
 }
 function saveSession(session) {
   const dir = getSessionsDir();
-  const sessionPath = path.join(dir, `${session.id}.json`);
+  const sessionPath = path__namespace.join(dir, `${session.id}.json`);
   try {
     fs__namespace.writeFileSync(sessionPath, JSON.stringify(session, null, 2), "utf-8");
   } catch (e) {
@@ -2038,7 +3841,7 @@ function saveSession(session) {
 }
 function deleteSessionFromDisk(sessionId) {
   const dir = getSessionsDir();
-  const sessionPath = path.join(dir, `${sessionId}.json`);
+  const sessionPath = path__namespace.join(dir, `${sessionId}.json`);
   try {
     if (fs__namespace.existsSync(sessionPath)) {
       fs__namespace.unlinkSync(sessionPath);
@@ -2049,15 +3852,22 @@ function deleteSessionFromDisk(sessionId) {
 }
 async function startApiServer() {
   const expressApp = express();
-  expressApp.use(express.json());
+  expressApp.use(express.json({ limit: "100mb" }));
+  expressApp.use(express.urlencoded({ limit: "100mb", extended: true }));
   expressApp.use((_req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    next();
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    if (_req.method === "OPTIONS") {
+      res.sendStatus(200);
+    } else {
+      next();
+    }
   });
   const commandsService = getCommandsService();
   const toolsService = getToolsService();
-  log.info(`API Server initialized: ${commandsService.getCount()} commands, ${toolsService.getCount()} tools`);
+  registerAllTools();
+  log.info(`API Server initialized: ${commandsService.getCount()} commands, ${toolsService.getCount()} tools, ${toolRegistry$1.count()} executors`);
   expressApp.get("/api/health", (_req, res) => {
     res.json({
       status: "ok",
@@ -2134,6 +3944,212 @@ async function startApiServer() {
     matches.sort((a, b) => b.score - a.score);
     res.json({ matches: matches.slice(0, 5) });
   });
+  expressApp.get("/api/port/manifest", (_req, res) => {
+    const manifest = buildPortManifest();
+    res.json({ manifest: manifest.toMarkdown() });
+  });
+  expressApp.get("/api/port/commands", (req, res) => {
+    const limit = parseInt(req.query.limit) || 20;
+    const query = req.query.query;
+    const noPluginCommands = req.query.noPluginCommands === "true";
+    const noSkillCommands = req.query.noSkillCommands === "true";
+    if (query) {
+      res.json({ commands: findCommands(query, limit) });
+    } else {
+      const commands = getCommands(void 0, !noPluginCommands, !noSkillCommands);
+      res.json({
+        count: commands.length,
+        commands: commands.slice(0, limit)
+      });
+    }
+  });
+  expressApp.get("/api/port/tools", (req, res) => {
+    const limit = parseInt(req.query.limit) || 20;
+    const query = req.query.query;
+    const simpleMode = req.query.simpleMode === "true";
+    const noMcp = req.query.noMcp === "true";
+    const denyTool = (req.query.denyTool || "").split(",").filter(Boolean);
+    const denyPrefix = (req.query.denyPrefix || "").split(",").filter(Boolean);
+    const permissionContext = ToolPermissionContextImpl.fromIterables(denyTool, denyPrefix);
+    if (query) {
+      res.json({ tools: findTools(query, limit) });
+    } else {
+      const tools = getTools(simpleMode, !noMcp, permissionContext);
+      res.json({
+        count: tools.length,
+        tools: tools.slice(0, limit)
+      });
+    }
+  });
+  expressApp.post("/api/port/route", (req, res) => {
+    const { prompt, limit = 5 } = req.body;
+    if (!prompt) {
+      res.status(400).json({ error: "Prompt is required" });
+      return;
+    }
+    const runtime = new PortRuntime();
+    const matches = runtime.routePrompt(prompt, limit);
+    res.json({
+      matches: matches.map((m) => ({
+        kind: m.kind,
+        name: m.name,
+        source_hint: m.sourceHint,
+        score: m.score
+      }))
+    });
+  });
+  expressApp.post("/api/port/bootstrap", (req, res) => {
+    const { prompt, limit = 5 } = req.body;
+    if (!prompt) {
+      res.status(400).json({ error: "Prompt is required" });
+      return;
+    }
+    const runtime = new PortRuntime();
+    const session = runtime.bootstrapSession(prompt, limit);
+    res.json({
+      session: {
+        prompt: session.prompt,
+        context: session.context,
+        setup: session.setup,
+        routedMatches: session.routedMatches,
+        turnResult: session.turnResult,
+        persistedSessionPath: session.persistedSessionPath
+      }
+    });
+  });
+  expressApp.post("/api/port/turn-loop", (req, res) => {
+    const { prompt, limit = 5, maxTurns = 3, structuredOutput = false } = req.body;
+    if (!prompt) {
+      res.status(400).json({ error: "Prompt is required" });
+      return;
+    }
+    const runtime = new PortRuntime();
+    const results = runtime.runTurnLoop(prompt, limit, maxTurns, structuredOutput);
+    res.json({ results });
+  });
+  expressApp.post("/api/port/bootstrap/stream", (req, res) => {
+    const { prompt, limit = 5 } = req.body;
+    if (!prompt) {
+      res.status(400).json({ error: "Prompt is required" });
+      return;
+    }
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    const runtime = new PortRuntime();
+    const matches = runtime.routePrompt(prompt, limit);
+    const engine = QueryEnginePort.fromWorkspace();
+    const denials = matches.filter((m) => m.kind === "tool" && m.name.toLowerCase().includes("bash")).map((m) => ({ toolName: m.name, reason: "Destructive shell execution remains gated" }));
+    const generator = engine.streamSubmitMessage(
+      prompt,
+      matches.filter((m) => m.kind === "command").map((m) => m.name),
+      matches.filter((m) => m.kind === "tool").map((m) => m.name),
+      denials
+    );
+    for (const event of generator) {
+      res.write(`data: ${JSON.stringify(event)}
+
+`);
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  });
+  expressApp.post("/api/port/exec-command", (req, res) => {
+    const { name, prompt = "" } = req.body;
+    if (!name) {
+      res.status(400).json({ error: "Command name is required" });
+      return;
+    }
+    const result = executeCommand(name, prompt);
+    res.json({ result });
+  });
+  expressApp.post("/api/port/exec-tool", (req, res) => {
+    const { name, payload = "" } = req.body;
+    if (!name) {
+      res.status(400).json({ error: "Tool name is required" });
+      return;
+    }
+    const result = executeTool(name, payload);
+    res.json({ result });
+  });
+  expressApp.get("/api/port/sessions", (_req, res) => {
+    const sessions2 = listSessions();
+    res.json({ sessions: sessions2 });
+  });
+  expressApp.post("/api/port/sessions", (_req, res) => {
+    const sessionId = uuid.v4();
+    const session = createStoredSession(sessionId);
+    saveSession$1(session);
+    log.info(`[API] Created new port session: ${sessionId}`);
+    res.json({ session });
+  });
+  expressApp.get("/api/port/sessions/:id", (req, res) => {
+    const session = loadSession(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({ session });
+  });
+  expressApp.delete("/api/port/sessions/:id", (req, res) => {
+    const success = deleteSession(req.params.id);
+    if (!success) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    res.json({ success: true });
+  });
+  expressApp.get("/api/project-context", async (req, res) => {
+    const projectPath = req.query.path;
+    if (!projectPath) {
+      res.status(400).json({ error: "path query parameter is required" });
+      return;
+    }
+    try {
+      if (shouldRefreshContext(projectPath)) {
+        log.info(`[API] Scanning project context for: ${projectPath}`);
+        await scanProject(projectPath);
+      }
+      const context = getProjectContext();
+      if (!context) {
+        res.status(404).json({ error: "Failed to scan project" });
+        return;
+      }
+      const aiContext = getProjectStructureForAI(true, 4);
+      res.json({
+        context: aiContext,
+        stats: context.stats,
+        scannedAt: context.scannedAt
+      });
+    } catch (error) {
+      log.error("[API] Failed to get project context:", error);
+      res.status(500).json({ error: String(error) });
+    }
+  });
+  expressApp.post("/api/project-context/refresh", async (req, res) => {
+    const { path: projectPath } = req.body;
+    if (!projectPath) {
+      res.status(400).json({ error: "path is required" });
+      return;
+    }
+    try {
+      log.info(`[API] Refreshing project context for: ${projectPath}`);
+      const context = await refreshProjectContext(projectPath);
+      const aiContext = getProjectStructureForAI(true, 4);
+      res.json({
+        context: aiContext,
+        stats: context.stats,
+        scannedAt: context.scannedAt
+      });
+    } catch (error) {
+      log.error("[API] Failed to refresh project context:", error);
+      res.status(500).json({ error: String(error) });
+    }
+  });
+  expressApp.post("/api/project-context/clear", (_req, res) => {
+    clearProjectContext();
+    res.json({ success: true });
+  });
   expressApp.get("/api/subsystems", (_req, res) => {
     res.json([
       { name: "commands", file_count: commandsService.getCount(), notes: "Command surface" },
@@ -2141,12 +4157,15 @@ async function startApiServer() {
       { name: "runtime", file_count: 1, notes: "Runtime orchestration" },
       { name: "query_engine", file_count: 1, notes: "Query engine" },
       { name: "session_store", file_count: 1, notes: "Session storage" },
-      { name: "permissions", file_count: 1, notes: "Permission management" }
+      { name: "permissions", file_count: 1, notes: "Permission management" },
+      { name: "ported_commands", file_count: PORTED_COMMANDS.length, notes: "Ported command surface" },
+      { name: "ported_tools", file_count: PORTED_TOOLS.length, notes: "Ported tool surface" }
     ]);
   });
   expressApp.post("/api/chat", async (req, res) => {
     try {
       const { apiKey, model, messages, tools, stream = false } = req.body;
+      log.info("[API] /api/chat called with", messages?.length, "messages");
       if (!apiKey) {
         res.status(400).json({ error: "API key is required" });
         return;
@@ -2165,11 +4184,24 @@ async function startApiServer() {
         res.end();
       } else {
         const response = await sendChatMessage({ apiKey, model, messages, tools, stream });
+        writeDebugLog("ORIGINAL_RESPONSE", response.content);
+        let convertedContent = response.content;
+        if (typeof convertedContent === "string") {
+          convertedContent = convertSpecialFormatToJSON(convertedContent);
+        } else if (Array.isArray(convertedContent)) {
+          convertedContent = convertedContent.map((item) => {
+            if (typeof item === "object" && item !== null && "text" in item) {
+              return { ...item, text: convertSpecialFormatToJSON(item.text) };
+            }
+            return item;
+          });
+        }
+        writeDebugLog("CONVERTED_RESPONSE", convertedContent);
         const result = {
           id: response.id,
           type: response.type,
           role: response.role,
-          content: response.content,
+          content: convertedContent,
           model: response.model,
           stop_reason: response.stop_reason,
           usage: response.usage
@@ -2188,32 +4220,21 @@ async function startApiServer() {
     res.json({ tools: CODE_TOOLS });
   });
   expressApp.post("/api/tools/execute", async (req, res) => {
-    const { tool_calls } = req.body;
+    const { tool_calls, cwd } = req.body;
     if (!tool_calls || !Array.isArray(tool_calls)) {
       res.status(400).json({ error: "tool_calls array is required" });
       return;
     }
-    const results = [];
-    for (const toolCall of tool_calls) {
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-        const result = await executeTool(toolCall.function.name, args);
-        results.push({
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: toolCall.function.name,
-          content: result.success ? result.output : `Error: ${result.error || "Unknown error"}`
-        });
-      } catch (error) {
-        results.push({
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: toolCall.function.name,
-          content: `Error executing tool: ${String(error)}`
-        });
-      }
+    try {
+      const workingDir = cwd || getCurrentWorkingDirectory();
+      const results = await executeToolCalls(tool_calls, {
+        cwd: workingDir
+      });
+      res.json({ results });
+    } catch (error) {
+      log.error("Tool execution error:", error);
+      res.status(500).json({ error: String(error) });
     }
-    res.json({ results });
   });
   expressApp.post("/api/tools/execute-direct", async (req, res) => {
     const { tool, arguments: args, cwd } = req.body;
@@ -2222,14 +4243,51 @@ async function startApiServer() {
       return;
     }
     try {
+      const workingDir = cwd || getCurrentWorkingDirectory();
       if (cwd) {
         setCurrentWorkingDirectory(cwd);
       }
-      log.info(`Executing tool ${tool} with args:`, args, "in cwd:", cwd || getCurrentWorkingDirectory());
-      const result = await executeTool(tool, args || {});
+      log.info(`[API] Executing tool ${tool} with args:`, args, "in cwd:", workingDir);
+      writeDebugLog(`TOOL_EXECUTE_${tool}`, { args, cwd: workingDir });
+      const startTime = Date.now();
+      const result = await executeTool$1(tool, args || {}, workingDir);
+      const duration = Date.now() - startTime;
+      log.info(`[API] Tool ${tool} completed in ${duration}ms, success:`, result.success);
+      writeDebugLog(`TOOL_RESULT_${tool}`, { result, duration });
       res.json({ result });
     } catch (error) {
       log.error("Tool execution error:", error);
+      writeDebugLog(`TOOL_ERROR_${tool}`, { error: String(error), stack: error instanceof Error ? error.stack : void 0 });
+      res.status(500).json({ error: String(error) });
+    }
+  });
+  expressApp.post("/api/tools/parse-and-execute", async (req, res) => {
+    const { text, cwd } = req.body;
+    if (!text) {
+      res.status(400).json({ error: "text is required" });
+      return;
+    }
+    try {
+      const workingDir = cwd || getCurrentWorkingDirectory();
+      const toolCalls = parseToolCallsFromText(text);
+      if (toolCalls.length === 0) {
+        res.json({ toolCalls: [], results: [] });
+        return;
+      }
+      const toolCallArray = toolCalls.map((call, index) => ({
+        id: `call_${index + 1}_${Date.now()}`,
+        type: "function",
+        function: {
+          name: call.tool,
+          arguments: call.arguments
+        }
+      }));
+      const results = await executeToolCalls(toolCallArray, {
+        cwd: workingDir
+      });
+      res.json({ toolCalls, results });
+    } catch (error) {
+      log.error("Parse and execute error:", error);
       res.status(500).json({ error: String(error) });
     }
   });
@@ -2292,7 +4350,7 @@ async function startApiServer() {
         res.status(404).json({ error: `Command not found: ${command}` });
         return;
       }
-      const execResult = await executeCommand(command, prompt || "");
+      const execResult = await executeCommand$1(command, prompt || "");
       const result = {
         command: cmd.name,
         source_hint: cmd.source_hint,
@@ -2343,7 +4401,8 @@ async function startApiServer() {
       return;
     }
     try {
-      const content = readFile(filePath);
+      const resolvedPath = path__namespace.isAbsolute(filePath) ? filePath : path__namespace.join(getCurrentWorkingDirectory() || process.cwd(), filePath);
+      const content = readFile(resolvedPath);
       res.json({ content });
     } catch (error) {
       log.error("Failed to read file:", error);
@@ -2364,7 +4423,7 @@ async function startApiServer() {
       res.status(500).json({ error: String(error) });
     }
   });
-  expressApp.post("/api/tools/execute", async (req, res) => {
+  expressApp.post("/api/tools/execute-legacy", async (req, res) => {
     const { tool, parameters } = req.body;
     try {
       let result;
@@ -2640,15 +4699,775 @@ function getStorePath() {
   const s = getStore();
   return s.path;
 }
+class CommandRegistry {
+  commands = /* @__PURE__ */ new Map();
+  /**
+   * 注册命令
+   */
+  register(command) {
+    this.commands.set(command.name.toLowerCase(), command);
+    log.info(`[CommandRegistry] Registered command: ${command.name}`);
+  }
+  /**
+   * 注销命令
+   */
+  unregister(name) {
+    this.commands.delete(name.toLowerCase());
+    log.info(`[CommandRegistry] Unregistered command: ${name}`);
+  }
+  /**
+   * 获取命令
+   */
+  get(name) {
+    return this.commands.get(name.toLowerCase());
+  }
+  /**
+   * 获取所有命令
+   */
+  getAll() {
+    return Array.from(this.commands.values());
+  }
+  /**
+   * 检查命令是否存在
+   */
+  has(name) {
+    return this.commands.has(name.toLowerCase());
+  }
+  /**
+   * 搜索命令
+   */
+  search(query, limit = 20) {
+    const needle = query.toLowerCase();
+    const matches = this.getAll().filter(
+      (cmd) => cmd.name.toLowerCase().includes(needle) || cmd.sourceHint.toLowerCase().includes(needle) || cmd.responsibility.toLowerCase().includes(needle)
+    );
+    return matches.slice(0, limit);
+  }
+  /**
+   * 路由提示到匹配的命令
+   */
+  routePrompt(prompt, limit = 5) {
+    const tokens = new Set(
+      prompt.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter((t) => t.length > 0)
+    );
+    const matches = [];
+    for (const cmd of this.getAll()) {
+      const haystacks = [cmd.name.toLowerCase(), cmd.sourceHint.toLowerCase(), cmd.responsibility.toLowerCase()];
+      let score = 0;
+      for (const token of Array.from(tokens)) {
+        if (haystacks.some((h) => h.includes(token))) {
+          score += 1;
+        }
+      }
+      if (score > 0) {
+        matches.push({ kind: "command", name: cmd.name, score, sourceHint: cmd.sourceHint });
+      }
+    }
+    return matches.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+  /**
+   * 执行命令
+   */
+  async execute(name, prompt, context) {
+    const command = this.get(name);
+    if (!command) {
+      return {
+        success: false,
+        handled: false,
+        message: `Unknown command: ${name}`
+      };
+    }
+    try {
+      return await command.execute(prompt, context);
+    } catch (error) {
+      log.error(`[CommandRegistry] Error executing command ${name}:`, error);
+      return {
+        success: false,
+        handled: true,
+        message: `Error executing command ${name}: ${String(error)}`
+      };
+    }
+  }
+}
+const commandRegistry = new CommandRegistry();
+function getAllCommands() {
+  return commandRegistry.getAll();
+}
+class ToolRegistry2 {
+  tools = /* @__PURE__ */ new Map();
+  deniedPrefixes = [];
+  deniedTools = [];
+  /**
+   * 注册工具
+   */
+  register(tool) {
+    this.tools.set(tool.name.toLowerCase(), tool);
+    log.info(`[ToolRegistry] Registered tool: ${tool.name}`);
+  }
+  /**
+   * 注销工具
+   */
+  unregister(name) {
+    this.tools.delete(name.toLowerCase());
+    log.info(`[ToolRegistry] Unregistered tool: ${name}`);
+  }
+  /**
+   * 获取工具
+   */
+  get(name) {
+    return this.tools.get(name.toLowerCase());
+  }
+  /**
+   * 获取所有工具
+   */
+  getAll() {
+    return Array.from(this.tools.values());
+  }
+  /**
+   * 检查工具是否存在
+   */
+  has(name) {
+    return this.tools.has(name.toLowerCase());
+  }
+  /**
+   * 设置权限控制
+   */
+  setPermissions(deniedTools = [], deniedPrefixes = []) {
+    this.deniedTools = deniedTools.map((t) => t.toLowerCase());
+    this.deniedPrefixes = deniedPrefixes.map((p) => p.toLowerCase());
+  }
+  /**
+   * 检查工具是否被允许
+   */
+  isAllowed(name) {
+    const lowerName = name.toLowerCase();
+    if (this.deniedTools.includes(lowerName)) {
+      return { allowed: false, reason: `Tool '${name}' is explicitly denied` };
+    }
+    for (const prefix of this.deniedPrefixes) {
+      if (lowerName.startsWith(prefix)) {
+        return { allowed: false, reason: `Tool '${name}' matches denied prefix '${prefix}'` };
+      }
+    }
+    return { allowed: true };
+  }
+  /**
+   * 搜索工具
+   */
+  search(query, limit = 20) {
+    const needle = query.toLowerCase();
+    const matches = this.getAll().filter(
+      (tool) => tool.name.toLowerCase().includes(needle) || tool.sourceHint.toLowerCase().includes(needle) || tool.responsibility.toLowerCase().includes(needle)
+    );
+    return matches.slice(0, limit);
+  }
+  /**
+   * 路由提示到匹配的工具
+   */
+  routePrompt(prompt, limit = 5) {
+    const tokens = new Set(
+      prompt.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter((t) => t.length > 0)
+    );
+    const matches = [];
+    for (const tool of this.getAll()) {
+      const haystacks = [tool.name.toLowerCase(), tool.sourceHint.toLowerCase(), tool.responsibility.toLowerCase()];
+      let score = 0;
+      for (const token of Array.from(tokens)) {
+        if (haystacks.some((h) => h.includes(token))) {
+          score += 1;
+        }
+      }
+      if (score > 0) {
+        matches.push({ kind: "tool", name: tool.name, score, sourceHint: tool.sourceHint });
+      }
+    }
+    return matches.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+  /**
+   * 执行工具
+   */
+  async execute(name, args, context) {
+    const tool = this.get(name);
+    if (!tool) {
+      return {
+        success: false,
+        output: "",
+        error: `Unknown tool: ${name}`
+      };
+    }
+    const permission = this.isAllowed(name);
+    if (!permission.allowed) {
+      return {
+        success: false,
+        output: "",
+        error: `Permission denied: ${permission.reason}`
+      };
+    }
+    if (context.permissionMode === "strict" && name.toLowerCase().includes("bash")) {
+      return {
+        success: false,
+        output: "",
+        error: `Permission denied: bash execution is gated in strict mode`
+      };
+    }
+    try {
+      return await tool.execute(args, context);
+    } catch (error) {
+      log.error(`[ToolRegistry] Error executing tool ${name}:`, error);
+      return {
+        success: false,
+        output: "",
+        error: `Error executing tool ${name}: ${String(error)}`
+      };
+    }
+  }
+  /**
+   * 验证工具参数
+   */
+  validateArgs(tool, args) {
+    const errors = [];
+    for (const required of tool.required) {
+      if (!(required in args) || args[required] === void 0 || args[required] === null) {
+        errors.push(`Missing required parameter: ${required}`);
+      }
+    }
+    for (const [key, value] of Object.entries(args)) {
+      const paramDef = tool.parameters[key];
+      if (!paramDef) {
+        errors.push(`Unknown parameter: ${key}`);
+        continue;
+      }
+      if (paramDef.type === "string" && typeof value !== "string") {
+        errors.push(`Parameter ${key} must be a string`);
+      } else if (paramDef.type === "number" && typeof value !== "number") {
+        errors.push(`Parameter ${key} must be a number`);
+      } else if (paramDef.type === "boolean" && typeof value !== "boolean") {
+        errors.push(`Parameter ${key} must be a boolean`);
+      } else if (paramDef.type === "array" && !Array.isArray(value)) {
+        errors.push(`Parameter ${key} must be an array`);
+      }
+      if (paramDef.enum && !paramDef.enum.includes(String(value))) {
+        errors.push(`Parameter ${key} must be one of: ${paramDef.enum.join(", ")}`);
+      }
+    }
+    return { valid: errors.length === 0, errors };
+  }
+  /**
+   * 转换为 OpenAI 格式
+   */
+  toOpenAIDefinitions() {
+    return this.getAll().map((tool) => ({
+      type: "function",
+      function: {
+        name: tool.name,
+        description: tool.responsibility,
+        parameters: {
+          type: "object",
+          properties: tool.parameters,
+          required: tool.required
+        }
+      }
+    }));
+  }
+}
+const toolRegistry = new ToolRegistry2();
+function getAllTools() {
+  return toolRegistry.getAll();
+}
+class RuntimeEngine {
+  sessions = /* @__PURE__ */ new Map();
+  config;
+  constructor(config = {}) {
+    this.config = {
+      maxTurns: 8,
+      maxBudgetTokens: 2e3,
+      permissionMode: "moderate",
+      compactAfterTurns: 12,
+      ...config
+    };
+  }
+  /**
+   * 创建新会话
+   */
+  createSession(prompt, cwd) {
+    const session = {
+      id: uuid.v4(),
+      prompt,
+      cwd,
+      createdAt: /* @__PURE__ */ new Date(),
+      messages: [],
+      commandResults: [],
+      toolResults: [],
+      permissionDenials: [],
+      inputTokens: 0,
+      outputTokens: 0
+    };
+    this.sessions.set(session.id, session);
+    log.info(`[RuntimeEngine] Created session: ${session.id}`);
+    return session;
+  }
+  /**
+   * 获取会话
+   */
+  getSession(id) {
+    return this.sessions.get(id);
+  }
+  /**
+   * 获取所有会话
+   */
+  getAllSessions() {
+    return Array.from(this.sessions.values());
+  }
+  /**
+   * 路由提示到匹配的命令和工具
+   */
+  routePrompt(prompt, limit = 5) {
+    const commandMatches = commandRegistry.routePrompt(prompt, limit);
+    const toolMatches = toolRegistry.routePrompt(prompt, limit);
+    const allMatches = [
+      ...commandMatches.map((m) => ({ ...m, kind: "command" })),
+      ...toolMatches.map((m) => ({ ...m, kind: "tool" }))
+    ];
+    return allMatches.sort((a, b) => b.score - a.score).slice(0, limit);
+  }
+  /**
+   * 执行单个回合
+   */
+  async executeTurn(sessionId, prompt) {
+    const session = this.getSession(sessionId);
+    if (!session) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+    if (session.messages.length >= this.config.maxTurns) {
+      return {
+        prompt,
+        output: `Max turns (${this.config.maxTurns}) reached`,
+        matchedCommands: [],
+        matchedTools: [],
+        permissionDenials: [],
+        inputTokens: session.inputTokens,
+        outputTokens: session.outputTokens,
+        stopReason: "max_turns_reached"
+      };
+    }
+    const matches = this.routePrompt(prompt, 5);
+    const commandNames = matches.filter((m) => m.kind === "command").map((m) => m.name);
+    const toolNames = matches.filter((m) => m.kind === "tool").map((m) => m.name);
+    const commandContext = {
+      cwd: session.cwd,
+      sessionId: session.id,
+      config: {}
+    };
+    for (const name of commandNames) {
+      const result = await commandRegistry.execute(name, prompt, commandContext);
+      session.commandResults.push(result);
+    }
+    const toolContext = {
+      cwd: session.cwd,
+      sessionId: session.id,
+      permissionMode: this.config.permissionMode
+    };
+    const permissionDenials = [];
+    for (const name of toolNames) {
+      const permission = toolRegistry.isAllowed(name);
+      if (!permission.allowed) {
+        permissionDenials.push({ toolName: name, reason: permission.reason });
+        continue;
+      }
+      const result = await toolRegistry.execute(name, {}, toolContext);
+      session.toolResults.push(result);
+    }
+    session.permissionDenials.push(...permissionDenials);
+    const outputLines = [
+      `Prompt: ${prompt}`,
+      `Matched commands: ${commandNames.join(", ") || "none"}`,
+      `Matched tools: ${toolNames.join(", ") || "none"}`,
+      `Permission denials: ${permissionDenials.length}`
+    ];
+    for (const result of session.commandResults.slice(-commandNames.length)) {
+      if (result.handled) {
+        outputLines.push(`[Command] ${result.message}`);
+      }
+    }
+    for (const result of session.toolResults.slice(-toolNames.length)) {
+      outputLines.push(`[Tool] ${result.success ? "Success" : "Failed"}: ${result.output || result.error}`);
+    }
+    const output = outputLines.join("\n");
+    session.messages.push({ role: "user", content: prompt });
+    session.messages.push({ role: "assistant", content: output });
+    session.inputTokens += prompt.length / 4;
+    session.outputTokens += output.length / 4;
+    const totalTokens = session.inputTokens + session.outputTokens;
+    const stopReason = totalTokens > this.config.maxBudgetTokens ? "max_budget_reached" : "completed";
+    session.stopReason = stopReason;
+    this.compactSessionIfNeeded(session);
+    return {
+      prompt,
+      output,
+      matchedCommands: commandNames,
+      matchedTools: toolNames,
+      permissionDenials,
+      inputTokens: session.inputTokens,
+      outputTokens: session.outputTokens,
+      stopReason
+    };
+  }
+  /**
+   * 运行多回合循环
+   */
+  async runTurnLoop(prompt, cwd, maxTurns) {
+    const session = this.createSession(prompt, cwd);
+    const results = [];
+    const turns = maxTurns || this.config.maxTurns;
+    for (let i = 0; i < turns; i++) {
+      const turnPrompt = i === 0 ? prompt : `${prompt} [turn ${i + 1}]`;
+      const result = await this.executeTurn(session.id, turnPrompt);
+      results.push(result);
+      if (result.stopReason !== "completed") {
+        break;
+      }
+    }
+    return results;
+  }
+  /**
+   * 压缩会话消息历史
+   */
+  compactSessionIfNeeded(session) {
+    if (session.messages.length > this.config.compactAfterTurns) {
+      const systemMessages = session.messages.filter((m) => m.role === "system");
+      const recentMessages = session.messages.slice(-this.config.compactAfterTurns);
+      session.messages = [...systemMessages, ...recentMessages];
+      log.info(`[RuntimeEngine] Compacted session ${session.id}`);
+    }
+  }
+  /**
+   * 渲染会话摘要
+   */
+  renderSessionSummary(sessionId) {
+    const session = this.getSession(sessionId);
+    if (!session) {
+      return `Session not found: ${sessionId}`;
+    }
+    const lines = [
+      "# Runtime Session",
+      "",
+      `Session ID: ${session.id}`,
+      `Prompt: ${session.prompt}`,
+      `Working Directory: ${session.cwd}`,
+      `Created At: ${session.createdAt.toISOString()}`,
+      "",
+      "## Statistics",
+      `- Messages: ${session.messages.length}`,
+      `- Command Executions: ${session.commandResults.length}`,
+      `- Tool Executions: ${session.toolResults.length}`,
+      `- Permission Denials: ${session.permissionDenials.length}`,
+      `- Input Tokens: ${session.inputTokens}`,
+      `- Output Tokens: ${session.outputTokens}`,
+      `- Stop Reason: ${session.stopReason || "N/A"}`,
+      ""
+    ];
+    if (session.permissionDenials.length > 0) {
+      lines.push("## Permission Denials");
+      for (const denial of session.permissionDenials) {
+        lines.push(`- ${denial.toolName}: ${denial.reason}`);
+      }
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+  /**
+   * 删除会话
+   */
+  deleteSession(id) {
+    const deleted = this.sessions.delete(id);
+    if (deleted) {
+      log.info(`[RuntimeEngine] Deleted session: ${id}`);
+    }
+    return deleted;
+  }
+  /**
+   * 清理所有会话
+   */
+  cleanup() {
+    this.sessions.clear();
+    log.info("[RuntimeEngine] Cleaned up all sessions");
+  }
+}
+const runtimeEngine = new RuntimeEngine();
+function createSession(prompt, cwd) {
+  return runtimeEngine.createSession(prompt, cwd);
+}
+function runTurnLoop(prompt, cwd, maxTurns) {
+  return runtimeEngine.runTurnLoop(prompt, cwd, maxTurns);
+}
+const packagePath = path.join(__dirname, "../../../../package.json");
+let version = "0.1.0";
+try {
+  const pkg = JSON.parse(fs.readFileSync(packagePath, "utf-8"));
+  version = pkg.version;
+} catch {
+}
+let programInstance = null;
+function getCLIProgram() {
+  if (!programInstance) {
+    initConfigStore();
+    programInstance = createCLIProgram();
+  }
+  return programInstance;
+}
+function createCLIProgram() {
+  const program = new commander.Command();
+  program.name("smp-code").description("SMP Code - AI-powered coding assistant CLI").version(version).option("-v, --verbose", "verbose output").option("--cwd <path>", "working directory", process.cwd());
+  program.command("chat").description("Start an interactive chat session").option("-m, --model <model>", "AI model to use").option("-s, --session <id>", "resume existing session").action(async (options) => {
+    try {
+      log.info("[CLI] Starting chat session...");
+      const config = loadConfig();
+      console.log("╔════════════════════════════════════╗");
+      console.log("║     SMP Code - Interactive Chat    ║");
+      console.log("╚════════════════════════════════════╝");
+      console.log(`Working Directory: ${program.opts().cwd}`);
+      console.log(`Model: ${options.model || config.defaultModel || "default"}`);
+      console.log('\nType your message or "exit" to quit.\n');
+      const session = createSession("Interactive chat", program.opts().cwd);
+      console.log(`Session created: ${session.id}`);
+      console.log("\nNote: Full interactive mode requires readline integration.");
+      console.log('Use "smp-code run <prompt>" for single-turn execution.');
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  program.command("run <prompt>").description("Execute a single prompt").option("-t, --turns <n>", "maximum number of turns", "3").option("--strict", "strict permission mode").option("--json", "output as JSON").action(async (prompt, options) => {
+    try {
+      log.info(`[CLI] Executing prompt: ${prompt}`);
+      const cwd = program.opts().cwd;
+      const maxTurns = parseInt(options.turns, 10);
+      console.log(`Executing: "${prompt}"`);
+      console.log(`Working Directory: ${cwd}`);
+      console.log(`Max Turns: ${maxTurns}`);
+      console.log("─".repeat(50));
+      const results = await runTurnLoop(prompt, cwd, maxTurns);
+      if (options.json) {
+        console.log(JSON.stringify(results, null, 2));
+      } else {
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          console.log(`
+## Turn ${i + 1}`);
+          console.log(result.output);
+          console.log(`
+Stop Reason: ${result.stopReason}`);
+          console.log(`Tokens: ${result.inputTokens} in / ${result.outputTokens} out`);
+        }
+      }
+      const lastResult = results[results.length - 1];
+      console.log("\n" + "─".repeat(50));
+      console.log(`Total Turns: ${results.length}`);
+      console.log(`Final Stop Reason: ${lastResult.stopReason}`);
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  program.command("exec <command>").description("Execute a specific command").option("-p, --prompt <text>", "prompt for the command", "").option("--json", "output as JSON").action(async (commandName, options) => {
+    try {
+      log.info(`[CLI] Executing command: ${commandName}`);
+      const cwd = program.opts().cwd;
+      const result = await commandRegistry.execute(commandName, options.prompt, {
+        cwd,
+        config: loadConfig()
+      });
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(result.message);
+        if (!result.success) {
+          process.exit(1);
+        }
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  program.command("status").description("Show system status").option("--json", "output as JSON").action(async (options) => {
+    try {
+      const config = loadConfig();
+      const commands = getAllCommands();
+      const tools = getAllTools();
+      const sessions2 = runtimeEngine.getAllSessions();
+      const status = {
+        version,
+        cwd: program.opts().cwd,
+        config: {
+          providers: config.providers?.length || 0,
+          defaultModel: config.defaultModel || "not set"
+        },
+        registry: {
+          commands: commands.length,
+          tools: tools.length
+        },
+        sessions: {
+          active: sessions2.length,
+          totalTokens: sessions2.reduce((sum, s) => sum + s.inputTokens + s.outputTokens, 0)
+        }
+      };
+      if (options.json) {
+        console.log(JSON.stringify(status, null, 2));
+      } else {
+        console.log("╔════════════════════════════════════╗");
+        console.log("║         SMP Code Status            ║");
+        console.log("╚════════════════════════════════════╝");
+        console.log(`Version: ${status.version}`);
+        console.log(`Working Directory: ${status.cwd}`);
+        console.log("\n## Configuration");
+        console.log(`  Providers: ${status.config.providers}`);
+        console.log(`  Default Model: ${status.config.defaultModel}`);
+        console.log("\n## Registry");
+        console.log(`  Commands: ${status.registry.commands}`);
+        console.log(`  Tools: ${status.registry.tools}`);
+        console.log("\n## Sessions");
+        console.log(`  Active: ${status.sessions.active}`);
+        console.log(`  Total Tokens: ${status.sessions.totalTokens}`);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  const configCmd = program.command("config").description("Manage configuration");
+  configCmd.command("show").description("Show current configuration").option("--json", "output as JSON").action(async (options) => {
+    try {
+      const config = loadConfig();
+      if (options.json) {
+        console.log(JSON.stringify(config, null, 2));
+      } else {
+        console.log("╔════════════════════════════════════╗");
+        console.log("║      SMP Code Configuration        ║");
+        console.log("╚════════════════════════════════════╝");
+        console.log(JSON.stringify(config, null, 2));
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  configCmd.command("set <key> <value>").description("Set a configuration value").action(async (key, value) => {
+    try {
+      const config = loadConfig();
+      let parsedValue = value;
+      try {
+        parsedValue = JSON.parse(value);
+      } catch {
+      }
+      const configRecord = config;
+      configRecord[key] = parsedValue;
+      console.log(`Set ${key} = ${JSON.stringify(parsedValue)}`);
+      console.log("Note: Use the GUI or edit config file to persist changes.");
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  program.command("commands").description("List available commands").option("-q, --query <text>", "search query").option("-l, --limit <n>", "limit results", "20").action(async (options) => {
+    try {
+      const limit = parseInt(options.limit, 10);
+      const commands = options.query ? commandRegistry.search(options.query, limit) : getAllCommands().slice(0, limit);
+      console.log(`Command entries: ${commands.length}`);
+      console.log("");
+      for (const cmd of commands) {
+        console.log(`- ${cmd.name} — ${cmd.sourceHint}`);
+        console.log(`  ${cmd.responsibility}`);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  program.command("tools").description("List available tools").option("-q, --query <text>", "search query").option("-l, --limit <n>", "limit results", "20").action(async (options) => {
+    try {
+      const limit = parseInt(options.limit, 10);
+      const tools = options.query ? toolRegistry.search(options.query, limit) : getAllTools().slice(0, limit);
+      console.log(`Tool entries: ${tools.length}`);
+      console.log("");
+      for (const tool of tools) {
+        console.log(`- ${tool.name} — ${tool.sourceHint}`);
+        console.log(`  ${tool.responsibility}`);
+        console.log(`  Parameters: ${Object.keys(tool.parameters).join(", ")}`);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  const sessionCmd = program.command("session").description("Manage sessions");
+  sessionCmd.command("list").description("List active sessions").action(async () => {
+    const sessions2 = runtimeEngine.getAllSessions();
+    console.log(`Active sessions: ${sessions2.length}`);
+    console.log("");
+    for (const session of sessions2) {
+      console.log(`- ${session.id}`);
+      console.log(`  Prompt: ${session.prompt}`);
+      console.log(`  Messages: ${session.messages.length}`);
+      console.log(`  Tokens: ${session.inputTokens} in / ${session.outputTokens} out`);
+    }
+  });
+  sessionCmd.command("show <id>").description("Show session details").action(async (id) => {
+    const summary = runtimeEngine.renderSessionSummary(id);
+    console.log(summary);
+  });
+  sessionCmd.command("delete <id>").description("Delete a session").action(async (id) => {
+    const deleted = runtimeEngine.deleteSession(id);
+    if (deleted) {
+      console.log(`Deleted session: ${id}`);
+    } else {
+      console.error(`Session not found: ${id}`);
+      process.exit(1);
+    }
+  });
+  program.command("route <prompt>").description("Route a prompt and show matches").option("-l, --limit <n>", "limit results", "5").action(async (prompt, options) => {
+    try {
+      const limit = parseInt(options.limit, 10);
+      const matches = runtimeEngine.routePrompt(prompt, limit);
+      console.log(`Prompt: "${prompt}"`);
+      console.log(`Matches: ${matches.length}`);
+      console.log("");
+      for (const match of matches) {
+        console.log(`[${match.kind}] ${match.name} (score: ${match.score})`);
+        console.log(`  Source: ${match.sourceHint}`);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      process.exit(1);
+    }
+  });
+  return program;
+}
+const cliEntry = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  getCLIProgram
+}, Symbol.toStringTag, { value: "Module" }));
 log.transports.file.level = "info";
 log.transports.console.level = "debug";
 log.info("Application starting...");
 process.on("uncaughtException", (error) => {
   log.error("Uncaught exception:", error);
-  electron.app.exit(1);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("app-error", {
+      type: "uncaughtException",
+      message: String(error),
+      stack: error instanceof Error ? error.stack : void 0
+    });
+  }
 });
 process.on("unhandledRejection", (reason) => {
   log.error("Unhandled rejection:", reason);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("app-error", {
+      type: "unhandledRejection",
+      message: String(reason)
+    });
+  }
 });
 let mainWindow = null;
 let isQuitting = false;
@@ -2853,21 +5672,87 @@ function setupIpcHandlers() {
     ];
   });
   electron.ipcMain.handle("route-prompt", (_event, prompt) => {
-    const commands = ["add-dir", "agents", "branch", "btw", "git", "npm", "docker", "build", "test", "deploy"];
-    const tools = ["bash", "file", "glob", "grep", "edit", "write", "read", "mcp"];
-    const matches = [];
-    const lowerPrompt = prompt.toLowerCase();
-    for (const cmd of commands) {
-      if (lowerPrompt.includes(cmd)) {
-        matches.push({ kind: "command", name: cmd, score: 1 });
-      }
+    const matches = runtimeEngine.routePrompt(prompt, 5);
+    return matches;
+  });
+  electron.ipcMain.handle("cli:execute-command", async (_event, { name, prompt, cwd }) => {
+    try {
+      const result = await commandRegistry.execute(name, prompt, {
+        cwd,
+        sessionId: void 0,
+        config: {}
+      });
+      return result;
+    } catch (error) {
+      log.error("Failed to execute command:", error);
+      return {
+        success: false,
+        handled: false,
+        message: `Error: ${String(error)}`
+      };
     }
-    for (const tool of tools) {
-      if (lowerPrompt.includes(tool)) {
-        matches.push({ kind: "tool", name: tool, score: 1 });
-      }
+  });
+  electron.ipcMain.handle("cli:execute-tool", async (_event, { name, args, cwd }) => {
+    try {
+      const result = await toolRegistry.execute(name, args, {
+        cwd,
+        sessionId: void 0,
+        permissionMode: "moderate"
+      });
+      return result;
+    } catch (error) {
+      log.error("Failed to execute tool:", error);
+      return {
+        success: false,
+        output: "",
+        error: String(error)
+      };
     }
-    return matches.slice(0, 5);
+  });
+  electron.ipcMain.handle("cli:create-session", (_event, { prompt, cwd }) => {
+    const session = runtimeEngine.createSession(prompt, cwd);
+    return {
+      id: session.id,
+      prompt: session.prompt,
+      cwd: session.cwd,
+      createdAt: session.createdAt.toISOString()
+    };
+  });
+  electron.ipcMain.handle("cli:execute-turn", async (_event, { sessionId, prompt }) => {
+    try {
+      const result = await runtimeEngine.executeTurn(sessionId, prompt);
+      return result;
+    } catch (error) {
+      log.error("Failed to execute turn:", error);
+      return {
+        prompt,
+        output: `Error: ${String(error)}`,
+        matchedCommands: [],
+        matchedTools: [],
+        permissionDenials: [],
+        inputTokens: 0,
+        outputTokens: 0,
+        stopReason: "error"
+      };
+    }
+  });
+  electron.ipcMain.handle("cli:get-commands", () => {
+    return commandRegistry.getAll().map((cmd) => ({
+      name: cmd.name,
+      description: cmd.description,
+      sourceHint: cmd.sourceHint,
+      responsibility: cmd.responsibility
+    }));
+  });
+  electron.ipcMain.handle("cli:get-tools", () => {
+    return toolRegistry.getAll().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      sourceHint: tool.sourceHint,
+      responsibility: tool.responsibility,
+      parameters: tool.parameters,
+      required: tool.required
+    }));
   });
   electron.ipcMain.handle("window-minimize", () => {
     mainWindow?.minimize();
@@ -2961,14 +5846,267 @@ function setupProcessBridgeHandlers() {
   });
   log.info("Process bridge handlers registered");
 }
+function initializeCLIRegistries() {
+  commandRegistry.register({
+    name: "help",
+    description: "Show help information",
+    sourceHint: "builtin",
+    responsibility: "Provide help and documentation",
+    execute: async () => ({
+      success: true,
+      handled: true,
+      message: "Available commands: help, version, status, clear. Use --help for more details."
+    })
+  });
+  commandRegistry.register({
+    name: "version",
+    description: "Show version information",
+    sourceHint: "builtin",
+    responsibility: "Display application version",
+    execute: async () => ({
+      success: true,
+      handled: true,
+      message: `SMP Code v${electron.app.getVersion() || "0.1.0"}`
+    })
+  });
+  commandRegistry.register({
+    name: "clear",
+    description: "Clear the screen",
+    sourceHint: "builtin",
+    responsibility: "Clear terminal output",
+    execute: async () => ({
+      success: true,
+      handled: true,
+      message: "\x1Bc"
+      // ANSI clear screen
+    })
+  });
+  commandRegistry.register({
+    name: "pwd",
+    description: "Print working directory",
+    sourceHint: "builtin",
+    responsibility: "Show current working directory",
+    execute: async (_prompt, context) => ({
+      success: true,
+      handled: true,
+      message: context.cwd
+    })
+  });
+  toolRegistry.register({
+    name: "echo",
+    description: "Echo a message",
+    sourceHint: "builtin",
+    responsibility: "Echo input back to the user",
+    parameters: {
+      message: {
+        type: "string",
+        description: "The message to echo",
+        required: true
+      }
+    },
+    required: ["message"],
+    execute: async (args) => ({
+      success: true,
+      output: String(args.message || ""),
+      data: { echoed: args.message }
+    })
+  });
+  toolRegistry.register({
+    name: "file_read",
+    description: "Read file contents",
+    sourceHint: "builtin",
+    responsibility: "Read the contents of a file",
+    parameters: {
+      path: {
+        type: "string",
+        description: "The path to the file to read",
+        required: true
+      }
+    },
+    required: ["path"],
+    execute: async (args, context) => {
+      try {
+        const fs2 = require("fs");
+        const path2 = require("path");
+        const filePath = path2.resolve(context.cwd, String(args.path));
+        const content = fs2.readFileSync(filePath, "utf-8");
+        return {
+          success: true,
+          output: content,
+          data: { path: filePath, size: content.length }
+        };
+      } catch (error) {
+        return {
+          success: false,
+          output: "",
+          error: String(error)
+        };
+      }
+    }
+  });
+  toolRegistry.register({
+    name: "file_write",
+    description: "Write content to a file",
+    sourceHint: "builtin",
+    responsibility: "Write content to a file",
+    parameters: {
+      path: {
+        type: "string",
+        description: "The path to the file to write",
+        required: true
+      },
+      content: {
+        type: "string",
+        description: "The content to write",
+        required: true
+      }
+    },
+    required: ["path", "content"],
+    execute: async (args, context) => {
+      try {
+        const fs2 = require("fs");
+        const path2 = require("path");
+        const filePath = path2.resolve(context.cwd, String(args.path));
+        fs2.writeFileSync(filePath, String(args.content), "utf-8");
+        return {
+          success: true,
+          output: `File written: ${filePath}`,
+          data: { path: filePath }
+        };
+      } catch (error) {
+        return {
+          success: false,
+          output: "",
+          error: String(error)
+        };
+      }
+    }
+  });
+  toolRegistry.register({
+    name: "bash",
+    description: "Execute a bash command",
+    sourceHint: "builtin",
+    responsibility: "Execute bash commands in the terminal",
+    parameters: {
+      command: {
+        type: "string",
+        description: "The bash command to execute",
+        required: true
+      },
+      timeout: {
+        type: "number",
+        description: "Timeout in milliseconds",
+        required: false
+      }
+    },
+    required: ["command"],
+    execute: async (args, context) => {
+      if (context.permissionMode === "strict") {
+        return {
+          success: false,
+          output: "",
+          error: "bash execution is gated in strict permission mode"
+        };
+      }
+      try {
+        const { execSync } = require("child_process");
+        const command = String(args.command);
+        const timeout = args.timeout || 3e4;
+        const output = execSync(command, {
+          cwd: context.cwd,
+          encoding: "utf-8",
+          timeout,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+        return {
+          success: true,
+          output,
+          data: { command, cwd: context.cwd }
+        };
+      } catch (error) {
+        return {
+          success: false,
+          output: "",
+          error: String(error)
+        };
+      }
+    }
+  });
+  toolRegistry.register({
+    name: "glob",
+    description: "Find files matching a pattern",
+    sourceHint: "builtin",
+    responsibility: "Find files using glob patterns",
+    parameters: {
+      pattern: {
+        type: "string",
+        description: "The glob pattern to match",
+        required: true
+      }
+    },
+    required: ["pattern"],
+    execute: async (args, context) => {
+      try {
+        const glob = require("glob");
+        const pattern = String(args.pattern);
+        const files = glob.sync(pattern, { cwd: context.cwd });
+        return {
+          success: true,
+          output: files.join("\n"),
+          data: { pattern, matches: files.length, files }
+        };
+      } catch (error) {
+        return {
+          success: false,
+          output: "",
+          error: String(error)
+        };
+      }
+    }
+  });
+  log.info(`CLI registries initialized: ${commandRegistry.getAll().length} commands, ${toolRegistry.getAll().length} tools`);
+}
+function isCLIMode() {
+  const args = process.argv;
+  const isPackaged = electron.app.isPackaged;
+  if (isPackaged && args.length <= 2) {
+    return false;
+  }
+  const userArgs = args.slice(2);
+  if (userArgs.length === 0) {
+    return false;
+  }
+  return userArgs.includes("--cli") || userArgs.includes("chat") || userArgs.includes("run") || userArgs.includes("exec") || userArgs.includes("status") || userArgs.includes("config") || userArgs.includes("commands") || userArgs.includes("tools") || userArgs.includes("session") || userArgs.includes("route");
+}
+async function runCLIMode() {
+  log.info("Starting CLI mode...");
+  const args = process.argv.slice(2).filter((arg) => arg !== "--cli");
+  initializeCLIRegistries();
+  try {
+    const { getCLIProgram: getCLIProgram2 } = await Promise.resolve().then(() => cliEntry);
+    const cliProgram = getCLIProgram2();
+    await cliProgram.parseAsync(args.length > 0 ? args : ["--help"]);
+  } catch (error) {
+    log.error("CLI error:", error);
+    console.error("Error:", error);
+    process.exit(1);
+  }
+  runtimeEngine.cleanup();
+  process.exit(0);
+}
 electron.app.whenReady().then(async () => {
   log.info("App ready, initializing...");
+  if (isCLIMode()) {
+    await runCLIMode();
+    return;
+  }
   try {
     await startApiServer();
     log.info("API server started");
   } catch (error) {
     log.error("Failed to start API server:", error);
   }
+  initializeCLIRegistries();
   setupIpcHandlers();
   createWindow();
   if (mainWindow) {
