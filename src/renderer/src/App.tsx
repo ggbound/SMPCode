@@ -6,6 +6,7 @@ import SettingsModal from './components/SettingsModal'
 import StatusBar from './components/StatusBar'
 import FileExplorer from './components/FileExplorer'
 import FileViewer from './components/FileViewer'
+import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
 import { t } from './i18n'
 
@@ -196,13 +197,16 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [showTerminal, setShowTerminal] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
-  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
-  const [selectedFileContent, setSelectedFileContent] = useState<string>('')
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const terminalRef = useRef<TerminalRef>(null)
+
+  // File tabs state
+  const [tabs, setTabs] = useState<Tab[]>([])
+  const [activeTabId, setActiveTabId] = useState<string | null>(null)
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
 
   const {
     apiKey,
@@ -241,15 +245,16 @@ function App() {
         let tools = []
         
         // Try IPC
-        if (window.api?.getCommands) {
+        const api = window.api as unknown as { getCommands?: () => Promise<Array<{ name: string; responsibility: string }>>; getTools?: () => Promise<Array<{ name: string; responsibility: string }>> }
+        if (api?.getCommands) {
           console.log('Loading commands via IPC...')
-          commands = await window.api.getCommands()
+          commands = await api.getCommands()
           console.log('Loaded commands via IPC:', commands.length)
         }
         
-        if (window.api?.getTools) {
+        if (api?.getTools) {
           console.log('Loading tools via IPC...')
-          tools = await window.api.getTools()
+          tools = await api.getTools()
           console.log('Loaded tools via IPC:', tools.length)
         }
         
@@ -315,7 +320,12 @@ function App() {
 
   // Load config on mount
   useEffect(() => {
-    window.api?.getConfig().then((config: Record<string, unknown>) => {
+    const api = window.api as unknown as { 
+      getConfig?: () => Promise<Record<string, unknown>>;
+      onNewSession?: (callback: () => void) => () => void;
+      onOpenSettings?: (callback: () => void) => () => void;
+    }
+    api?.getConfig?.().then((config: Record<string, unknown>) => {
       console.log('Loaded config:', config)
       if (config?.apiKey !== undefined) setApiKey(config.apiKey as string)
       if (config?.defaultModel !== undefined) setDefaultModel(config.defaultModel as string)
@@ -333,10 +343,10 @@ function App() {
     })
 
     // Listen for menu events
-    const unsubNewSession = window.api?.onNewSession(() => {
+    const unsubNewSession = api?.onNewSession?.(() => {
       handleNewSession()
     })
-    const unsubOpenSettings = window.api?.onOpenSettings(() => {
+    const unsubOpenSettings = api?.onOpenSettings?.(() => {
       setShowSettings(true)
     })
 
@@ -547,8 +557,7 @@ function App() {
         const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(lastFile)}`)
         if (readRes.ok) {
           const fileData = await readRes.json() as { content?: string }
-          setSelectedFilePath(lastFile)
-          setSelectedFileContent(fileData.content || '')
+          openFile(lastFile, fileData.content || '')
         }
       } catch (readError) {
         console.error('Failed to auto-open file:', readError)
@@ -1929,7 +1938,8 @@ ${contextSummary}
   useEffect(() => {
     const handleBeforeUnload = () => {
       // Force save current state
-      window.api?.saveAllConfig?.({
+      const api = window.api as unknown as { saveAllConfig?: (config: Record<string, unknown>) => Promise<boolean> }
+      api?.saveAllConfig?.({
         apiKey,
         model,
         defaultModel,
@@ -1982,7 +1992,8 @@ ${contextSummary}
 
     // Save all config at once
     console.log('Saving config with providers:', providersCopy.length)
-    const success = await window.api?.saveAllConfig?.({
+    const api = window.api as unknown as { saveAllConfig?: (config: Record<string, unknown>) => Promise<boolean> }
+    const success = await api?.saveAllConfig?.({
       apiKey: newApiKey,
       model: newModel,
       defaultModel: newDefaultModel,
@@ -1996,16 +2007,203 @@ ${contextSummary}
     setShowSettings(false)
   }
 
-  // Handle file selection from FileExplorer
-  const handleFileSelect = useCallback((path: string, content: string) => {
-    setSelectedFilePath(path)
-    setSelectedFileContent(content)
+  // Generate unique tab ID
+  const generateTabId = useCallback(() => {
+    return `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   }, [])
 
-  // Handle file content change from FileViewer
-  const handleFileContentChange = useCallback((content: string) => {
-    setSelectedFileContent(content)
+  // Get file language from path
+  const getFileLanguage = useCallback((path: string): string => {
+    const ext = path.split('.').pop()?.toLowerCase()
+    const langMap: Record<string, string> = {
+      'js': 'javascript', 'ts': 'typescript', 'tsx': 'tsx', 'jsx': 'jsx',
+      'py': 'python', 'json': 'json', 'md': 'markdown', 'css': 'css',
+      'scss': 'scss', 'html': 'html', 'xml': 'xml', 'yaml': 'yaml',
+      'yml': 'yaml', 'sh': 'bash', 'bash': 'bash', 'rs': 'rust',
+      'go': 'go', 'java': 'java', 'c': 'c', 'cpp': 'cpp', 'h': 'c',
+      'hpp': 'cpp', 'rb': 'ruby', 'php': 'php', 'sql': 'sql'
+    }
+    return langMap[ext || ''] || 'text'
   }, [])
+
+  // Open file in tab
+  const openFile = useCallback((path: string, content: string) => {
+    // Check if file is already open
+    const existingTab = tabs.find(tab => tab.path === path)
+    if (existingTab) {
+      setActiveTabId(existingTab.id)
+      setSelectedFilePath(path)
+      return
+    }
+
+    // Create new tab
+    const fileName = path.split('/').pop() || path
+    const newTab: Tab = {
+      id: generateTabId(),
+      path,
+      name: fileName,
+      content,
+      isDirty: false,
+      isPreview: true, // First open is preview mode
+      language: getFileLanguage(path)
+    }
+
+    setTabs(prev => [...prev, newTab])
+    setActiveTabId(newTab.id)
+    setSelectedFilePath(path)
+  }, [tabs, generateTabId, getFileLanguage])
+
+  // Handle file selection from FileExplorer
+  const handleFileSelect = useCallback((path: string, content: string) => {
+    openFile(path, content)
+  }, [openFile])
+
+  // Handle tab selection
+  const handleTabSelect = useCallback((tabId: string) => {
+    setActiveTabId(tabId)
+    const tab = tabs.find(t => t.id === tabId)
+    if (tab) {
+      setSelectedFilePath(tab.path)
+    }
+  }, [tabs])
+
+  // Handle tab close
+  const handleTabClose = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const tabIndex = prev.findIndex(t => t.id === tabId)
+      const newTabs = prev.filter(t => t.id !== tabId)
+      
+      // Update active tab
+      if (activeTabId === tabId) {
+        if (newTabs.length > 0) {
+          // Select previous tab or the first one
+          const newActiveIndex = Math.max(0, tabIndex - 1)
+          const newActiveTab = newTabs[newActiveIndex] || newTabs[0]
+          setActiveTabId(newActiveTab.id)
+          setSelectedFilePath(newActiveTab.path)
+        } else {
+          setActiveTabId(null)
+          setSelectedFilePath(null)
+        }
+      }
+      
+      return newTabs
+    })
+  }, [activeTabId])
+
+  // Handle close other tabs
+  const handleTabCloseOthers = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const keepTab = prev.find(t => t.id === tabId)
+      if (!keepTab) return prev
+      setActiveTabId(keepTab.id)
+      setSelectedFilePath(keepTab.path)
+      return [keepTab]
+    })
+  }, [])
+
+  // Handle close all tabs
+  const handleTabCloseAll = useCallback(() => {
+    setTabs([])
+    setActiveTabId(null)
+    setSelectedFilePath(null)
+  }, [])
+
+  // Handle close tabs to the right
+  const handleTabCloseToRight = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const tabIndex = prev.findIndex(t => t.id === tabId)
+      return prev.slice(0, tabIndex + 1)
+    })
+  }, [])
+
+  // Handle close tabs to the left
+  const handleTabCloseToLeft = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const tabIndex = prev.findIndex(t => t.id === tabId)
+      const newTabs = prev.slice(tabIndex)
+      if (!newTabs.find(t => t.id === activeTabId)) {
+        const newActive = newTabs[0]
+        if (newActive) {
+          setActiveTabId(newActive.id)
+          setSelectedFilePath(newActive.path)
+        }
+      }
+      return newTabs
+    })
+  }, [activeTabId])
+
+  // Handle tab content change
+  const handleTabContentChange = useCallback((tabId: string, content: string) => {
+    setTabs(prev => prev.map(tab => 
+      tab.id === tabId ? { ...tab, content, isDirty: true, isPreview: false } : tab
+    ))
+  }, [])
+
+  // Handle tab save
+  const handleTabSave = useCallback(async (tabId: string, content: string): Promise<boolean> => {
+    const tab = tabs.find(t => t.id === tabId)
+    if (!tab) return false
+
+    try {
+      const res = await fetch(`${API_BASE}/fs/write`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: tab.path, content })
+      })
+
+      if (res.ok) {
+        setTabs(prev => prev.map(t => 
+          t.id === tabId ? { ...t, content, isDirty: false } : t
+        ))
+        return true
+      }
+    } catch (error) {
+      console.error('Failed to save file:', error)
+    }
+    return false
+  }, [tabs])
+
+  // Get active tab
+  const activeTab = tabs.find(t => t.id === activeTabId) || null
+
+  // Handle file renamed from FileExplorer
+  const handleFileRenamed = useCallback((oldPath: string, newPath: string, newName: string) => {
+    setTabs(prev => prev.map(tab => {
+      if (tab.path === oldPath) {
+        return { ...tab, path: newPath, name: newName }
+      }
+      return tab
+    }))
+    // Update selected path if it was the renamed file
+    if (selectedFilePath === oldPath) {
+      setSelectedFilePath(newPath)
+    }
+  }, [selectedFilePath])
+
+  // Handle file deleted from FileExplorer
+  const handleFileDeleted = useCallback((deletedPath: string) => {
+    setTabs(prev => {
+      const tabToDelete = prev.find(tab => tab.path === deletedPath)
+      if (!tabToDelete) return prev
+
+      const newTabs = prev.filter(tab => tab.path !== deletedPath)
+      
+      // If the deleted tab was active, switch to another tab
+      if (activeTabId === tabToDelete.id) {
+        if (newTabs.length > 0) {
+          const newActiveTab = newTabs[newTabs.length - 1]
+          setActiveTabId(newActiveTab.id)
+          setSelectedFilePath(newActiveTab.path)
+        } else {
+          setActiveTabId(null)
+          setSelectedFilePath(null)
+        }
+      }
+      
+      return newTabs
+    })
+  }, [activeTabId])
 
   return (
     <div className="app-container">
@@ -2024,16 +2222,31 @@ ${contextSummary}
           onFileSelect={handleFileSelect}
           selectedPath={selectedFilePath}
           onRootPathChange={handleProjectPathChange}
+          openFile={openFile}
+          onFileRenamed={handleFileRenamed}
+          onFileDeleted={handleFileDeleted}
         />
 
-        {/* Center: File Viewer + Terminal */}
+        {/* Center: File Tabs + File Viewer + Terminal */}
         <div className="center-column">
+          {/* File Tabs */}
+          <FileTabs
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabSelect={handleTabSelect}
+            onTabClose={handleTabClose}
+            onTabCloseOthers={handleTabCloseOthers}
+            onTabCloseAll={handleTabCloseAll}
+            onTabCloseToRight={handleTabCloseToRight}
+            onTabCloseToLeft={handleTabCloseToLeft}
+          />
+          
+          {/* File Viewer */}
           <div className="file-viewer-container">
             <FileViewer
-              filePath={selectedFilePath}
-              content={selectedFileContent}
-              onContentChange={handleFileContentChange}
-              isEditable={true}
+              tab={activeTab}
+              onContentChange={handleTabContentChange}
+              onSave={handleTabSave}
             />
           </div>
           <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />

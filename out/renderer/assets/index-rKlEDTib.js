@@ -42946,6 +42946,21 @@ const translations = {
     emptyFolder: "空文件夹",
     enterFolderPath: "输入文件夹路径",
     failedToSetWorkingDir: "设置工作目录失败",
+    explorer: "资源管理器",
+    newFile: "新建文件",
+    newFolder: "新建文件夹",
+    collapseAll: "全部折叠",
+    searchFiles: "搜索文件...",
+    noResultsFound: "未找到结果",
+    noFolderOpened: "未打开文件夹",
+    open: "打开",
+    rename: "重命名",
+    create: "创建",
+    name: "名称",
+    newName: "新名称",
+    filenamePlaceholder: "文件名.扩展名",
+    foldernamePlaceholder: "文件夹名",
+    confirmDelete: '确定要删除"{name}"吗？',
     // Terminal
     newTerminal: "新建终端",
     splitTerminal: "拆分终端",
@@ -42965,8 +42980,10 @@ const translations = {
     // FileViewer
     selectFileToView: "选择文件查看",
     edit: "编辑",
-    saving: "保存中...",
     saveFailed: "保存失败",
+    savingStatus: "保存中...",
+    unsavedStatus: "未保存",
+    savedStatus: "已保存",
     // CommandPanel
     commandsTab: "命令",
     toolsTab: "工具",
@@ -42996,6 +43013,11 @@ const translations = {
     modelId: "模型ID",
     modelName: "模型名称",
     delete: "删除",
+    close: "关闭",
+    closeOthers: "关闭其他",
+    closeToRight: "关闭右侧",
+    closeToLeft: "关闭左侧",
+    closeAll: "全部关闭",
     searchProviders: "搜索模型平台...",
     clickToDisable: "点击禁用",
     clickToEnable: "点击启用",
@@ -43076,6 +43098,21 @@ const translations = {
     emptyFolder: "Empty folder",
     enterFolderPath: "Enter folder path",
     failedToSetWorkingDir: "Failed to set working directory",
+    explorer: "Explorer",
+    newFile: "New File",
+    newFolder: "New Folder",
+    collapseAll: "Collapse All",
+    searchFiles: "Search files...",
+    noResultsFound: "No results found",
+    noFolderOpened: "NO FOLDER OPENED",
+    open: "Open",
+    rename: "Rename",
+    create: "Create",
+    name: "Name",
+    newName: "New Name",
+    filenamePlaceholder: "filename.ext",
+    foldernamePlaceholder: "foldername",
+    confirmDelete: 'Are you sure you want to delete "{name}"?',
     // Terminal
     newTerminal: "New Terminal",
     splitTerminal: "Split Terminal",
@@ -43095,8 +43132,10 @@ const translations = {
     // FileViewer
     selectFileToView: "Select a file to view",
     edit: "Edit",
-    saving: "Saving...",
     saveFailed: "Save failed",
+    savingStatus: "Saving...",
+    unsavedStatus: "Unsaved",
+    savedStatus: "Saved",
     // CommandPanel
     commandsTab: "Commands",
     toolsTab: "Tools",
@@ -43126,6 +43165,11 @@ const translations = {
     modelId: "Model ID",
     modelName: "Model Name",
     delete: "Delete",
+    close: "Close",
+    closeOthers: "Close Others",
+    closeToRight: "Close to the Right",
+    closeToLeft: "Close to the Left",
+    closeAll: "Close All",
     searchProviders: "Search providers...",
     clickToDisable: "Click to disable",
     clickToEnable: "Click to enable",
@@ -44145,15 +44189,113 @@ function AddModelModal({ onAdd, onClose }) {
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-footer", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: handleSubmit, children: t("addModel") }) })
   ] }) });
 }
-function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
+const getFileIcon$1 = (filename, isDirectory, isOpen) => {
+  if (isDirectory) {
+    return isOpen ? "📂" : "📁";
+  }
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const iconMap = {
+    "js": "📜",
+    "ts": "📘",
+    "tsx": "⚛️",
+    "jsx": "⚛️",
+    "py": "🐍",
+    "json": "📋",
+    "md": "📝",
+    "css": "🎨",
+    "scss": "🎨",
+    "sass": "🎨",
+    "less": "🎨",
+    "html": "🌐",
+    "htm": "🌐",
+    "txt": "📄",
+    "xml": "📄",
+    "yaml": "⚙️",
+    "yml": "⚙️",
+    "toml": "⚙️",
+    "ini": "⚙️",
+    "conf": "⚙️",
+    "config": "⚙️",
+    "sh": "🔧",
+    "bash": "🔧",
+    "zsh": "🔧",
+    "fish": "🔧",
+    "rs": "🦀",
+    "go": "🔵",
+    "java": "☕",
+    "kt": "🔷",
+    "c": "🔷",
+    "cpp": "🔷",
+    "cc": "🔷",
+    "cxx": "🔷",
+    "h": "🔷",
+    "hpp": "🔷",
+    "hh": "🔷",
+    "rb": "💎",
+    "php": "🐘",
+    "swift": "🦉",
+    "sql": "🗃️",
+    "dockerfile": "🐳",
+    "vue": "💚",
+    "svelte": "🧡",
+    "astro": "🚀",
+    "wasm": "⚡",
+    "lock": "🔒",
+    "gitignore": "🚫",
+    "gitattributes": "⚙️",
+    "env": "🔐",
+    "LICENSE": "📜",
+    "README": "📖",
+    "CHANGELOG": "📋",
+    "CONTRIBUTING": "🤝",
+    "CODE_OF_CONDUCT": "📜",
+    "SECURITY": "🔒"
+  };
+  const baseName = filename.split("/").pop()?.toUpperCase() || "";
+  for (const [key, icon2] of Object.entries(iconMap)) {
+    if (baseName.includes(key.toUpperCase())) {
+      return icon2;
+    }
+  }
+  return iconMap[ext || ""] || "📄";
+};
+function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, onFileRenamed, onFileDeleted }) {
   const [rootPath, setRootPath] = reactExports.useState("");
   const [fileTree, setFileTree] = reactExports.useState([]);
   const [isLoading, setIsLoading] = reactExports.useState(false);
+  const [searchQuery, setSearchQuery] = reactExports.useState("");
+  const [isSearching, setIsSearching] = reactExports.useState(false);
+  const [contextMenu, setContextMenu] = reactExports.useState(null);
+  const [newItemDialog, setNewItemDialog] = reactExports.useState(null);
+  const [newItemName, setNewItemName] = reactExports.useState("");
+  const [renameDialog, setRenameDialog] = reactExports.useState(null);
+  const [renameValue, setRenameValue] = reactExports.useState("");
   const fileTreeRef = reactExports.useRef([]);
+  const searchInputRef = reactExports.useRef(null);
   const API_BASE2 = "http://localhost:3847/api";
   reactExports.useEffect(() => {
     fileTreeRef.current = fileTree;
   }, [fileTree]);
+  reactExports.useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+  reactExports.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "F") {
+        e.preventDefault();
+        setIsSearching(true);
+        setTimeout(() => searchInputRef.current?.focus(), 100);
+      }
+      if (e.key === "Escape" && isSearching) {
+        setIsSearching(false);
+        setSearchQuery("");
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isSearching]);
   const refreshProjectContext = reactExports.useCallback(async () => {
     if (!rootPath) return;
     try {
@@ -44162,7 +44304,6 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path: rootPath })
       });
-      console.log("[FileExplorer] Project context refreshed");
     } catch (error) {
       console.error("[FileExplorer] Failed to refresh project context:", error);
     }
@@ -44209,10 +44350,25 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
       const index2 = current.findIndex((n2) => n2.name === path2[i]);
       if (index2 === -1) return newTree;
       if (i === path2.length - 1) {
-        current[index2] = { ...current[index2], isOpen: !current[index2].isOpen };
-        if (current[index2].isOpen && !current[index2].children) {
+        const isOpening = !current[index2].isOpen;
+        current[index2] = { ...current[index2], isOpen: isOpening };
+        if (isOpening && !current[index2].children) {
+          current[index2] = { ...current[index2], isLoading: true };
+          setFileTree(newTree);
           const children = await loadDirectory(current[index2].path);
-          current[index2] = { ...current[index2], children };
+          const updateTree = (nodes) => {
+            return nodes.map((n2) => {
+              if (n2.path === node2.path) {
+                return { ...n2, children, isLoading: false };
+              }
+              if (n2.children) {
+                return { ...n2, children: updateTree(n2.children) };
+              }
+              return n2;
+            });
+          };
+          setFileTree((prev) => updateTree(prev));
+          return;
         }
       } else {
         current = current[index2].children;
@@ -44220,22 +44376,103 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
     }
     return newTree;
   }, [loadDirectory]);
-  const handleNodeClick = reactExports.useCallback(async (node2, tree, path2) => {
+  const handleNodeClick = reactExports.useCallback(async (node2, tree, path2, e) => {
+    e?.stopPropagation();
     if (node2.isDirectory) {
       const newTree = await toggleDirectory(node2, tree, path2);
-      setFileTree(newTree);
+      if (newTree) {
+        setFileTree(newTree);
+      }
     } else {
       try {
         const res = await fetch(`${API_BASE2}/fs/read?path=${encodeURIComponent(node2.path)}`);
         if (res.ok) {
           const data = await res.json();
-          onFileSelect(node2.path, data.content || "");
+          if (openFile) {
+            openFile(node2.path, data.content || "");
+          } else {
+            onFileSelect(node2.path, data.content || "");
+          }
         }
       } catch (error) {
         console.error("Failed to read file:", error);
       }
     }
-  }, [onFileSelect, toggleDirectory]);
+  }, [onFileSelect, openFile, toggleDirectory]);
+  const handleContextMenu = reactExports.useCallback((e, node2) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, node: node2 });
+  }, []);
+  const handleCreateNew = async () => {
+    if (!newItemDialog || !newItemName.trim()) return;
+    const parentPath = newItemDialog.parentPath;
+    const newPath = `${parentPath}/${newItemName.trim()}`;
+    try {
+      if (newItemDialog.type === "file") {
+        const res = await fetch(`${API_BASE2}/fs/write`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: newPath, content: "" })
+        });
+        if (res.ok) {
+          handleRefreshPreserveExpansion();
+        }
+      } else {
+        const res = await fetch(`${API_BASE2}/fs/mkdir`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: newPath })
+        });
+        if (res.ok) {
+          handleRefreshPreserveExpansion();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to create item:", error);
+    }
+    setNewItemDialog(null);
+    setNewItemName("");
+  };
+  const handleRename = async () => {
+    if (!renameDialog?.node || !renameValue.trim()) return;
+    const oldPath = renameDialog.node.path;
+    const parentPath = oldPath.substring(0, oldPath.lastIndexOf("/"));
+    const newPath = `${parentPath}/${renameValue.trim()}`;
+    const newName = renameValue.trim();
+    try {
+      const res = await fetch(`${API_BASE2}/fs/rename`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPath, newPath })
+      });
+      if (res.ok) {
+        handleRefreshPreserveExpansion();
+        onFileRenamed?.(oldPath, newPath, newName);
+      }
+    } catch (error) {
+      console.error("Failed to rename item:", error);
+    }
+    setRenameDialog(null);
+    setRenameValue("");
+  };
+  const handleDelete2 = async (node2) => {
+    if (!confirm(t("confirmDelete").replace("{name}", node2.name))) return;
+    try {
+      const res = await fetch(`${API_BASE2}/fs/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: node2.path })
+      });
+      if (res.ok) {
+        handleRefreshPreserveExpansion();
+        onFileDeleted?.(node2.path);
+      }
+    } catch (error) {
+      console.error("Failed to delete item:", error);
+    }
+    setContextMenu(null);
+  };
   const setWorkingDirectory = reactExports.useCallback(async (dirPath) => {
     try {
       const res = await fetch(`${API_BASE2}/cwd`, {
@@ -44247,20 +44484,18 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
         const data = await res.json();
         console.log("Working directory set to:", data.cwd);
         return true;
-      } else {
-        console.error("Failed to set working directory: HTTP", res.status);
-        return false;
       }
     } catch (error) {
       console.error("Failed to set working directory:", error);
-      return false;
     }
+    return false;
   }, []);
   const handleSelectFolder = reactExports.useCallback(async () => {
     try {
       setIsLoading(true);
-      if (window.api?.selectFolder) {
-        const folderPath = await window.api.selectFolder();
+      const api = window.api;
+      if (api?.selectFolder) {
+        const folderPath = await api.selectFolder();
         if (folderPath) {
           const success = await setWorkingDirectory(folderPath);
           if (!success) {
@@ -44291,8 +44526,8 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
     } finally {
       setIsLoading(false);
     }
-  }, [loadDirectory, setWorkingDirectory]);
-  const handleRefresh = reactExports.useCallback(async () => {
+  }, [loadDirectory, setWorkingDirectory, onRootPathChange]);
+  reactExports.useCallback(async () => {
     if (rootPath) {
       const items = await loadDirectory(rootPath);
       setFileTree(items);
@@ -44357,81 +44592,312 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange }) {
       setFileTree(mergedItems);
     }
   }, [rootPath, loadDirectory]);
+  const filteredFileTree = reactExports.useMemo(() => {
+    if (!searchQuery.trim()) return fileTree;
+    const filterNodes = (nodes) => {
+      const result = [];
+      for (const node2 of nodes) {
+        const matchesSearch = node2.name.toLowerCase().includes(searchQuery.toLowerCase());
+        if (node2.isDirectory && node2.children) {
+          const filteredChildren = filterNodes(node2.children);
+          if (matchesSearch || filteredChildren.length > 0) {
+            result.push({ ...node2, children: filteredChildren, isOpen: true });
+          }
+        } else if (matchesSearch) {
+          result.push(node2);
+        }
+      }
+      return result;
+    };
+    return filterNodes(fileTree);
+  }, [fileTree, searchQuery]);
+  const handleCollapseAll = () => {
+    const collapseAll = (nodes) => {
+      return nodes.map((node2) => {
+        if (node2.isDirectory) {
+          return { ...node2, isOpen: false, children: node2.children ? collapseAll(node2.children) : void 0 };
+        }
+        return node2;
+      });
+    };
+    setFileTree(collapseAll(fileTree));
+  };
   const renderNode = (node2, tree, path2, depth = 0) => {
     const isSelected = node2.path === selectedPath;
     const currentPath = [...path2, node2.name];
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+    const hasChildren = node2.isDirectory && (node2.children?.length ?? 0) > 0;
+    const isEmptyFolder = node2.isDirectory && !hasChildren && !node2.isLoading;
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-tree-node", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
           className: `file-node ${isSelected ? "selected" : ""} ${node2.isDirectory ? "directory" : "file"}`,
-          style: { paddingLeft: `${depth * 16 + 8}px` },
-          onClick: () => handleNodeClick(node2, tree, currentPath),
+          style: { paddingLeft: `${depth * 16 + 4}px` },
+          onClick: (e) => handleNodeClick(node2, tree, currentPath, e),
+          onContextMenu: (e) => handleContextMenu(e, node2),
+          title: node2.path,
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-icon", children: node2.isDirectory ? node2.isOpen ? "📂" : "📁" : getFileIcon(node2.name) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-name", children: node2.name })
+            node2.isDirectory && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: `file-arrow ${node2.isOpen ? "expanded" : ""} ${isEmptyFolder ? "empty" : ""}`,
+                onClick: (e) => {
+                  e.stopPropagation();
+                  if (!isEmptyFolder) {
+                    handleNodeClick(node2, tree, currentPath, e);
+                  }
+                },
+                children: !isEmptyFolder && "▶"
+              }
+            ),
+            !node2.isDirectory && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-arrow-placeholder" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-icon", children: getFileIcon$1(node2.name, node2.isDirectory, node2.isOpen) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-name", children: node2.name }),
+            node2.isLoading && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-loading", children: "⟳" })
           ]
         }
       ),
       node2.isDirectory && node2.isOpen && node2.children && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-children", children: node2.children.map((child) => renderNode(child, tree, currentPath, depth + 1)) })
     ] }, node2.path);
   };
-  const getFileIcon = (filename) => {
-    const ext = filename.split(".").pop()?.toLowerCase();
-    const iconMap = {
-      "js": "📜",
-      "ts": "📘",
-      "tsx": "⚛️",
-      "jsx": "⚛️",
-      "py": "🐍",
-      "json": "📋",
-      "md": "📝",
-      "css": "🎨",
-      "scss": "🎨",
-      "html": "🌐",
-      "txt": "📄"
-    };
-    return iconMap[ext || ""] || "📄";
-  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-explorer", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-explorer-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-explorer-title", children: t("project") || "Project" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-explorer-title", children: t("explorer").toUpperCase() }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-explorer-actions", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             className: "btn-icon",
-            onClick: handleSelectFolder,
-            disabled: isLoading,
-            title: t("openFolder") || "Open Folder",
-            children: "📂"
+            onClick: () => setNewItemDialog({ isOpen: true, type: "file", parentPath: rootPath }),
+            disabled: !rootPath || isLoading,
+            title: t("newFile"),
+            children: "📝"
           }
         ),
-        rootPath && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             className: "btn-icon",
-            onClick: handleRefresh,
-            disabled: isLoading,
+            onClick: () => setNewItemDialog({ isOpen: true, type: "folder", parentPath: rootPath }),
+            disabled: !rootPath || isLoading,
+            title: t("newFolder"),
+            children: "📁"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "btn-icon",
+            onClick: handleRefreshPreserveExpansion,
+            disabled: !rootPath || isLoading,
             title: t("refresh") || "Refresh",
             children: "🔄"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "btn-icon",
+            onClick: handleCollapseAll,
+            disabled: !rootPath || isLoading,
+            title: t("collapseAll"),
+            children: "⬆️"
           }
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-path", title: rootPath, children: rootPath ? rootPath.split("/").pop() || rootPath : t("noFolderSelected") || "No folder selected" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-content", children: isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-loading", children: t("loading") || "Loading..." }) : fileTree.length > 0 ? fileTree.map((node2) => renderNode(node2, fileTree, [], 0)) : rootPath ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-empty", children: t("emptyFolder") || "Empty folder" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: handleSelectFolder, children: t("openFolder") || "Open Folder" }) }) })
+    isSearching && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-explorer-search", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          ref: searchInputRef,
+          type: "text",
+          className: "file-search-input",
+          placeholder: t("searchFiles"),
+          value: searchQuery,
+          onChange: (e) => setSearchQuery(e.target.value),
+          onKeyDown: (e) => {
+            if (e.key === "Escape") {
+              setIsSearching(false);
+              setSearchQuery("");
+            }
+          }
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "btn-icon btn-close-search",
+          onClick: () => {
+            setIsSearching(false);
+            setSearchQuery("");
+          },
+          children: "✕"
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-path", title: rootPath, children: rootPath ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "project-name", children: rootPath.split("/").pop() || rootPath }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "no-folder", children: t("noFolderOpened").toUpperCase() }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-content", children: isLoading ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-loading", children: t("loading") || "Loading..." }) : filteredFileTree.length > 0 ? filteredFileTree.map((node2) => renderNode(node2, filteredFileTree, [], 0)) : rootPath ? searchQuery ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-empty", children: t("noResultsFound") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-empty", children: t("emptyFolder") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-explorer-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: handleSelectFolder, children: t("openFolder") || "Open Folder" }) }) }),
+    contextMenu && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "file-context-menu",
+        style: { left: contextMenu.x, top: contextMenu.y },
+        onClick: (e) => e.stopPropagation(),
+        children: contextMenu.node && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          !contextMenu.node.isDirectory && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                handleNodeClick(contextMenu.node, fileTree, [contextMenu.node.name]);
+                setContextMenu(null);
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "context-icon", children: "📖" }),
+                t("open")
+              ]
+            }
+          ),
+          contextMenu.node.isDirectory && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                className: "context-menu-item",
+                onClick: () => {
+                  setNewItemDialog({ isOpen: true, type: "file", parentPath: contextMenu.node.path });
+                  setContextMenu(null);
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "context-icon", children: "📝" }),
+                  t("newFile")
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                className: "context-menu-item",
+                onClick: () => {
+                  setNewItemDialog({ isOpen: true, type: "folder", parentPath: contextMenu.node.path });
+                  setContextMenu(null);
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "context-icon", children: "📁" }),
+                  t("newFolder")
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "context-menu-divider" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                setRenameDialog({ isOpen: true, node: contextMenu.node });
+                setRenameValue(contextMenu.node.name);
+                setContextMenu(null);
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "context-icon", children: "✏️" }),
+                t("rename")
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              className: "context-menu-item context-menu-danger",
+              onClick: () => handleDelete2(contextMenu.node),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "context-icon", children: "🗑️" }),
+                t("delete") || "Delete"
+              ]
+            }
+          )
+        ] })
+      }
+    ),
+    newItemDialog?.isOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-overlay", onClick: () => setNewItemDialog(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal modal-sm", onClick: (e) => e.stopPropagation(), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "modal-title", children: newItemDialog.type === "file" ? t("newFile") : t("newFolder") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "modal-close", onClick: () => setNewItemDialog(null), children: "×" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-body", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-group", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "form-label", children: t("name") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            type: "text",
+            className: "form-input",
+            value: newItemName,
+            onChange: (e) => setNewItemName(e.target.value),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") handleCreateNew();
+              if (e.key === "Escape") setNewItemDialog(null);
+            },
+            placeholder: newItemDialog.type === "file" ? t("filenamePlaceholder") : t("foldernamePlaceholder"),
+            autoFocus: true
+          }
+        )
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal-footer", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-secondary", onClick: () => setNewItemDialog(null), children: t("cancel") || "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: handleCreateNew, children: t("create") })
+      ] })
+    ] }) }),
+    renameDialog?.isOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-overlay", onClick: () => setRenameDialog(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal modal-sm", onClick: (e) => e.stopPropagation(), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "modal-title", children: t("rename") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "modal-close", onClick: () => setRenameDialog(null), children: "×" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "modal-body", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "form-group", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "form-label", children: t("newName") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            type: "text",
+            className: "form-input",
+            value: renameValue,
+            onChange: (e) => setRenameValue(e.target.value),
+            onKeyDown: (e) => {
+              if (e.key === "Enter") handleRename();
+              if (e.key === "Escape") setRenameDialog(null);
+            },
+            autoFocus: true
+          }
+        )
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "modal-footer", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-secondary", onClick: () => setRenameDialog(null), children: t("cancel") || "Cancel" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-primary", onClick: handleRename, children: t("rename") })
+      ] })
+    ] }) })
   ] });
 }
-function FileViewer({ filePath, content: content2, onContentChange, isEditable = false }) {
-  const [isEditing, setIsEditing] = reactExports.useState(false);
-  const [editedContent, setEditedContent] = reactExports.useState(content2);
+const AUTO_SAVE_DELAY = 1e3;
+function FileViewer({ tab: tab2, onContentChange, onSave }) {
+  const [editedContent, setEditedContent] = reactExports.useState("");
   const [isSaving, setIsSaving] = reactExports.useState(false);
-  const API_BASE2 = "http://localhost:3847/api";
+  const [saveStatus, setSaveStatus] = reactExports.useState("saved");
+  const autoSaveTimerRef = reactExports.useRef(null);
+  const lastSavedContentRef = reactExports.useRef("");
   reactExports.useEffect(() => {
-    setEditedContent(content2);
-  }, [content2]);
-  const getLanguage = (path2) => {
+    if (tab2) {
+      setEditedContent(tab2.content);
+      lastSavedContentRef.current = tab2.content;
+      setSaveStatus(tab2.isDirty ? "unsaved" : "saved");
+    }
+  }, [tab2?.id]);
+  reactExports.useEffect(() => {
+    if (tab2 && tab2.content !== editedContent && tab2.content !== lastSavedContentRef.current) {
+      setEditedContent(tab2.content);
+      lastSavedContentRef.current = tab2.content;
+      setSaveStatus(tab2.isDirty ? "unsaved" : "saved");
+    }
+  }, [tab2?.content]);
+  const getLanguage = reactExports.useCallback((path2) => {
     if (!path2) return "text";
     const ext = path2.split(".").pop()?.toLowerCase();
     const langMap = {
@@ -44444,144 +44910,413 @@ function FileViewer({ filePath, content: content2, onContentChange, isEditable =
       "md": "markdown",
       "css": "css",
       "scss": "scss",
+      "sass": "sass",
+      "less": "less",
       "html": "html",
       "xml": "xml",
       "yaml": "yaml",
       "yml": "yaml",
+      "toml": "toml",
       "sh": "bash",
       "bash": "bash",
       "zsh": "bash",
+      "fish": "bash",
       "rs": "rust",
       "go": "go",
       "java": "java",
+      "kt": "kotlin",
+      "kts": "kotlin",
       "c": "c",
       "cpp": "cpp",
+      "cc": "cpp",
+      "cxx": "cpp",
       "h": "c",
       "hpp": "cpp",
+      "hh": "cpp",
       "rb": "ruby",
       "php": "php",
+      "swift": "swift",
       "sql": "sql",
-      "dockerfile": "docker"
+      "dockerfile": "docker",
+      "vue": "vue",
+      "svelte": "svelte",
+      "astro": "astro",
+      "wasm": "wasm"
     };
     return langMap[ext || ""] || "text";
-  };
-  const handleSave = async () => {
-    if (!filePath || !onContentChange) return;
+  }, []);
+  const performSave = reactExports.useCallback(async (content2) => {
+    if (!tab2 || !onSave) return false;
     try {
       setIsSaving(true);
-      const res = await fetch(`${API_BASE2}/fs/write`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: filePath, content: editedContent })
-      });
-      if (res.ok) {
-        onContentChange(editedContent);
-        setIsEditing(false);
+      setSaveStatus("saving");
+      const success = await onSave(tab2.id, content2);
+      if (success) {
+        onContentChange?.(tab2.id, content2);
+        lastSavedContentRef.current = content2;
+        setSaveStatus("saved");
+        return true;
       } else {
-        alert(t("saveFailed") || "Save failed");
+        setSaveStatus("unsaved");
+        return false;
       }
     } catch (error) {
       console.error("Failed to save file:", error);
-      alert(t("saveFailed") || "Save failed");
+      setSaveStatus("unsaved");
+      return false;
     } finally {
       setIsSaving(false);
     }
-  };
-  const handleCancel = () => {
-    setEditedContent(content2);
-    setIsEditing(false);
-  };
+  }, [tab2, onSave, onContentChange]);
+  const handleContentChange = reactExports.useCallback((newContent) => {
+    setEditedContent(newContent);
+    setSaveStatus("unsaved");
+    if (tab2 && onContentChange) {
+      onContentChange(tab2.id, newContent);
+    }
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (newContent !== lastSavedContentRef.current) {
+        performSave(newContent);
+      }
+    }, AUTO_SAVE_DELAY);
+  }, [tab2, onContentChange, performSave]);
+  const handleManualSave = reactExports.useCallback(async () => {
+    if (editedContent !== lastSavedContentRef.current) {
+      await performSave(editedContent);
+    }
+  }, [editedContent, performSave]);
+  reactExports.useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
+  reactExports.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleManualSave();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [handleManualSave]);
   const copyToClipboard = async () => {
+    if (!tab2) return;
     try {
-      await navigator.clipboard.writeText(content2);
-      alert(t("copied") || "Copied!");
+      await navigator.clipboard.writeText(editedContent);
+      alert(t("copied"));
     } catch (err) {
       console.error("Failed to copy:", err);
     }
   };
-  if (!filePath) {
+  if (!tab2) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer file-viewer-empty", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-viewer-placeholder", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "placeholder-icon", children: "📄" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("selectFileToView") || "Select a file to view" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: t("selectFileToView") })
     ] }) });
   }
-  const fileName = filePath.split("/").pop() || filePath;
-  const language = getLanguage(filePath);
-  const isImage = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(filePath);
+  const fileName = tab2.name || tab2.path.split("/").pop() || tab2.path;
+  getLanguage(tab2.path);
+  const isImage = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(tab2.path);
+  const getSaveStatusDisplay = () => {
+    switch (saveStatus) {
+      case "saving":
+        return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "save-status saving", children: t("savingStatus") });
+      case "unsaved":
+        return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "save-status unsaved", children: t("unsavedStatus") });
+      case "saved":
+        return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "save-status saved", children: t("savedStatus") });
+    }
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-viewer", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-viewer-header", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-viewer-info", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-viewer-name", children: fileName }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-viewer-path", children: filePath })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "file-viewer-name", children: [
+          fileName,
+          saveStatus === "unsaved" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-dirty-indicator", children: "●" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "file-viewer-path", children: [
+          tab2.path,
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "save-status-separator", children: "•" }),
+          getSaveStatusDisplay()
+        ] })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-viewer-actions", children: [
-        isEditable && /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: isEditing ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              className: "btn btn-primary btn-sm",
-              onClick: handleSave,
-              disabled: isSaving,
-              children: isSaving ? t("saving") || "Saving..." : t("save") || "Save"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              className: "btn btn-secondary btn-sm",
-              onClick: handleCancel,
-              disabled: isSaving,
-              children: t("cancel") || "Cancel"
-            }
-          )
-        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+        !isImage && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
-            className: "btn btn-ghost btn-sm",
-            onClick: () => setIsEditing(true),
-            children: t("edit") || "Edit"
+            className: "btn btn-primary btn-sm",
+            onClick: handleManualSave,
+            disabled: isSaving || saveStatus === "saved",
+            children: isSaving ? t("savingStatus") : t("save")
           }
-        ) }),
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             className: "btn btn-ghost btn-sm",
             onClick: copyToClipboard,
-            title: t("copy") || "Copy",
-            children: t("copy") || "Copy"
+            title: t("copy"),
+            children: t("copy")
           }
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-content", children: isImage ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-image", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: `file://${filePath}`, alt: fileName }) }) : isEditing ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-content", children: isImage ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-image", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: `file://${tab2.path}`, alt: fileName }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
       "textarea",
       {
         className: "file-editor",
         value: editedContent,
-        onChange: (e) => setEditedContent(e.target.value),
+        onChange: (e) => handleContentChange(e.target.value),
         spellCheck: false
       }
-    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-code", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      highlighter,
+    ) })
+  ] });
+}
+const getFileIcon = (filename) => {
+  const ext = filename.split(".").pop()?.toLowerCase();
+  const iconMap = {
+    "js": "📜",
+    "ts": "📘",
+    "tsx": "⚛️",
+    "jsx": "⚛️",
+    "py": "🐍",
+    "json": "📋",
+    "md": "📝",
+    "css": "🎨",
+    "scss": "🎨",
+    "sass": "🎨",
+    "less": "🎨",
+    "html": "🌐",
+    "htm": "🌐",
+    "txt": "📄",
+    "xml": "📄",
+    "yaml": "⚙️",
+    "yml": "⚙️",
+    "toml": "⚙️",
+    "ini": "⚙️",
+    "conf": "⚙️",
+    "config": "⚙️",
+    "sh": "🔧",
+    "bash": "🔧",
+    "zsh": "🔧",
+    "rs": "🦀",
+    "go": "🔵",
+    "java": "☕",
+    "kt": "🔷",
+    "c": "🔷",
+    "cpp": "🔷",
+    "cc": "🔷",
+    "cxx": "🔷",
+    "h": "🔷",
+    "hpp": "🔷",
+    "hh": "🔷",
+    "rb": "💎",
+    "php": "🐘",
+    "swift": "🦉",
+    "sql": "🗃️",
+    "dockerfile": "🐳",
+    "vue": "💚",
+    "svelte": "🧡",
+    "astro": "🚀",
+    "wasm": "⚡",
+    "lock": "🔒",
+    "gitignore": "🚫",
+    "env": "🔐"
+  };
+  const baseName = filename.toUpperCase();
+  for (const [key, icon2] of Object.entries(iconMap)) {
+    if (baseName.includes(key.toUpperCase())) {
+      return icon2;
+    }
+  }
+  return iconMap[ext || ""] || "📄";
+};
+function FileTabs({
+  tabs,
+  activeTabId,
+  onTabSelect,
+  onTabClose,
+  onTabCloseOthers,
+  onTabCloseAll,
+  onTabCloseToRight,
+  onTabCloseToLeft
+}) {
+  const [contextMenu, setContextMenu] = reactExports.useState(null);
+  const tabsContainerRef = reactExports.useRef(null);
+  const [showScrollLeft, setShowScrollLeft] = reactExports.useState(false);
+  const [showScrollRight, setShowScrollRight] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    const handleClickOutside = () => setContextMenu(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+  reactExports.useEffect(() => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+    const checkScroll = () => {
+      setShowScrollLeft(container.scrollLeft > 0);
+      setShowScrollRight(container.scrollLeft < container.scrollWidth - container.clientWidth);
+    };
+    checkScroll();
+    container.addEventListener("scroll", checkScroll);
+    window.addEventListener("resize", checkScroll);
+    return () => {
+      container.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+    };
+  }, [tabs]);
+  const scrollTabs = (direction) => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+    const scrollAmount = 200;
+    container.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth"
+    });
+  };
+  const handleContextMenu = (e, tabId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, tabId });
+  };
+  const handleMouseDown = (e, tabId) => {
+    if (e.button === 1) {
+      e.preventDefault();
+      onTabClose(tabId);
+    }
+  };
+  const getTabDisplayName = (tab2) => {
+    if (tab2.name) return tab2.name;
+    const parts = tab2.path.split("/");
+    return parts[parts.length - 1] || tab2.path;
+  };
+  const getTabTooltip = (tab2) => {
+    return tab2.path;
+  };
+  if (tabs.length === 0) {
+    return null;
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "file-tabs-container", children: [
+    showScrollLeft && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
       {
-        language,
-        style: vscDarkPlus,
-        customStyle: {
-          margin: 0,
-          padding: "16px",
-          fontSize: "13px",
-          lineHeight: "1.6",
-          minHeight: "100%"
-        },
-        showLineNumbers: true,
-        lineNumberStyle: {
-          color: "#6e7681",
-          fontSize: "12px",
-          minWidth: "2.5em"
-        },
-        children: content2 || ""
+        className: "tabs-scroll-btn tabs-scroll-left",
+        onClick: () => scrollTabs("left"),
+        children: "◀"
       }
-    ) }) })
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-tabs", ref: tabsContainerRef, children: tabs.map((tab2) => {
+      const isActive = tab2.id === activeTabId;
+      const displayName = getTabDisplayName(tab2);
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: `file-tab ${isActive ? "active" : ""} ${tab2.isDirty ? "dirty" : ""} ${tab2.isPreview ? "preview" : ""}`,
+          onClick: () => onTabSelect(tab2.id),
+          onContextMenu: (e) => handleContextMenu(e, tab2.id),
+          onMouseDown: (e) => handleMouseDown(e, tab2.id),
+          title: getTabTooltip(tab2),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-icon", children: getFileIcon(tab2.name) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-name", children: displayName }),
+            tab2.isDirty && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-dirty-indicator", children: "●" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                className: "tab-close",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  onTabClose(tab2.id);
+                },
+                title: t("close"),
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tab-close-icon", children: "×" })
+              }
+            )
+          ]
+        },
+        tab2.id
+      );
+    }) }),
+    showScrollRight && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        className: "tabs-scroll-btn tabs-scroll-right",
+        onClick: () => scrollTabs("right"),
+        children: "▶"
+      }
+    ),
+    contextMenu && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "tab-context-menu",
+        style: { left: contextMenu.x, top: contextMenu.y },
+        onClick: (e) => e.stopPropagation(),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                onTabClose(contextMenu.tabId);
+                setContextMenu(null);
+              },
+              children: t("close")
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                onTabCloseOthers(contextMenu.tabId);
+                setContextMenu(null);
+              },
+              children: t("closeOthers")
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                onTabCloseToRight(contextMenu.tabId);
+                setContextMenu(null);
+              },
+              children: t("closeToRight")
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                onTabCloseToLeft(contextMenu.tabId);
+                setContextMenu(null);
+              },
+              children: t("closeToLeft")
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "context-menu-divider" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "context-menu-item",
+              onClick: () => {
+                onTabCloseAll();
+                setContextMenu(null);
+              },
+              children: t("closeAll")
+            }
+          )
+        ]
+      }
+    )
   ] });
 }
 /**
@@ -54058,13 +54793,14 @@ function App() {
   const [isLoading, setIsLoading] = reactExports.useState(false);
   const [showTerminal, setShowTerminal] = reactExports.useState(true);
   const [dataLoaded, setDataLoaded] = reactExports.useState(false);
-  const [selectedFilePath, setSelectedFilePath] = reactExports.useState(null);
-  const [selectedFileContent, setSelectedFileContent] = reactExports.useState("");
   const [projectPath, setProjectPath] = reactExports.useState(null);
   reactExports.useRef(null);
   const messagesEndRef = reactExports.useRef(null);
   const abortControllerRef = reactExports.useRef(null);
   const terminalRef = reactExports.useRef(null);
+  const [tabs, setTabs] = reactExports.useState([]);
+  const [activeTabId, setActiveTabId] = reactExports.useState(null);
+  const [selectedFilePath, setSelectedFilePath] = reactExports.useState(null);
   const {
     apiKey,
     model,
@@ -54097,14 +54833,15 @@ function App() {
       try {
         let commands2 = [];
         let tools2 = [];
-        if (window.api?.getCommands) {
+        const api = window.api;
+        if (api?.getCommands) {
           console.log("Loading commands via IPC...");
-          commands2 = await window.api.getCommands();
+          commands2 = await api.getCommands();
           console.log("Loaded commands via IPC:", commands2.length);
         }
-        if (window.api?.getTools) {
+        if (api?.getTools) {
           console.log("Loading tools via IPC...");
-          tools2 = await window.api.getTools();
+          tools2 = await api.getTools();
           console.log("Loaded tools via IPC:", tools2.length);
         }
         if (commands2.length === 0) {
@@ -54160,7 +54897,8 @@ function App() {
     loadData();
   }, [setCommands, setTools]);
   reactExports.useEffect(() => {
-    window.api?.getConfig().then((config) => {
+    const api = window.api;
+    api?.getConfig?.().then((config) => {
       console.log("Loaded config:", config);
       if (config?.apiKey !== void 0) setApiKey(config.apiKey);
       if (config?.defaultModel !== void 0) setDefaultModel(config.defaultModel);
@@ -54175,10 +54913,10 @@ function App() {
         setModel(modelToSet);
       }
     });
-    const unsubNewSession = window.api?.onNewSession(() => {
+    const unsubNewSession = api?.onNewSession?.(() => {
       handleNewSession();
     });
-    const unsubOpenSettings = window.api?.onOpenSettings(() => {
+    const unsubOpenSettings = api?.onOpenSettings?.(() => {
       setShowSettings(true);
     });
     return () => {
@@ -54347,8 +55085,7 @@ ${result.content}`
         const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(lastFile)}`);
         if (readRes.ok) {
           const fileData = await readRes.json();
-          setSelectedFilePath(lastFile);
-          setSelectedFileContent(fileData.content || "");
+          openFile(lastFile, fileData.content || "");
         }
       } catch (readError) {
         console.error("Failed to auto-open file:", readError);
@@ -55380,7 +56117,8 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
   const lastSavedConfigRef = reactExports.useRef({ apiKey: "", model: "", defaultModel: "", permissionMode: "", providers: "[]" });
   reactExports.useEffect(() => {
     const handleBeforeUnload = () => {
-      window.api?.saveAllConfig?.({
+      const api = window.api;
+      api?.saveAllConfig?.({
         apiKey,
         model,
         defaultModel,
@@ -55410,7 +56148,8 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
       providers: providersJson
     };
     console.log("Saving config with providers:", providersCopy.length);
-    const success = await window.api?.saveAllConfig?.({
+    const api = window.api;
+    const success = await api?.saveAllConfig?.({
       apiKey: newApiKey,
       model: newModel,
       defaultModel: newDefaultModel,
@@ -55422,13 +56161,179 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
   const handleSettingsClose = () => {
     setShowSettings(false);
   };
-  const handleFileSelect = reactExports.useCallback((path2, content2) => {
+  const generateTabId = reactExports.useCallback(() => {
+    return `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }, []);
+  const getFileLanguage = reactExports.useCallback((path2) => {
+    const ext = path2.split(".").pop()?.toLowerCase();
+    const langMap = {
+      "js": "javascript",
+      "ts": "typescript",
+      "tsx": "tsx",
+      "jsx": "jsx",
+      "py": "python",
+      "json": "json",
+      "md": "markdown",
+      "css": "css",
+      "scss": "scss",
+      "html": "html",
+      "xml": "xml",
+      "yaml": "yaml",
+      "yml": "yaml",
+      "sh": "bash",
+      "bash": "bash",
+      "rs": "rust",
+      "go": "go",
+      "java": "java",
+      "c": "c",
+      "cpp": "cpp",
+      "h": "c",
+      "hpp": "cpp",
+      "rb": "ruby",
+      "php": "php",
+      "sql": "sql"
+    };
+    return langMap[ext || ""] || "text";
+  }, []);
+  const openFile = reactExports.useCallback((path2, content2) => {
+    const existingTab = tabs.find((tab2) => tab2.path === path2);
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      setSelectedFilePath(path2);
+      return;
+    }
+    const fileName = path2.split("/").pop() || path2;
+    const newTab = {
+      id: generateTabId(),
+      path: path2,
+      name: fileName,
+      content: content2,
+      isDirty: false,
+      isPreview: true,
+      // First open is preview mode
+      language: getFileLanguage(path2)
+    };
+    setTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newTab.id);
     setSelectedFilePath(path2);
-    setSelectedFileContent(content2);
+  }, [tabs, generateTabId, getFileLanguage]);
+  const handleFileSelect = reactExports.useCallback((path2, content2) => {
+    openFile(path2, content2);
+  }, [openFile]);
+  const handleTabSelect = reactExports.useCallback((tabId) => {
+    setActiveTabId(tabId);
+    const tab2 = tabs.find((t2) => t2.id === tabId);
+    if (tab2) {
+      setSelectedFilePath(tab2.path);
+    }
+  }, [tabs]);
+  const handleTabClose = reactExports.useCallback((tabId) => {
+    setTabs((prev) => {
+      const tabIndex = prev.findIndex((t2) => t2.id === tabId);
+      const newTabs = prev.filter((t2) => t2.id !== tabId);
+      if (activeTabId === tabId) {
+        if (newTabs.length > 0) {
+          const newActiveIndex = Math.max(0, tabIndex - 1);
+          const newActiveTab = newTabs[newActiveIndex] || newTabs[0];
+          setActiveTabId(newActiveTab.id);
+          setSelectedFilePath(newActiveTab.path);
+        } else {
+          setActiveTabId(null);
+          setSelectedFilePath(null);
+        }
+      }
+      return newTabs;
+    });
+  }, [activeTabId]);
+  const handleTabCloseOthers = reactExports.useCallback((tabId) => {
+    setTabs((prev) => {
+      const keepTab = prev.find((t2) => t2.id === tabId);
+      if (!keepTab) return prev;
+      setActiveTabId(keepTab.id);
+      setSelectedFilePath(keepTab.path);
+      return [keepTab];
+    });
   }, []);
-  const handleFileContentChange = reactExports.useCallback((content2) => {
-    setSelectedFileContent(content2);
+  const handleTabCloseAll = reactExports.useCallback(() => {
+    setTabs([]);
+    setActiveTabId(null);
+    setSelectedFilePath(null);
   }, []);
+  const handleTabCloseToRight = reactExports.useCallback((tabId) => {
+    setTabs((prev) => {
+      const tabIndex = prev.findIndex((t2) => t2.id === tabId);
+      return prev.slice(0, tabIndex + 1);
+    });
+  }, []);
+  const handleTabCloseToLeft = reactExports.useCallback((tabId) => {
+    setTabs((prev) => {
+      const tabIndex = prev.findIndex((t2) => t2.id === tabId);
+      const newTabs = prev.slice(tabIndex);
+      if (!newTabs.find((t2) => t2.id === activeTabId)) {
+        const newActive = newTabs[0];
+        if (newActive) {
+          setActiveTabId(newActive.id);
+          setSelectedFilePath(newActive.path);
+        }
+      }
+      return newTabs;
+    });
+  }, [activeTabId]);
+  const handleTabContentChange = reactExports.useCallback((tabId, content2) => {
+    setTabs((prev) => prev.map(
+      (tab2) => tab2.id === tabId ? { ...tab2, content: content2, isDirty: true, isPreview: false } : tab2
+    ));
+  }, []);
+  const handleTabSave = reactExports.useCallback(async (tabId, content2) => {
+    const tab2 = tabs.find((t2) => t2.id === tabId);
+    if (!tab2) return false;
+    try {
+      const res = await fetch(`${API_BASE}/fs/write`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: tab2.path, content: content2 })
+      });
+      if (res.ok) {
+        setTabs((prev) => prev.map(
+          (t2) => t2.id === tabId ? { ...t2, content: content2, isDirty: false } : t2
+        ));
+        return true;
+      }
+    } catch (error) {
+      console.error("Failed to save file:", error);
+    }
+    return false;
+  }, [tabs]);
+  const activeTab = tabs.find((t2) => t2.id === activeTabId) || null;
+  const handleFileRenamed = reactExports.useCallback((oldPath, newPath, newName) => {
+    setTabs((prev) => prev.map((tab2) => {
+      if (tab2.path === oldPath) {
+        return { ...tab2, path: newPath, name: newName };
+      }
+      return tab2;
+    }));
+    if (selectedFilePath === oldPath) {
+      setSelectedFilePath(newPath);
+    }
+  }, [selectedFilePath]);
+  const handleFileDeleted = reactExports.useCallback((deletedPath) => {
+    setTabs((prev) => {
+      const tabToDelete = prev.find((tab2) => tab2.path === deletedPath);
+      if (!tabToDelete) return prev;
+      const newTabs = prev.filter((tab2) => tab2.path !== deletedPath);
+      if (activeTabId === tabToDelete.id) {
+        if (newTabs.length > 0) {
+          const newActiveTab = newTabs[newTabs.length - 1];
+          setActiveTabId(newActiveTab.id);
+          setSelectedFilePath(newActiveTab.path);
+        } else {
+          setActiveTabId(null);
+          setSelectedFilePath(null);
+        }
+      }
+      return newTabs;
+    });
+  }, [activeTabId]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-container", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "header", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "header-title", children: t("appName") }),
@@ -55440,17 +56345,32 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
         {
           onFileSelect: handleFileSelect,
           selectedPath: selectedFilePath,
-          onRootPathChange: handleProjectPathChange
+          onRootPathChange: handleProjectPathChange,
+          openFile,
+          onFileRenamed: handleFileRenamed,
+          onFileDeleted: handleFileDeleted
         }
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "center-column", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          FileTabs,
+          {
+            tabs,
+            activeTabId,
+            onTabSelect: handleTabSelect,
+            onTabClose: handleTabClose,
+            onTabCloseOthers: handleTabCloseOthers,
+            onTabCloseAll: handleTabCloseAll,
+            onTabCloseToRight: handleTabCloseToRight,
+            onTabCloseToLeft: handleTabCloseToLeft
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           FileViewer,
           {
-            filePath: selectedFilePath,
-            content: selectedFileContent,
-            onContentChange: handleFileContentChange,
-            isEditable: true
+            tab: activeTab,
+            onContentChange: handleTabContentChange,
+            onSave: handleTabSave
           }
         ) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { ref: terminalRef, isVisible: showTerminal, projectPath })

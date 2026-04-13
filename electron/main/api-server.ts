@@ -1066,6 +1066,79 @@ export async function startApiServer(): Promise<void> {
     }
   })
 
+  // Delete file or directory
+  expressApp.post('/api/fs/delete', (req: Request, res: Response) => {
+    const { path: filePath } = req.body
+    if (!filePath) {
+      res.status(400).json({ error: 'path is required' })
+      return
+    }
+
+    try {
+      const targetPath = path.resolve(filePath)
+      
+      if (!fs.existsSync(targetPath)) {
+        res.status(404).json({ error: 'Path does not exist' })
+        return
+      }
+
+      const stats = fs.statSync(targetPath)
+      if (stats.isDirectory()) {
+        fs.rmdirSync(targetPath, { recursive: true })
+        res.json({ success: true, type: 'directory', path: targetPath })
+      } else {
+        fs.unlinkSync(targetPath)
+        res.json({ success: true, type: 'file', path: targetPath })
+      }
+    } catch (error) {
+      log.error('Failed to delete:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Create directory
+  expressApp.post('/api/fs/mkdir', (req: Request, res: Response) => {
+    const { path: dirPath } = req.body
+    if (!dirPath) {
+      res.status(400).json({ error: 'path is required' })
+      return
+    }
+
+    try {
+      const targetPath = path.resolve(dirPath)
+      fs.mkdirSync(targetPath, { recursive: true })
+      res.json({ success: true, path: targetPath })
+    } catch (error) {
+      log.error('Failed to create directory:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Rename file or directory
+  expressApp.post('/api/fs/rename', (req: Request, res: Response) => {
+    const { oldPath, newPath } = req.body
+    if (!oldPath || !newPath) {
+      res.status(400).json({ error: 'oldPath and newPath are required' })
+      return
+    }
+
+    try {
+      const resolvedOldPath = path.resolve(oldPath)
+      const resolvedNewPath = path.resolve(newPath)
+      
+      if (!fs.existsSync(resolvedOldPath)) {
+        res.status(404).json({ error: 'Source path does not exist' })
+        return
+      }
+
+      fs.renameSync(resolvedOldPath, resolvedNewPath)
+      res.json({ success: true, oldPath: resolvedOldPath, newPath: resolvedNewPath })
+    } catch (error) {
+      log.error('Failed to rename:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
   // ========== Legacy Tool Execution Endpoint ==========
 
   // Note: This endpoint is deprecated, use /api/tools/execute (OpenAI format) instead
