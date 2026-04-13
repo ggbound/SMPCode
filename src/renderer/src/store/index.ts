@@ -4,6 +4,7 @@ export interface Session {
   id: string
   createdAt: string
   messageCount: number
+  projectPath?: string // 关联的项目文件夹路径
 }
 
 export interface Message {
@@ -78,6 +79,7 @@ interface AppState {
   addMessage: (message: Message) => void
   clearMessages: () => void
   setMessages: (messages: Message[]) => void
+  clearMessageActions: () => void
   updateTokens: (input: number, output: number) => void
   setCommands: (commands: Command[]) => void
   setTools: (tools: Tool[]) => void
@@ -124,6 +126,14 @@ export const useStore = create<AppState>((set) => ({
   clearMessages: () => set({ messages: [], inputTokens: 0, outputTokens: 0 }),
 
   setMessages: (messages) => set({ messages }),
+
+  // Clear needsAction flag from all messages (used when task is completed)
+  clearMessageActions: () => set((state) => ({
+    messages: state.messages.map(msg => ({
+      ...msg,
+      needsAction: undefined
+    }))
+  })),
 
   updateTokens: (input, output) => set((state) => ({
     inputTokens: state.inputTokens + input,

@@ -1,7 +1,11 @@
 import { useStore } from '../store'
 import { t } from '../i18n'
 
-function Sidebar() {
+interface SidebarProps {
+  onSessionSelect?: (projectPath: string | undefined) => void
+}
+
+function Sidebar({ onSessionSelect }: SidebarProps = {}) {
   const { sessions, currentSession, selectSession, addSession, setMessages } = useStore()
 
   const handleNewSession = async () => {
@@ -11,6 +15,8 @@ function Sidebar() {
       addSession(session)
       selectSession(session.id)
       setMessages([])
+      // Notify parent that no project is associated
+      onSessionSelect?.(undefined)
     } catch (error) {
       console.error('Failed to create session:', error)
     }
@@ -29,10 +35,19 @@ function Sidebar() {
           content: msg.content,
           timestamp: Date.now()
         })))
+        // Notify parent about the project path
+        onSessionSelect?.(session.projectPath)
       }
     } catch (error) {
       console.error('Failed to load session:', error)
     }
+  }
+
+  // Get folder name from path
+  const getFolderName = (path: string | undefined) => {
+    if (!path) return null
+    const parts = path.split('/')
+    return parts[parts.length - 1] || parts[parts.length - 2] || path
   }
 
   return (
@@ -54,12 +69,31 @@ function Sidebar() {
               key={session.id}
               className={`session-item ${currentSession === session.id ? 'active' : ''}`}
               onClick={() => handleSelectSession(session.id)}
+              title={session.projectPath || 'No project associated'}
             >
               <div style={{ fontWeight: 500, fontSize: '13px' }}>
                 {t('sessionTitle')} {session.id.slice(0, 8)}
+                {session.projectPath && (
+                  <span style={{ 
+                    marginLeft: '6px', 
+                    fontSize: '10px', 
+                    background: 'var(--accent-color)', 
+                    color: 'white',
+                    padding: '1px 4px',
+                    borderRadius: '3px'
+                  }}>
+                    📁
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: '11px', opacity: 0.7 }}>
-                {new Date(session.createdAt).toLocaleDateString()}
+                {session.projectPath ? (
+                  <span style={{ color: 'var(--accent-color)' }}>
+                    {getFolderName(session.projectPath)}
+                  </span>
+                ) : (
+                  new Date(session.createdAt).toLocaleDateString()
+                )}
               </div>
             </div>
           ))

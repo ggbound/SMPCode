@@ -69,6 +69,7 @@ interface Session {
   createdAt: string
   inputTokens: number
   outputTokens: number
+  projectPath?: string // 关联的项目文件夹路径
 }
 
 const sessions: Map<string, Session> = new Map()
@@ -866,17 +867,55 @@ export async function startApiServer(): Promise<void> {
 
   expressApp.post('/api/sessions', (req: Request, res: Response) => {
     const id = uuidv4()
+    const { projectPath } = req.body || {}
     const session: Session = {
       id,
       messages: [],
       createdAt: new Date().toISOString(),
       inputTokens: 0,
-      outputTokens: 0
+      outputTokens: 0,
+      projectPath: projectPath || undefined
     }
     sessions.set(id, session)
     saveSession(session)
     const { id: _sessionId, ...sessionWithoutId } = session
     res.json({ id, ...sessionWithoutId })
+  })
+
+  // Get session by project path - returns the most recent session for a project
+  expressApp.get('/api/sessions/by-project', (req: Request, res: Response) => {
+    const projectPath = req.query.path as string
+    if (!projectPath) {
+      res.status(400).json({ error: 'project path is required' })
+      return
+    }
+
+    // Find sessions for this project, sorted by createdAt (newest first)
+    const projectSessions = Array.from(sessions.values())
+      .filter(s => s.projectPath === projectPath)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+    if (projectSessions.length > 0) {
+      res.json({ found: true, session: projectSessions[0] }) // Return the most recent session
+    } else {
+      // Return 200 with found: false instead of 404 to avoid browser console errors
+      // This is a normal case - project just doesn't have a session yet
+      res.json({ found: false, message: 'No session found for this project' })
+    }
+  })
+
+  // Update session's project path
+  expressApp.patch('/api/sessions/:id/project-path', (req: Request, res: Response) => {
+    const session = sessions.get(req.params.id)
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' })
+      return
+    }
+
+    const { projectPath } = req.body
+    session.projectPath = projectPath || undefined
+    saveSession(session)
+    res.json(session)
   })
 
   expressApp.delete('/api/sessions/:id', (req: Request, res: Response) => {
@@ -903,7 +942,8 @@ export async function startApiServer(): Promise<void> {
     const sessionList = Array.from(sessions.values()).map(s => ({
       id: s.id,
       createdAt: s.createdAt,
-      messageCount: s.messages.length
+      messageCount: s.messages.length,
+      projectPath: s.projectPath
     }))
     res.json(sessionList)
   })

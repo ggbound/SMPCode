@@ -1032,11 +1032,18 @@ async function executeToolWithMiddleware(toolName, args, context) {
 function validateToolArgs(toolName, args, executor) {
   const errors = [];
   for (const required of executor.required) {
-    if (!(required in args) || args[required] === void 0 || args[required] === null) {
+    if (executor.name === "search_code" && required === "pattern") {
+      if (!("pattern" in args && args.pattern !== void 0 && args.pattern !== null || "query" in args && args.query !== void 0 && args.query !== null)) {
+        errors.push(`Missing required parameter: pattern (or query)`);
+      }
+    } else if (!(required in args) || args[required] === void 0 || args[required] === null) {
       errors.push(`Missing required parameter: ${required}`);
     }
   }
   for (const [key, value] of Object.entries(args)) {
+    if (executor.name === "search_code" && key === "query") {
+      continue;
+    }
     const paramDef = executor.parameters[key];
     if (!paramDef) {
       errors.push(`Unknown parameter: ${key}`);
@@ -1988,7 +1995,7 @@ const commandParam = {
 };
 const patternParam = {
   type: "string",
-  description: "The regex pattern to search for",
+  description: 'The regex pattern or search query to find (e.g., "export const postApi", "function handleClick", "import React")',
   required: true
 };
 const searchPathParam = {
@@ -2019,17 +2026,17 @@ const DEFAULT_MAX_LINES = 100;
 const MAX_OUTPUT_LENGTH = 5e4;
 const readFileTool = {
   name: "read_file",
-  description: "Read the contents of a file at the specified path. Use this to examine existing code before editing. Supports offset and limit for large files.",
+  description: "Read the contents of a file at the specified path. Use this to examine existing code before editing. Supports offset and limit for large files. Best practice: Always read a file before modifying it to understand its structure and content.",
   parameters: {
     path: pathParam,
     offset: {
       type: "number",
-      description: "The line offset to start reading from (0-based)",
+      description: "The line offset to start reading from (0-based). Use this to read specific sections of large files.",
       required: false
     },
     limit: {
       type: "number",
-      description: "The maximum number of lines to read",
+      description: "The maximum number of lines to read. Default is 100 lines. Use larger values for big files.",
       required: false
     }
   },
@@ -2083,7 +2090,7 @@ const readFileTool = {
 };
 const writeFileTool = {
   name: "write_file",
-  description: "Create a new file or overwrite an existing file with the specified content. Use this to create new files or completely replace file contents.",
+  description: "Create a new file or overwrite an existing file with the specified content. Use this to create new files or completely replace file contents. Warning: This will overwrite existing files without confirmation.",
   parameters: {
     path: pathParam,
     content: contentParam
@@ -2107,7 +2114,7 @@ const writeFileTool = {
 };
 const editFileTool = {
   name: "edit_file",
-  description: "Replace specific text in a file with new text. Use this for targeted modifications when you only need to change part of a file. The old_string must match exactly (including whitespace) for the replacement to work. If the file does not exist, it will be created with the new_string content.",
+  description: "Replace specific text in a file with new text. Use this for targeted modifications when you only need to change part of a file. CRITICAL: The old_string must match EXACTLY (including whitespace, indentation, and line breaks) for the replacement to work. Best practice: Always read the file first to get the exact text.",
   parameters: {
     path: pathParam,
     old_string: oldStringParam,
@@ -2129,14 +2136,59 @@ const editFileTool = {
         return createSuccessResult(`File created (did not exist): ${targetPath}`, { filePath: targetPath, created: true });
       }
       let content = fs__namespace.readFileSync(targetPath, "utf-8");
-      if (!content.includes(oldString)) {
-        return createErrorResult(
-          `Could not find the exact text to replace in ${filePath}. The text must match exactly including whitespace.`
-        );
+      if (content.includes(oldString)) {
+        content = content.replace(oldString, newString);
+        fs__namespace.writeFileSync(targetPath, content, "utf-8");
+        return createSuccessResult(`File edited successfully: ${targetPath}`, { filePath: targetPath });
       }
-      content = content.replace(oldString, newString);
-      fs__namespace.writeFileSync(targetPath, content, "utf-8");
-      return createSuccessResult(`File edited successfully: ${targetPath}`, { filePath: targetPath });
+      const normalizedOld = oldString.replace(/\s+/g, " ").trim();
+      const normalizedContent = content.replace(/\s+/g, " ");
+      if (normalizedContent.includes(normalizedOld)) {
+        const lines = oldString.split("\n");
+        const firstLine = lines[0].trim();
+        const lastLine = lines[lines.length - 1].trim();
+        const contentLines = content.split("\n");
+        let startIdx = -1;
+        let endIdx = -1;
+        for (let i = 0; i < contentLines.length; i++) {
+          if (contentLines[i].trim() === firstLine && startIdx === -1) {
+            startIdx = i;
+          }
+          if (contentLines[i].trim() === lastLine && startIdx !== -1) {
+            endIdx = i;
+            break;
+          }
+        }
+        if (startIdx !== -1 && endIdx !== -1) {
+          const actualOldString = contentLines.slice(startIdx, endIdx + 1).join("\n");
+          content = content.replace(actualOldString, newString);
+          fs__namespace.writeFileSync(targetPath, content, "utf-8");
+          return createSuccessResult(`File edited successfully (with whitespace normalization): ${targetPath}`, { filePath: targetPath });
+        }
+      }
+      let errorMsg = `Could not find the exact text to replace in ${filePath}.
+
+`;
+      errorMsg += `The text must match exactly including whitespace, indentation, and line breaks.
+
+`;
+      errorMsg += `Looking for (${oldString.length} characters):
+`;
+      errorMsg += `---
+${oldString.substring(0, 200)}${oldString.length > 200 ? "..." : ""}
+---
+
+`;
+      const preview = content.substring(0, 500);
+      errorMsg += `File content preview (${content.length} characters total):
+`;
+      errorMsg += `---
+${preview}${content.length > 500 ? "..." : ""}
+---
+
+`;
+      errorMsg += `Suggestion: Use read_file to get the exact text including all whitespace.`;
+      return createErrorResult(errorMsg);
     } catch (error) {
       return createErrorResult(String(error));
     }
@@ -2144,7 +2196,7 @@ const editFileTool = {
 };
 const appendFileTool = {
   name: "append_file",
-  description: "Append content to the end of an existing file. Use this to add content to large files without rewriting the entire file. If the file does not exist, it will be created.",
+  description: "Append content to the end of an existing file. Use this to add content to large files without rewriting the entire file. If the file does not exist, it will be created. Best for: adding log entries, adding new functions to the end of files, building large files incrementally.",
   parameters: {
     path: pathParam,
     content: contentParam
@@ -2169,7 +2221,7 @@ const appendFileTool = {
 };
 const listDirectoryTool = {
   name: "list_directory",
-  description: "List the contents of a directory. Use this to explore the project structure and find files.",
+  description: "List the contents of a directory. Use this to explore the project structure and find files. Best practice: Use this before read_file to understand the project layout and locate relevant files.",
   parameters: {
     path: pathParam
   },
@@ -2199,7 +2251,7 @@ const listDirectoryTool = {
 };
 const deleteFileTool = {
   name: "delete_file",
-  description: "Delete a file or directory at the specified path. Use this to remove files or directories that are no longer needed.",
+  description: "Delete a file or directory at the specified path. Use this to remove files or directories that are no longer needed. Warning: This action is permanent and cannot be undone. Use with caution.",
   parameters: {
     path: pathParam
   },
@@ -2226,7 +2278,7 @@ const deleteFileTool = {
 };
 const executeBashTool = {
   name: "execute_bash",
-  description: "Execute a bash/shell command. Use this to run commands like npm install, git operations, build commands, etc.",
+  description: 'Execute a bash/shell command. Use this to run commands like npm install, git operations, build commands, etc. Commands run in an integrated terminal. Long-running commands like "npm run dev" will start in the background and return immediately.',
   parameters: {
     command: commandParam
   },
@@ -2334,7 +2386,7 @@ ${outputText}`,
 };
 const searchCodeTool = {
   name: "search_code",
-  description: "Search for code patterns in the project using grep. Use this to find specific functions, variables, or patterns across multiple files.",
+  description: "Search for code patterns in the project using grep. Use this to find specific functions, variables, imports, or patterns across multiple files. Best for: finding where a function is defined, finding all usages of a variable, searching for specific code patterns.",
   parameters: {
     pattern: patternParam,
     path: searchPathParam
@@ -2342,14 +2394,18 @@ const searchCodeTool = {
   required: ["pattern"],
   execute: async (args, context) => {
     try {
-      const pattern = args.pattern;
+      const pattern = args.pattern || args.query;
+      if (!pattern) {
+        return createErrorResult("Missing required parameter: pattern (or query)");
+      }
       const searchPath = args.path;
       const targetPath = searchPath ? path__namespace.resolve(context.cwd, searchPath) : context.cwd;
       if (!fs__namespace.existsSync(targetPath)) {
         return createErrorResult(`Path does not exist: ${searchPath || "."}`);
       }
+      const escapedPattern = pattern.replace(/'/g, `'"'"'`).replace(/\\/g, "\\\\");
       const { stdout, stderr } = await execPromise(
-        `grep -r "${pattern.replace(/"/g, '\\"')}" "${targetPath}" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.java" --include="*.go" --include="*.rs" -l 2>/dev/null || true`,
+        `grep -r '${escapedPattern}' "${targetPath}" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.java" --include="*.go" --include="*.rs" -l 2>/dev/null || true`,
         { timeout: 3e4 }
       );
       if (stderr && !stdout) {
@@ -4293,17 +4349,43 @@ async function startApiServer() {
   });
   expressApp.post("/api/sessions", (req, res) => {
     const id = uuid.v4();
+    const { projectPath } = req.body || {};
     const session = {
       id,
       messages: [],
       createdAt: (/* @__PURE__ */ new Date()).toISOString(),
       inputTokens: 0,
-      outputTokens: 0
+      outputTokens: 0,
+      projectPath: projectPath || void 0
     };
     sessions.set(id, session);
     saveSession(session);
     const { id: _sessionId, ...sessionWithoutId } = session;
     res.json({ id, ...sessionWithoutId });
+  });
+  expressApp.get("/api/sessions/by-project", (req, res) => {
+    const projectPath = req.query.path;
+    if (!projectPath) {
+      res.status(400).json({ error: "project path is required" });
+      return;
+    }
+    const projectSessions = Array.from(sessions.values()).filter((s) => s.projectPath === projectPath).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    if (projectSessions.length > 0) {
+      res.json({ found: true, session: projectSessions[0] });
+    } else {
+      res.json({ found: false, message: "No session found for this project" });
+    }
+  });
+  expressApp.patch("/api/sessions/:id/project-path", (req, res) => {
+    const session = sessions.get(req.params.id);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    const { projectPath } = req.body;
+    session.projectPath = projectPath || void 0;
+    saveSession(session);
+    res.json(session);
   });
   expressApp.delete("/api/sessions/:id", (req, res) => {
     const session = sessions.get(req.params.id);
@@ -4327,7 +4409,8 @@ async function startApiServer() {
     const sessionList = Array.from(sessions.values()).map((s) => ({
       id: s.id,
       createdAt: s.createdAt,
-      messageCount: s.messages.length
+      messageCount: s.messages.length,
+      projectPath: s.projectPath
     }));
     res.json(sessionList);
   });

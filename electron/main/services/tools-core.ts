@@ -277,13 +277,24 @@ export function validateToolArgs(
 
   // 检查必需参数
   for (const required of executor.required) {
-    if (!(required in args) || args[required] === undefined || args[required] === null) {
+    // Special handling for search_code tool: 'query' can be used instead of 'pattern'
+    if (executor.name === 'search_code' && required === 'pattern') {
+      if (!(('pattern' in args && args.pattern !== undefined && args.pattern !== null) ||
+            ('query' in args && args.query !== undefined && args.query !== null))) {
+        errors.push(`Missing required parameter: pattern (or query)`)
+      }
+    } else if (!(required in args) || args[required] === undefined || args[required] === null) {
       errors.push(`Missing required parameter: ${required}`)
     }
   }
 
   // 验证参数类型
   for (const [key, value] of Object.entries(args)) {
+    // Special handling for search_code tool: 'query' is an alias for 'pattern'
+    if (executor.name === 'search_code' && key === 'query') {
+      continue // Skip validation for 'query' parameter, it's handled in execute
+    }
+    
     const paramDef = executor.parameters[key]
     if (!paramDef) {
       errors.push(`Unknown parameter: ${key}`)

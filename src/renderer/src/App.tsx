@@ -25,11 +25,12 @@ function buildSystemPrompt(
   const platform = navigator.platform.toLowerCase().includes('win') ? 'Windows' :
                    navigator.platform.toLowerCase().includes('mac') ? 'macOS' : 'Linux'
 
-  let prompt = `You are Claude Code, an AI coding assistant with direct access to the user's file system and command line.\n\n`
+  let prompt = `You are Claude Code, an expert AI coding assistant with direct access to the user's file system and command line. Your goal is to help users write, modify, and understand code effectively.\n\n`
 
   prompt += `=== SYSTEM INFORMATION ===\n`
   prompt += `Platform: ${platform}\n`
   prompt += `Working Directory: ${cwd}\n`
+  prompt += `Current Time: ${new Date().toISOString()}\n`
 
   // Add project context if available
   if (projectContext) {
@@ -39,23 +40,25 @@ function buildSystemPrompt(
   prompt += `\n`
 
   prompt += `=== CORE PRINCIPLES ===\n`
-  prompt += `1. ALWAYS USE TOOLS: When the user asks you to create, edit, or modify files, you MUST use the available tools.\n`
-  prompt += `2. BE PROACTIVE: Take initiative to complete tasks.\n`
-  prompt += `3. EXPLAIN YOUR ACTIONS: After using tools, briefly summarize what you did.\n\n`
+  prompt += `1. ALWAYS USE TOOLS: When the user asks you to create, edit, or modify files, you MUST use the available tools. Never describe what you would do - actually do it.\n`
+  prompt += `2. BE PROACTIVE: Take initiative to complete tasks. If you see issues or improvements, suggest and implement them.\n`
+  prompt += `3. EXPLAIN YOUR ACTIONS: After using tools, briefly summarize what you did and why.\n`
+  prompt += `4. THINK STEP BY STEP: For complex tasks, break them down into steps and execute them sequentially.\n`
+  prompt += `5. VERIFY BEFORE PROCEEDING: After making changes, verify they work as expected before declaring completion.\n\n`
 
   prompt += `=== AVAILABLE TOOLS ===\n`
   prompt += `You have access to the following tools. Use them by outputting JSON code blocks:\n\n`
-  prompt += `read_file: Read file contents\n`
-  prompt += `write_file: Create or overwrite files\n`
-  prompt += `edit_file: Replace specific text in a file\n`
-  prompt += `append_file: Append content to existing file\n`
-  prompt += `delete_file: Delete a file or directory\n`
-  prompt += `list_directory: List directory contents\n`
-  prompt += `execute_bash: Execute shell commands\n`
-  prompt += `search_code: Search for code patterns\n`
-  prompt += `get_running_processes: Get list of running processes\n`
-  prompt += `stop_process: Stop a running process by its ID\n`
-  prompt += `restart_process: Restart a running process by its ID\n\n`
+  prompt += `read_file: Read file contents. Use offset/limit for large files. Always read before editing.\n`
+  prompt += `write_file: Create or overwrite files. Use for new files or complete rewrites.\n`
+  prompt += `edit_file: Replace specific text in a file. old_string must match EXACTLY (including whitespace).\n`
+  prompt += `append_file: Append content to existing file. Use for adding to the end of files.\n`
+  prompt += `delete_file: Delete a file or directory. Use with caution.\n`
+  prompt += `list_directory: List directory contents. Use to explore project structure.\n`
+  prompt += `execute_bash: Execute shell commands. Can run npm, git, node, etc. Commands run in integrated terminal.\n`
+  prompt += `search_code: Search for code patterns using regex. Use to find references, definitions, etc.\n`
+  prompt += `get_running_processes: Get list of running processes. Check before starting duplicate services.\n`
+  prompt += `stop_process: Stop a running process by its ID.\n`
+  prompt += `restart_process: Restart a running process by its ID.\n\n`
 
   prompt += `=== TOOL INVOCATION FORMAT ===\n`
   prompt += `When you need to use a tool, output ONLY the JSON code block:\n\n`
@@ -64,30 +67,117 @@ function buildSystemPrompt(
 \`\`\`
 
 `
+  prompt += `For multiple tool calls, output them sequentially:\n\n`
+  prompt += `\`\`\`json
+{"tool": "read_file", "arguments": {"path": "/path/to/file"}}
+\`\`\`
+\`\`\`json
+{"tool": "list_directory", "arguments": {"path": "/path/to/dir"}}
+\`\`\`
+
+`
   prompt += `CRITICAL RULES:\n`
   prompt += `1. ONLY output the JSON code block, no explanatory text before or between tool calls\n`
-  prompt += `2. You can output multiple tool calls in sequence\n`
-  prompt += `3. After seeing tool results, continue with next steps if needed\n`
-  prompt += `4. When task is complete, summarize what was done\n\n`
+  prompt += `2. Wait for tool results before proceeding to the next step\n`
+  prompt += `3. If a tool fails, analyze the error and retry with corrections\n`
+  prompt += `4. When task is complete, provide a clear summary of what was accomplished\n\n`
+
+  prompt += `=== BEST PRACTICES ===\n`
+  prompt += `FILE OPERATIONS:\n`
+  prompt += `- Always read a file before modifying it\n`
+  prompt += `- For files > 100 lines, use offset and limit to read specific sections\n`
+  prompt += `- When editing, ensure old_string matches EXACTLY (whitespace, indentation, line breaks)\n`
+  prompt += `- For multi-file changes, plan the order: read all first, then write/edit\n\n`
+  prompt += `CODE ANALYSIS:\n`
+  prompt += `- Use search_code to find references, imports, and dependencies\n`
+  prompt += `- Use list_directory to understand project structure\n`
+  prompt += `- Read configuration files (package.json, tsconfig.json, etc.) to understand tech stack\n\n`
+  prompt += `COMMAND EXECUTION:\n`
+  prompt += `- npm/node commands run in the integrated terminal and can be monitored\n`
+  prompt += `- Use 'npm install' before running projects\n`
+  prompt += `- Check if processes are already running before starting new ones\n\n`
+
+  prompt += `=== ERROR HANDLING ===\n`
+  prompt += `If a tool execution fails:\n`
+  prompt += `1. Read the error message carefully\n`
+  prompt += `2. Check if the file/path exists\n`
+  prompt += `3. Verify you have the correct parameters\n`
+  prompt += `4. Retry with corrections\n`
+  prompt += `5. If still failing, explain the issue to the user and ask for guidance\n\n`
 
   prompt += `=== WORKFLOW ===\n`
-  prompt += `1. Analyze the user's request\n`
-  prompt += `2. Use the provided PROJECT STRUCTURE to understand the codebase\n`
-  prompt += `3. If tools are needed, output the tool call(s)\n`
-  prompt += `4. Wait for tool results (you will see them in the next message)\n`
-  prompt += `5. Based on results, either:\n`
-  prompt += `   - Output more tool calls if more work is needed\n`
-  prompt += `   - Provide a summary if the task is complete\n\n`
-  prompt += `NOTE: The PROJECT STRUCTURE above shows the current project layout. Use this information to:\n`
-  prompt += `- Understand project organization without needing to list directories\n`
-  prompt += `- Find relevant files quickly\n`
-  prompt += `- Know which files exist before trying to read them\n\n`
+  prompt += `For each user request:\n`
+  prompt += `1. ANALYZE: Understand what the user wants\n`
+  prompt += `2. EXPLORE: Use list_directory, search_code, read_file to gather context\n`
+  prompt += `3. PLAN: Determine the steps needed to complete the task\n`
+  prompt += `4. EXECUTE: Use tools to make changes\n`
+  prompt += `5. VERIFY: Check that changes work correctly\n`
+  prompt += `6. SUMMARIZE: Explain what was done\n\n`
 
-  prompt += `=== LARGE FILE HANDLING ===\n`
-  prompt += `For files > 8KB, use write_file to create initial file, then append_file to add content.\n\n`
+  prompt += `=== TASK PLANNING PROTOCOL ===\n`
+  prompt += `CRITICAL: Before executing any tools, you MUST create a clear task plan:\n\n`
+  prompt += `Step 1 - ANALYZE THE REQUEST:\n`
+  prompt += `- What is the user asking for?\n`
+  prompt += `- What files/components are likely involved?\n`
+  prompt += `- What is the scope of changes needed?\n\n`
+  prompt += `Step 2 - CREATE EXECUTION PLAN:\n`
+  prompt += `- List ALL files you need to read\n`
+  prompt += `- Identify dependencies between files\n`
+  prompt += `- Plan the order of modifications\n`
+  prompt += `- Estimate number of steps needed\n\n`
+  prompt += `Step 3 - EXECUTE WITH TRACKING:\n`
+  prompt += `- Read all necessary files FIRST before making changes\n`
+  prompt += `- After reading, analyze what you learned\n`
+  prompt += `- Make changes based on your analysis\n`
+  prompt += `- DO NOT read the same file twice unless necessary\n\n`
+  prompt += `Step 4 - AVOID INFINITE LOOPS:\n`
+  prompt += `- If you find yourself reading files repeatedly, STOP and reassess\n`
+  prompt += `- Ask yourself: "What am I trying to find?"\n`
+  prompt += `- If stuck, summarize findings and ask user for clarification\n\n`
+  prompt += `Step 5 - MEMORY MANAGEMENT:\n`
+  prompt += `When context is compressed, maintain task memory by explicitly stating:\n`
+  prompt += `- 【问题分析】: What is the problem you're solving\n`
+  prompt += `- 【根本原因】: Root cause of the issue\n`
+  prompt += `- 【修复策略】: Your plan to fix it\n`
+  prompt += `- 【待修复文件】: List of files that need modification\n`
+  prompt += `- 【已完成】: Files already fixed\n`
+  prompt += `Example: "【问题分析】API接口404错误 【根本原因】路由配置错误 【修复策略】修改server.js中的路由 【待修复文件】server.js, api.js 【已完成】无"\n\n`
+  prompt += `=== CONTEXT RETENTION ===\n`
+  prompt += `The conversation history includes:\n`
+  prompt += `- Previous tool calls and their results\n`
+  prompt += `- Files you've read and their contents\n`
+  prompt += `- Commands you've executed and their output\n`
+  prompt += `Use this information to maintain context across the conversation.\n\n`
+
+  if (projectContext) {
+    prompt += `=== PROJECT STRUCTURE USAGE ===\n`
+    prompt += `The PROJECT STRUCTURE above shows the current project layout. Use this to:\n`
+    prompt += `- Understand project organization without listing directories\n`
+    prompt += `- Find relevant files quickly\n`
+    prompt += `- Know which files exist before trying to read them\n`
+    prompt += `- Identify the tech stack and framework being used\n\n`
+  }
+
+  prompt += `=== RESPONSE FORMAT ===\n`
+  prompt += `ALWAYS structure your response in the following format:\n\n`
+  prompt += `## 🤔 思考过程\n`
+  prompt += `Explain your analysis and reasoning. What did you find? What are you planning to do?\n\n`
+  prompt += `## 📋 执行任务\n`
+  prompt += `List the specific tasks you're performing:\n`
+  prompt += `- ✅ 已完成: [task description]\n`
+  prompt += `- ⏳ 进行中: [task description]\n`
+  prompt += `- 📌 待处理: [task description]\n\n`
+  prompt += `## 📁 文件操作\n`
+  prompt += `Document all file operations:\n`
+  prompt += `- 📖 已读取: file1.js, file2.js\n`
+  prompt += `- ✏️ 已修改: file3.js (what changed)\n`
+  prompt += `- 📝 已创建: file4.js\n\n`
+  prompt += `## 💡 总结\n`
+  prompt += `Provide a clear summary of what was accomplished and any next steps.\n\n`
+  prompt += `IMPORTANT: Use this format consistently so the user can track your progress.\n\n`
 
   prompt += `=== RESPONSE LANGUAGE ===\n`
-  prompt += `Respond in the same language as the user's query.\n`
+  prompt += `Respond in the same language as the user's query. Be concise but thorough.\n`
 
   return prompt
 }
@@ -138,6 +228,7 @@ function App() {
     selectSession,
     addMessage,
     clearMessages,
+    setMessages,
     updateTokens
   } = useStore()
 
@@ -261,6 +352,11 @@ function App() {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
     }
+    // Clear pending continuation to prevent it from being executed on next message
+    if (pendingContinuation) {
+      console.log('[handleStopGeneration] Clearing pending continuation due to user stop')
+      setPendingContinuation(null)
+    }
     setIsLoading(false)
   }
 
@@ -378,6 +474,12 @@ function App() {
       } else {
         // Task completed successfully - add a new clean message without the continue button
         console.log('[handleContinueExecution] Task completed successfully')
+        // Clear needsAction from all messages to hide all "继续执行" buttons
+        const clearedMessages = messages.map(msg => ({
+          ...msg,
+          needsAction: undefined
+        }))
+        setMessages(clearedMessages)
         // Add a clear completion message
         addMessage({
           role: 'assistant',
@@ -426,6 +528,14 @@ function App() {
     console.log('[handleSendMessage] processWithTools returned:', result.content?.substring(0, 100))
     console.log('[handleSendMessage] writtenFiles:', result.writtenFiles)
     // processWithTools already updates the message, no need to update again
+
+    // Clear needsAction from all messages to hide all "继续执行" buttons when task completes
+    const currentMessages = useStore.getState().messages
+    const clearedMessages = currentMessages.map(msg => ({
+      ...msg,
+      needsAction: undefined
+    }))
+    setMessages(clearedMessages)
 
     // Update tokens (estimate)
     updateTokens(userContent.length / 4, result.content.length / 4)
@@ -497,6 +607,77 @@ function App() {
     }
   }, [projectPath, fetchProjectContext])
 
+  // Handle project path change - auto load associated session
+  const handleProjectPathChange = useCallback(async (newPath: string) => {
+    console.log('[handleProjectPathChange] New project path:', newPath)
+    setProjectPath(newPath)
+
+    if (!newPath) return
+
+    try {
+      // Try to find existing session for this project
+      const res = await fetch(`${API_BASE}/sessions/by-project?path=${encodeURIComponent(newPath)}`)
+
+      if (res.ok) {
+        const data = await res.json()
+
+        if (data.found && data.session) {
+          // Found existing session - load it
+          const session = data.session
+          console.log('[handleProjectPathChange] Found existing session:', session.id)
+
+          // Select the session and load its messages
+          selectSession(session.id)
+          setMessages(session.messages.map((msg: { role: 'user' | 'assistant'; content: string }) => ({
+            role: msg.role,
+            content: msg.content,
+            timestamp: Date.now()
+          })))
+
+          // Update tokens estimate
+          const totalContent = session.messages.map((m: { content: string }) => m.content).join(' ')
+          updateTokens(totalContent.length / 4, 0)
+
+          console.log('[handleProjectPathChange] Loaded session with', session.messages.length, 'messages')
+        } else {
+          // No existing session for this project - this is expected for new projects
+          console.log('[handleProjectPathChange] No existing session found for this project, creating new one')
+          const createRes = await fetch(`${API_BASE}/sessions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectPath: newPath })
+          })
+
+          if (createRes.ok) {
+            const newSession = await createRes.json()
+            addSession({
+              id: newSession.id,
+              createdAt: newSession.createdAt,
+              messageCount: 0,
+              projectPath: newPath
+            })
+            selectSession(newSession.id)
+            clearMessages()
+            console.log('[handleProjectPathChange] Created new session:', newSession.id)
+          }
+        }
+      } else {
+        // Error response
+        console.error('[handleProjectPathChange] Failed to check for existing session:', res.status)
+      }
+    } catch (error) {
+      console.error('[handleProjectPathChange] Error:', error)
+    }
+  }, [setProjectPath, selectSession, setMessages, addSession, clearMessages, updateTokens])
+
+  // Handle session selection from sidebar - update project path if session has one
+  const handleSessionSelect = useCallback((sessionProjectPath: string | undefined) => {
+    if (sessionProjectPath && sessionProjectPath !== projectPath) {
+      console.log('[handleSessionSelect] Updating project path to:', sessionProjectPath)
+      setProjectPath(sessionProjectPath)
+    }
+  }, [projectPath])
+
   const handleNewSession = useCallback(async () => {
     // Always create a new session using legacy API (compatible with messages API)
     try {
@@ -533,12 +714,20 @@ function App() {
       while ((toolMatch = toolCallRegex.exec(sectionContent)) !== null) {
         const toolName = toolMatch[1]
         const argsJson = toolMatch[2].trim()
+        
+        // Validate JSON before parsing
+        if (!argsJson || argsJson.length < 2) {
+          console.log('[parseToolCalls] Empty or too short args JSON, skipping')
+          continue
+        }
+        
         try {
           const args = JSON.parse(argsJson)
           toolCalls.push({ tool: toolName, arguments: args })
           console.log('Parsed tool call from special format:', toolName, args)
         } catch (e) {
-          console.error('Failed to parse tool call args:', argsJson)
+          console.error('Failed to parse tool call args:', argsJson.substring(0, 200))
+          console.error('Parse error:', e)
         }
       }
     }
@@ -594,19 +783,31 @@ function App() {
       
       try {
         // Try to parse the entire block as JSON
-        const parsed = JSON.parse(blockContent)
-        console.log(`[parseToolCalls] Parsed JSON from code block #${matchCount}:`, parsed)
-        if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
-          toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-          console.log(`[parseToolCalls] Added tool call from code block #${matchCount}:`, parsed.tool)
+        // First check if content looks like valid JSON
+        if (!blockContent.trim().startsWith('{') || !blockContent.trim().endsWith('}')) {
+          console.log(`[parseToolCalls] Code block #${matchCount} doesn't look like JSON object, skipping`)
+          // Continue to line-by-line parsing
+        } else {
+          const parsed = JSON.parse(blockContent)
+          console.log(`[parseToolCalls] Parsed JSON from code block #${matchCount}:`, parsed)
+          if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
+            toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
+            console.log(`[parseToolCalls] Added tool call from code block #${matchCount}:`, parsed.tool)
+          }
         }
       } catch (e) {
-        console.log(`[parseToolCalls] Failed to parse code block #${matchCount} as single JSON, trying line by line`)
+        console.log(`[parseToolCalls] Failed to parse code block #${matchCount} as single JSON, trying line by line. Error:`, e)
         // If the block contains multiple JSON objects (one per line), try each line
         const lines = blockContent.split('\n')
         for (const line of lines) {
           const trimmedLine = line.trim()
           if (!trimmedLine || trimmedLine.startsWith('//')) continue
+          
+          // Skip if doesn't look like JSON
+          if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
+            continue
+          }
+          
           try {
             const parsed = JSON.parse(trimmedLine)
             if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
@@ -620,13 +821,17 @@ function App() {
             if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
               try {
                 const jsonStr = trimmedLine.substring(jsonStart, jsonEnd + 1)
+                // Validate JSON string looks complete
+                if (jsonStr.length < 10 || !jsonStr.includes('"tool"')) {
+                  continue
+                }
                 const parsed = JSON.parse(jsonStr)
                 if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
                   toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
                   console.log(`[parseToolCalls] Added tool call from JSON in line:`, parsed.tool)
                 }
               } catch (e3) {
-                // Ignore
+                // Ignore parse errors for individual lines
               }
             }
           }
@@ -645,6 +850,12 @@ function App() {
     let jsonMatch
     while ((jsonMatch = jsonObjectRegex.exec(text)) !== null) {
       const jsonStr = jsonMatch[0]
+      
+      // Validate JSON string before parsing
+      if (!jsonStr || jsonStr.length < 10) {
+        continue
+      }
+      
       // Skip if this JSON was already found in a code block
       const alreadyFound = toolCalls.some(tc => {
         const tcStr = JSON.stringify(tc)
@@ -658,7 +869,8 @@ function App() {
           toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
         }
       } catch (e) {
-        // Ignore parse errors
+        // Ignore parse errors for inline JSON
+        console.log(`[parseToolCalls] Failed to parse inline JSON:`, jsonStr.substring(0, 100))
       }
     }
 
@@ -705,6 +917,21 @@ function App() {
     const userOriginalRequest = apiMessages[apiMessages.length - 1]?.content || ''
     // 跟踪已读取的文件内容摘要
     const fileReadSummaries: string[] = []
+    // 跟踪已读取的文件路径，防止重复读取
+    const readFilesSet = new Set<string>()
+    // 跟踪执行计划
+    let executionPlan: string[] = []
+    // 跟踪已完成的步骤
+    const completedSteps: string[] = []
+    // 任务记忆：存储关键分析结论和修复策略
+    const taskMemory: {
+      problemAnalysis?: string;      // 问题分析
+      rootCause?: string;            // 根本原因
+      fixStrategy?: string;          // 修复策略
+      filesToModify?: string[];      // 需要修改的文件列表
+      completedFixes?: string[];     // 已完成的修复
+      errorsFound?: string[];        // 发现的错误
+    } = {}
 
     // Add initial assistant message for tool calling progress - only if not continuation
     if (!isContinuation) {
@@ -761,6 +988,25 @@ function App() {
         // 保留最近的消息（工具调用和结果）
         const recentMessages = conversationHistory.slice(-8)
         
+        // 构建任务记忆摘要
+        const taskMemorySummary = []
+        if (taskMemory.problemAnalysis) {
+          taskMemorySummary.push(`【问题分析】\n${taskMemory.problemAnalysis.substring(0, 300)}`)
+        }
+        if (taskMemory.rootCause) {
+          taskMemorySummary.push(`【根本原因】\n${taskMemory.rootCause.substring(0, 300)}`)
+        }
+        if (taskMemory.fixStrategy) {
+          taskMemorySummary.push(`【修复策略】\n${taskMemory.fixStrategy.substring(0, 300)}`)
+        }
+        if (taskMemory.filesToModify && taskMemory.filesToModify.length > 0) {
+          const remainingFiles = taskMemory.filesToModify.filter(f => !taskMemory.completedFixes?.includes(f))
+          taskMemorySummary.push(`【待修复文件】\n${remainingFiles.join(', ') || '无'}\n【已完成】\n${taskMemory.completedFixes?.join(', ') || '无'}`)
+        }
+        if (taskMemory.errorsFound && taskMemory.errorsFound.length > 0) {
+          taskMemorySummary.push(`【发现的错误】\n${taskMemory.errorsFound.slice(-3).join('\n')}`)
+        }
+        
         // 构建压缩后的上下文
         const compressedContext = {
           role: 'user' as const,
@@ -769,13 +1015,19 @@ function App() {
 【用户原始请求】
 ${userOriginalRequest.substring(0, 500)}${userOriginalRequest.length > 500 ? '...' : ''}
 
-【已读取的文件】
+${taskMemorySummary.length > 0 ? taskMemorySummary.join('\n\n') + '\n\n' : ''}【已读取的文件】
 ${contextSummary}
 
 【当前任务状态】
 - 已迭代次数: ${iterations}
 - 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(', ') : '无'}
 - 任务进行中，请继续完成用户请求
+
+⚠️ 重要提醒：
+- 你已经分析过问题并制定了修复策略
+- 不要重复读取已分析的文件
+- 基于已有分析继续执行修复
+- 如果修复完成，请明确总结修改内容65
 
 可用工具：
 - read_file: 读取文件，支持 offset 和 limit 参数
@@ -1080,16 +1332,54 @@ ${contextSummary}
         break
       }
 
-      // 显示正在执行的工具 - 简化显示
-      const toolNames = toolCalls.map(t => t.tool).join(', ')
-      updateLastMessage(`🔄 正在执行: ${toolNames}...`)
+      // 检查是否有重复读取的文件
+      const duplicateReads: string[] = []
+      const filteredToolCalls = toolCalls.filter((t) => {
+        if (t.tool === 'read_file') {
+          const path = (t.arguments as { path?: string }).path
+          if (path && readFilesSet.has(path)) {
+            duplicateReads.push(path)
+            return false // 过滤掉重复读取
+          }
+          if (path) {
+            readFilesSet.add(path)
+          }
+        }
+        return true
+      })
+      
+      // 如果有重复读取，添加警告到对话历史
+      if (duplicateReads.length > 0) {
+        const warningMessage = `⚠️ 警告: 检测到重复读取以下文件，已跳过: ${duplicateReads.join(', ')}\n\n请基于已读取的内容继续分析，不要重复读取。如果信息不足，请尝试其他方法或总结当前发现。`
+        conversationHistory.push({ role: 'user', content: warningMessage })
+        console.log('[ToolLoop] Blocked duplicate reads:', duplicateReads)
+      }
+      
+      // 使用过滤后的工具调用
+      const toolCallsToExecute = filteredToolCalls.length > 0 ? filteredToolCalls : toolCalls
+      
+      // 显示正在执行的工具 - 详细展示
+      const toolDetails = toolCallsToExecute.map((t, idx) => {
+        const args = Object.entries(t.arguments as Record<string, unknown>)
+          .map(([k, v]) => `${k}=${JSON.stringify(v).substring(0, 50)}`)
+          .join(', ')
+        return `${idx + 1}. **${t.tool}** (${args})`
+      }).join('\n')
+      
+      // 显示执行计划（如果有）
+      const planDisplay = executionPlan.length > 0 
+        ? `📋 **执行计划:**\n${executionPlan.map((step, idx) => `${idx + 1}. ${completedSteps.includes(step) ? '✅' : '⏳'} ${step}`).join('\n')}\n\n`
+        : ''
+      
+      const currentProgress = `📍 **步骤 ${iterations}/${maxIterations}**\n\n${planDisplay}🔄 **正在调用工具:**\n${toolDetails}`
+      updateLastMessage(currentProgress)
       
       // Execute tool calls with retry and error handling
       const results: Array<{ tool: string; result: { success: boolean; output: string; error?: string } }> = []
       
-      console.log(`[ToolLoop] Starting execution of ${toolCalls.length} tool calls`)
+      console.log(`[ToolLoop] Starting execution of ${toolCallsToExecute.length} tool calls`)
       
-      for (const toolCall of toolCalls) {
+      for (const toolCall of toolCallsToExecute) {
         const maxRetries = 3
         const toolTimeout = 60000 // 60秒超时
         let retryCount = 0
@@ -1172,12 +1462,12 @@ ${contextSummary}
       console.log(`[ToolLoop] Preparing to call LLM again with tool results...`)
 
       // 验证所有工具都已执行完成（关键监控）
-      if (results.length !== toolCalls.length) {
-        console.error(`[ToolLoop] WARNING: Expected ${toolCalls.length} results but got ${results.length}`)
+      if (results.length !== toolCallsToExecute.length) {
+        console.error(`[ToolLoop] WARNING: Expected ${toolCallsToExecute.length} results but got ${results.length}`)
         // 补充缺失的结果
-        for (let i = results.length; i < toolCalls.length; i++) {
+        for (let i = results.length; i < toolCallsToExecute.length; i++) {
           results.push({ 
-            tool: toolCalls[i].tool, 
+            tool: toolCallsToExecute[i].tool, 
             result: { success: false, output: '', error: '工具执行结果丢失' } 
           })
         }
@@ -1205,11 +1495,64 @@ ${contextSummary}
         return `${status} **${r.tool}**${output}${error}`
       }).join('\n\n')
 
-      // 简化工具执行结果显示
+      // 详细工具执行结果显示
       const allSuccess = results.every(r => r.result?.success)
       const successCount = results.filter(r => r.result?.success).length
       const statusEmoji = allSuccess ? '✅' : successCount > 0 ? '⚠️' : '❌'
-      updateLastMessage(`${statusEmoji} 工具执行完成 (${successCount}/${results.length})`)
+      
+      // 分类文件操作
+      const readFiles: string[] = []
+      const modifiedFiles: string[] = []
+      const createdFiles: string[] = []
+      const otherOperations: string[] = []
+      
+      results.forEach(r => {
+        const args = toolCallsToExecute.find(t => t.tool === r.tool)?.arguments as { path?: string } | undefined
+        const path = args?.path || ''
+        
+        if (r.tool === 'read_file' && path) {
+          readFiles.push(path)
+        } else if ((r.tool === 'edit_file' || r.tool === 'write_file') && path && r.result?.success) {
+          if (r.tool === 'write_file') {
+            createdFiles.push(path)
+          } else {
+            modifiedFiles.push(path)
+          }
+        } else {
+          otherOperations.push(`${r.tool}${path ? ` (${path})` : ''} - ${r.result?.success ? '✅' : '❌'}`)
+        }
+      })
+      
+      // 构建文件操作摘要
+      const fileOpsSummary = []
+      if (readFiles.length > 0) {
+        fileOpsSummary.push(`📖 已读取: ${readFiles.length} 个文件`)
+      }
+      if (modifiedFiles.length > 0) {
+        fileOpsSummary.push(`✏️ 已修改: ${modifiedFiles.join(', ')}`)
+      }
+      if (createdFiles.length > 0) {
+        fileOpsSummary.push(`📝 已创建: ${createdFiles.join(', ')}`)
+      }
+      
+      // 构建详细的执行结果展示
+      const detailedResults = results.map((r, idx) => {
+        const toolStatus = r.result?.success ? '✅ 成功' : '❌ 失败'
+        const output = r.result?.output 
+          ? `\n   📤 输出:\n   \`\`\`\n   ${r.result.output.substring(0, 300)}${r.result.output.length > 300 ? '...' : ''}\n   \`\`\`` 
+          : ''
+        const error = r.result?.error 
+          ? `\n   ⚠️ 错误: ${r.result.error.substring(0, 200)}` 
+          : ''
+        return `**${idx + 1}. ${r.tool}** - ${toolStatus}${output}${error}`
+      }).join('\n\n')
+      
+      const progressMessage = `📍 **步骤 ${iterations}/${maxIterations}**\n\n` +
+        `${statusEmoji} **工具执行完成** (${successCount}/${results.length} 成功)\n\n` +
+        `${fileOpsSummary.length > 0 ? '📁 **文件操作:**\n' + fileOpsSummary.join('\n') + '\n\n' : ''}` +
+        `**详细结果:**\n${detailedResults}`
+      
+      updateLastMessage(progressMessage)
       console.log('[ToolLoop] Tool execution cycle completed, continuing to next iteration...')
       console.log('[ToolLoop] Current iteration:', iterations, 'of max', maxIterations)
       }
@@ -1231,8 +1574,23 @@ ${contextSummary}
       // 如果达到最大迭代次数，返回需要继续执行的状态
       if (reachedMaxIterations) {
         console.log('[ToolLoop] Reached max iterations, returning needsContinuation=true')
+        
+        // 构建详细的达到最大迭代次数说明
+        const maxIterMessage = `⏹️ **已达到最大迭代次数 (${maxIterations} 次)**\n\n` +
+          `📊 **执行统计:**\n` +
+          `- 总迭代次数: ${iterations}\n` +
+          `- 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(', ') : '无'}\n` +
+          `- 已读取文件: ${readFilesSet.size} 个\n\n` +
+          `🤔 **为什么任务没有完成?**\n` +
+          `AI 可能需要更多步骤来完成复杂的任务。任务可能需要:\n` +
+          `- 读取更多文件\n` +
+          `- 执行更多命令\n` +
+          `- 进行更多修改\n\n` +
+          `💡 **下一步:**\n` +
+          `点击 **"继续执行"** 按钮让 AI 继续处理，或直接发送新消息。`
+        
         return {
-          content: finalContent,
+          content: maxIterMessage + '\n\n---\n\n**AI 最后响应:**\n' + finalContent,
           writtenFiles,
           needsContinuation: true
         }
@@ -1665,7 +2023,7 @@ ${contextSummary}
         <FileExplorer
           onFileSelect={handleFileSelect}
           selectedPath={selectedFilePath}
-          onRootPathChange={setProjectPath}
+          onRootPathChange={handleProjectPathChange}
         />
 
         {/* Center: File Viewer + Terminal */}
