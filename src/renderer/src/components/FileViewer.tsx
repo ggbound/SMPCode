@@ -1,6 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import CodeMirror from '@uiw/react-codemirror'
+import { vscodeDark } from '@uiw/codemirror-theme-vscode'
+import { javascript } from '@codemirror/lang-javascript'
+import { html } from '@codemirror/lang-html'
+import { css } from '@codemirror/lang-css'
+import { json } from '@codemirror/lang-json'
+import { markdown } from '@codemirror/lang-markdown'
+import { python } from '@codemirror/lang-python'
+import { vue } from '@codemirror/lang-vue'
 import type { Tab } from './FileTabs'
 import { t } from '../i18n'
 
@@ -12,6 +19,40 @@ interface FileViewerProps {
 
 // Auto-save delay in milliseconds
 const AUTO_SAVE_DELAY = 1000
+
+// Get language extension based on file path
+function getLanguageExtension(path: string | null) {
+  if (!path) return null
+  const ext = path.split('.').pop()?.toLowerCase()
+  
+  switch (ext) {
+    case 'js':
+    case 'ts':
+    case 'tsx':
+    case 'jsx':
+      return javascript({ jsx: ext === 'jsx' || ext === 'tsx', typescript: ext === 'ts' || ext === 'tsx' })
+    case 'html':
+    case 'htm':
+      return html()
+    case 'css':
+    case 'scss':
+    case 'sass':
+    case 'less':
+      return css()
+    case 'json':
+      return json()
+    case 'md':
+    case 'markdown':
+      return markdown()
+    case 'py':
+    case 'python':
+      return python()
+    case 'vue':
+      return vue()
+    default:
+      return null
+  }
+}
 
 function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
   const [editedContent, setEditedContent] = useState('')
@@ -37,55 +78,6 @@ function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
       setSaveStatus(tab.isDirty ? 'unsaved' : 'saved')
     }
   }, [tab?.content])
-
-  const getLanguage = useCallback((path: string | null): string => {
-    if (!path) return 'text'
-    const ext = path.split('.').pop()?.toLowerCase()
-    const langMap: Record<string, string> = {
-      'js': 'javascript',
-      'ts': 'typescript',
-      'tsx': 'tsx',
-      'jsx': 'jsx',
-      'py': 'python',
-      'json': 'json',
-      'md': 'markdown',
-      'css': 'css',
-      'scss': 'scss',
-      'sass': 'sass',
-      'less': 'less',
-      'html': 'html',
-      'xml': 'xml',
-      'yaml': 'yaml',
-      'yml': 'yaml',
-      'toml': 'toml',
-      'sh': 'bash',
-      'bash': 'bash',
-      'zsh': 'bash',
-      'fish': 'bash',
-      'rs': 'rust',
-      'go': 'go',
-      'java': 'java',
-      'kt': 'kotlin',
-      'kts': 'kotlin',
-      'c': 'c',
-      'cpp': 'cpp',
-      'cc': 'cpp',
-      'cxx': 'cpp',
-      'h': 'c',
-      'hpp': 'cpp',
-      'hh': 'cpp',
-      'rb': 'ruby',
-      'php': 'php',
-      'swift': 'swift',
-      'sql': 'sql',
-      'dockerfile': 'docker',
-      'vue': 'vue',
-      'svelte': 'svelte',
-      'astro': 'astro',
-      'wasm': 'wasm',
-    }
-    return langMap[ext || ''] || 'text'
-  }, [])
 
   // Perform save
   const performSave = useCallback(async (content: string) => {
@@ -174,6 +166,12 @@ function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
     }
   }
 
+  // Get language extension
+  const extensions = useMemo(() => {
+    const ext = getLanguageExtension(tab?.path || null)
+    return ext ? [ext] : []
+  }, [tab?.path])
+
   if (!tab) {
     return (
       <div className="file-viewer file-viewer-empty">
@@ -186,7 +184,6 @@ function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
   }
 
   const fileName = tab.name || tab.path.split('/').pop() || tab.path
-  const language = getLanguage(tab.path)
   const isImage = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(tab.path)
 
   // Get save status display
@@ -241,12 +238,34 @@ function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
             <img src={`file://${tab.path}`} alt={fileName} />
           </div>
         ) : (
-          <textarea
-            className="file-editor"
-            value={editedContent}
-            onChange={(e) => handleContentChange(e.target.value)}
-            spellCheck={false}
-          />
+          <div className="code-editor-container">
+            <CodeMirror
+              value={editedContent}
+              height="100%"
+              theme={vscodeDark}
+              extensions={extensions}
+              onChange={(value) => handleContentChange(value)}
+              basicSetup={{
+                lineNumbers: true,
+                highlightActiveLineGutter: true,
+                highlightActiveLine: true,
+                foldGutter: false,
+                dropCursor: true,
+                allowMultipleSelections: true,
+                indentOnInput: true,
+                bracketMatching: true,
+                closeBrackets: true,
+                autocompletion: true,
+                highlightSelectionMatches: true,
+                tabSize: 2,
+              }}
+              style={{
+                height: '100%',
+                fontSize: '13px',
+                fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
+              }}
+            />
+          </div>
         )}
       </div>
     </div>

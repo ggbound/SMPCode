@@ -22,67 +22,82 @@ interface FileTabsProps {
   onTabCloseToLeft: (tabId: string) => void
 }
 
-// Get file icon based on extension
-const getFileIcon = (filename: string): string => {
+// VSCode-style file icon component for tabs
+const FileIcon = ({ filename }: { filename: string }) => {
   const ext = filename.split('.').pop()?.toLowerCase()
-  const iconMap: Record<string, string> = {
-    'js': '📜',
-    'ts': '📘',
-    'tsx': '⚛️',
-    'jsx': '⚛️',
-    'py': '🐍',
-    'json': '📋',
-    'md': '📝',
-    'css': '🎨',
-    'scss': '🎨',
-    'sass': '🎨',
-    'less': '🎨',
-    'html': '🌐',
-    'htm': '🌐',
-    'txt': '📄',
-    'xml': '📄',
-    'yaml': '⚙️',
-    'yml': '⚙️',
-    'toml': '⚙️',
-    'ini': '⚙️',
-    'conf': '⚙️',
-    'config': '⚙️',
-    'sh': '🔧',
-    'bash': '🔧',
-    'zsh': '🔧',
-    'rs': '🦀',
-    'go': '🔵',
-    'java': '☕',
-    'kt': '🔷',
-    'c': '🔷',
-    'cpp': '🔷',
-    'cc': '🔷',
-    'cxx': '🔷',
-    'h': '🔷',
-    'hpp': '🔷',
-    'hh': '🔷',
-    'rb': '💎',
-    'php': '🐘',
-    'swift': '🦉',
-    'sql': '🗃️',
-    'dockerfile': '🐳',
-    'vue': '💚',
-    'svelte': '🧡',
-    'astro': '🚀',
-    'wasm': '⚡',
-    'lock': '🔒',
-    'gitignore': '🚫',
-    'env': '🔐',
+  const name = filename.toLowerCase()
+  
+  // Special file names
+  if (name === 'package.json' || name === 'package-lock.json') {
+    return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="2" fill="#CB3837"/><text x="8" y="11" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">npm</text></svg>
+  }
+  if (name === '.gitignore') {
+    return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" fill="#F05032"/><path d="M8 5V11M5 8H11" stroke="white" strokeWidth="1.5"/></svg>
+  }
+  if (name === 'readme.md') {
+    return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1" fill="#42A5F5"/><path d="M4 4H12M4 7H12M4 10H9" stroke="white" strokeWidth="1"/></svg>
+  }
+  if (name === '.env') {
+    return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="4" width="12" height="8" rx="1" fill="#FFCA28"/><text x="8" y="10" textAnchor="middle" fill="#333" fontSize="5" fontWeight="bold">ENV</text></svg>
+  }
+  if (name === 'tsconfig.json') {
+    return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#3178C6"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">TS</text></svg>
   }
   
-  const baseName = filename.toUpperCase()
-  for (const [key, icon] of Object.entries(iconMap)) {
-    if (baseName.includes(key.toUpperCase())) {
-      return icon
-    }
+  // Extension-based icons
+  switch (ext) {
+    case 'js':
+    case 'mjs':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#F7DF1E"/><text x="8" y="10" textAnchor="middle" fill="#333" fontSize="6" fontWeight="bold">JS</text></svg>
+    case 'ts':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#3178C6"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">TS</text></svg>
+    case 'tsx':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#3178C6"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">TSX</text></svg>
+    case 'jsx':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#61DAFB"/><text x="8" y="10" textAnchor="middle" fill="#333" fontSize="5" fontWeight="bold">JSX</text></svg>
+    case 'py':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" fill="#3776AB"/><path d="M6 6H10M6 10H10" stroke="#FFD43B" strokeWidth="1.5"/></svg>
+    case 'json':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#6B8E23"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">JSON</text></svg>
+    case 'md':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1" fill="#42A5F5"/><text x="8" y="9" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">MD</text></svg>
+    case 'css':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#264DE4"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">CSS</text></svg>
+    case 'scss':
+    case 'sass':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#CC6699"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">SCSS</text></svg>
+    case 'html':
+    case 'htm':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#E34F26"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">HTML</text></svg>
+    case 'vue':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#41B883"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">VUE</text></svg>
+    case 'go':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#00ADD8"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">GO</text></svg>
+    case 'rs':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#DEA584"/><text x="8" y="10" textAnchor="middle" fill="#333" fontSize="6" fontWeight="bold">RS</text></svg>
+    case 'java':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#B07219"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">JAVA</text></svg>
+    case 'php':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#4F5D95"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">PHP</text></svg>
+    case 'rb':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#701516"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">RB</text></svg>
+    case 'sh':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#89E051"/><text x="8" y="10" textAnchor="middle" fill="#333" fontSize="6" fontWeight="bold">SH</text></svg>
+    case 'yaml':
+    case 'yml':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#CB171E"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">YML</text></svg>
+    case 'dockerfile':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#2496ED"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="4" fontWeight="bold">DOCKER</text></svg>
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'svg':
+    case 'webp':
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="1" fill="#26A69A"/><text x="8" y="10" textAnchor="middle" fill="white" fontSize="5" fontWeight="bold">IMG</text></svg>
+    default:
+      return <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="12" height="14" rx="1" fill="#9E9E9E"/></svg>
   }
-  
-  return iconMap[ext || ''] || '📄'
 }
 
 function FileTabs({ 
@@ -197,7 +212,7 @@ function FileTabs({
               onMouseDown={(e) => handleMouseDown(e, tab.id)}
               title={getTabTooltip(tab)}
             >
-              <span className="tab-icon">{getFileIcon(tab.name)}</span>
+              <span className="tab-icon"><FileIcon filename={tab.name} /></span>
               <span className="tab-name">{displayName}</span>
               {tab.isDirty && <span className="tab-dirty-indicator">●</span>}
               <button

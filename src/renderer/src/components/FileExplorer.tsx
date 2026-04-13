@@ -19,80 +19,412 @@ interface FileExplorerProps {
   onFileDeleted?: (path: string) => void
 }
 
-// File icon mapping based on extension
+// VSCode-style file icon component
+const FileIcon = ({ filename, isDirectory, isOpen }: { filename: string; isDirectory: boolean; isOpen?: boolean }) => {
+  if (isDirectory) {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        {isOpen ? (
+          <path d="M4 20C4 20 4 6 4 6C4 5.45 4.45 5 5 5H11L13 7H19C19.55 7 20 7.45 20 8V20C20 20.55 19.55 21 19 21H5C4.45 21 4 20.55 4 20Z" fill="#DCAD5A"/>
+        ) : (
+          <path d="M20 8H14L12 6H4C3.45 6 3 6.45 3 7V19C3 19.55 3.45 20 4 20H20C20.55 20 21 19.55 21 19V9C21 8.45 20.55 8 20 8Z" fill="#DCAD5A"/>
+        )}
+      </svg>
+    )
+  }
+  
+  const ext = filename.split('.').pop()?.toLowerCase()
+  const name = filename.toLowerCase()
+  
+  // Special file names
+  if (name === 'package.json' || name === 'package-lock.json') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#CB3837"/>
+        <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">npm</text>
+      </svg>
+    )
+  }
+  if (name === '.gitignore' || name === '.gitattributes') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" fill="#F05032"/>
+        <path d="M12 7V17M7 12H17" stroke="white" strokeWidth="2"/>
+      </svg>
+    )
+  }
+  if (name.startsWith('dockerfile') || name.endsWith('.dockerfile')) {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#2496ED"/>
+        <path d="M7 10H17M7 13H17M7 16H14" stroke="white" strokeWidth="1.5"/>
+      </svg>
+    )
+  }
+  if (name === 'readme.md' || name === 'readme') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="4" y="2" width="16" height="20" rx="2" fill="#42A5F5"/>
+        <path d="M7 6H17M7 10H17M7 14H13" stroke="white" strokeWidth="1.5"/>
+      </svg>
+    )
+  }
+  if (name === 'license' || name === 'license.md') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="4" y="2" width="16" height="20" rx="2" fill="#FF9800"/>
+        <circle cx="12" cy="10" r="3" fill="white"/>
+        <path d="M8 16C8 16 9 18 12 18C15 18 16 16 16 16" stroke="white" strokeWidth="1.5"/>
+      </svg>
+    )
+  }
+  if (name === '.env' || name.includes('.env.')) {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="6" width="18" height="12" rx="2" fill="#FFCA28"/>
+        <text x="12" y="15" textAnchor="middle" fill="#333" fontSize="8" fontWeight="bold">ENV</text>
+      </svg>
+    )
+  }
+  if (name === 'tsconfig.json') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#3178C6"/>
+        <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">TS</text>
+      </svg>
+    )
+  }
+  if (name === 'vite.config.ts' || name === 'vite.config.js') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" fill="#646CFF"/>
+        <path d="M12 6L17 10L12 14L7 10Z" fill="#FFD62E"/>
+      </svg>
+    )
+  }
+  if (name === 'tailwind.config.js' || name === 'tailwind.config.ts') {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#38BDF8"/>
+        <path d="M8 12C8 10 9 8 12 8C15 8 16 10 16 12C16 14 14 15 12 15C10 15 8 14 8 12Z" fill="white"/>
+      </svg>
+    )
+  }
+  if (name === 'webpack.config.js' || name.startsWith('webpack')) {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="3" width="18" height="18" rx="2" fill="#8DD6F9"/>
+        <rect x="6" y="8" width="12" height="8" fill="#1C78C0"/>
+      </svg>
+    )
+  }
+  if (name === 'eslint' || name.includes('.eslint')) {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" fill="#4B32C3"/>
+        <path d="M8 12H16M12 8V16" stroke="white" strokeWidth="2"/>
+      </svg>
+    )
+  }
+  if (name === 'prettier' || name.includes('.prettier')) {
+    return (
+      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" fill="#F7B93E"/>
+        <circle cx="9" cy="12" r="2" fill="#333"/>
+        <circle cx="15" cy="12" r="2" fill="#333"/>
+      </svg>
+    )
+  }
+  
+  // Extension-based icons
+  switch (ext) {
+    case 'js':
+    case 'mjs':
+    case 'cjs':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#F7DF1E"/>
+          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="10" fontWeight="bold">JS</text>
+        </svg>
+      )
+    case 'ts':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#3178C6"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">TS</text>
+        </svg>
+      )
+    case 'tsx':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#3178C6"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">TSX</text>
+        </svg>
+      )
+    case 'jsx':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#61DAFB"/>
+          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="9" fontWeight="bold">JSX</text>
+        </svg>
+      )
+    case 'py':
+    case 'pyc':
+    case 'pyo':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" fill="#3776AB"/>
+          <path d="M9 9H15M9 15H15" stroke="#FFD43B" strokeWidth="2"/>
+        </svg>
+      )
+    case 'json':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#6B8E23"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">JSON</text>
+        </svg>
+      )
+    case 'md':
+    case 'markdown':
+    case 'mdx':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="2" width="16" height="20" rx="2" fill="#42A5F5"/>
+          <text x="12" y="14" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">MD</text>
+        </svg>
+      )
+    case 'css':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#264DE4"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">CSS</text>
+        </svg>
+      )
+    case 'scss':
+    case 'sass':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#CC6699"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">SCSS</text>
+        </svg>
+      )
+    case 'less':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#1D365D"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">LESS</text>
+        </svg>
+      )
+    case 'html':
+    case 'htm':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#E34F26"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">HTML</text>
+        </svg>
+      )
+    case 'xml':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FF6600"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">XML</text>
+        </svg>
+      )
+    case 'yaml':
+    case 'yml':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#CB171E"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">YAML</text>
+        </svg>
+      )
+    case 'toml':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#9C4221"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">TOML</text>
+        </svg>
+      )
+    case 'ini':
+    case 'conf':
+    case 'config':
+    case 'cfg':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#6D6D6D"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">CONF</text>
+        </svg>
+      )
+    case 'sh':
+    case 'bash':
+    case 'zsh':
+    case 'fish':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#89E051"/>
+          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="9" fontWeight="bold">SH</text>
+        </svg>
+      )
+    case 'rs':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#DEA584"/>
+          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="9" fontWeight="bold">RS</text>
+        </svg>
+      )
+    case 'go':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#00ADD8"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">GO</text>
+        </svg>
+      )
+    case 'java':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#B07219"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">JAVA</text>
+        </svg>
+      )
+    case 'kt':
+    case 'kts':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#A97BFF"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">KT</text>
+        </svg>
+      )
+    case 'c':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#555555"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">C</text>
+        </svg>
+      )
+    case 'cpp':
+    case 'cc':
+    case 'cxx':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#F34B7D"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">C++</text>
+        </svg>
+      )
+    case 'h':
+    case 'hpp':
+    case 'hh':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#438EFF"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">H</text>
+        </svg>
+      )
+    case 'rb':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#701516"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">RB</text>
+        </svg>
+      )
+    case 'php':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#4F5D95"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">PHP</text>
+        </svg>
+      )
+    case 'swift':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#F05138"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">SWIFT</text>
+        </svg>
+      )
+    case 'sql':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#E38C00"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">SQL</text>
+        </svg>
+      )
+    case 'vue':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#41B883"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">VUE</text>
+        </svg>
+      )
+    case 'svelte':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FF3E00"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">SVELTE</text>
+        </svg>
+      )
+    case 'astro':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FF5D01"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">ASTRO</text>
+        </svg>
+      )
+    case 'wasm':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#654FF0"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">WASM</text>
+        </svg>
+      )
+    case 'lock':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FFD54F"/>
+          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="8" fontWeight="bold">LOCK</text>
+        </svg>
+      )
+    case 'txt':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="2" width="16" height="20" rx="2" fill="#757575"/>
+          <text x="12" y="14" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">TXT</text>
+        </svg>
+      )
+    case 'svg':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FFB13B"/>
+          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="8" fontWeight="bold">SVG</text>
+        </svg>
+      )
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'webp':
+    case 'bmp':
+    case 'ico':
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="#26A69A"/>
+          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">IMG</text>
+        </svg>
+      )
+    default:
+      return (
+        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="2" width="16" height="20" rx="2" fill="#9E9E9E"/>
+          <text x="12" y="14" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">FILE</text>
+        </svg>
+      )
+  }
+}
+
+// Legacy function for backward compatibility
 const getFileIcon = (filename: string, isDirectory: boolean, isOpen?: boolean): string => {
   if (isDirectory) {
     return isOpen ? '📂' : '📁'
   }
-  
-  const ext = filename.split('.').pop()?.toLowerCase()
-  const iconMap: Record<string, string> = {
-    'js': '📜',
-    'ts': '📘',
-    'tsx': '⚛️',
-    'jsx': '⚛️',
-    'py': '🐍',
-    'json': '📋',
-    'md': '📝',
-    'css': '🎨',
-    'scss': '🎨',
-    'sass': '🎨',
-    'less': '🎨',
-    'html': '🌐',
-    'htm': '🌐',
-    'txt': '📄',
-    'xml': '📄',
-    'yaml': '⚙️',
-    'yml': '⚙️',
-    'toml': '⚙️',
-    'ini': '⚙️',
-    'conf': '⚙️',
-    'config': '⚙️',
-    'sh': '🔧',
-    'bash': '🔧',
-    'zsh': '🔧',
-    'fish': '🔧',
-    'rs': '🦀',
-    'go': '🔵',
-    'java': '☕',
-    'kt': '🔷',
-    'c': '🔷',
-    'cpp': '🔷',
-    'cc': '🔷',
-    'cxx': '🔷',
-    'h': '🔷',
-    'hpp': '🔷',
-    'hh': '🔷',
-    'rb': '💎',
-    'php': '🐘',
-    'swift': '🦉',
-    'sql': '🗃️',
-    'dockerfile': '🐳',
-    'vue': '💚',
-    'svelte': '🧡',
-    'astro': '🚀',
-    'wasm': '⚡',
-    'lock': '🔒',
-    'gitignore': '🚫',
-    'gitattributes': '⚙️',
-    'env': '🔐',
-    'LICENSE': '📜',
-    'README': '📖',
-    'CHANGELOG': '📋',
-    'CONTRIBUTING': '🤝',
-    'CODE_OF_CONDUCT': '📜',
-    'SECURITY': '🔒',
-  }
-  
-  // Check for special filenames first
-  const baseName = filename.split('/').pop()?.toUpperCase() || ''
-  for (const [key, icon] of Object.entries(iconMap)) {
-    if (baseName.includes(key.toUpperCase())) {
-      return icon
-    }
-  }
-  
-  return iconMap[ext || ''] || '📄'
+  return '📄'
 }
 
 function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, onFileRenamed, onFileDeleted }: FileExplorerProps) {
@@ -561,9 +893,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           {!node.isDirectory && <span className="file-arrow-placeholder" />}
           
           {/* File/Folder icon */}
-          <span className="file-icon">
-            {getFileIcon(node.name, node.isDirectory, node.isOpen)}
-          </span>
+          <FileIcon filename={node.name} isDirectory={node.isDirectory} isOpen={node.isOpen} />
           
           {/* File name */}
           <span className="file-name">{node.name}</span>
