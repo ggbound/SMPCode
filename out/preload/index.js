@@ -67,6 +67,12 @@ const api = {
   // AI意图相关API
   getAIIntentContext: (processId) => electron.ipcRenderer.invoke("process:get-ai-intent", { processId }),
   getProjectAIHistory: (cwd) => electron.ipcRenderer.invoke("process:get-ai-history", { cwd }),
+  // Conversation storage - TRAE风格项目级对话存储
+  saveConversation: (projectPath, sessionId, messages, sessionTitle) => electron.ipcRenderer.invoke("conversation:save", { projectPath, sessionId, messages, sessionTitle }),
+  loadConversation: (projectPath, sessionId) => electron.ipcRenderer.invoke("conversation:load", { projectPath, sessionId }),
+  listSessions: (projectPath) => electron.ipcRenderer.invoke("conversation:list-sessions", { projectPath }),
+  deleteSession: (projectPath, sessionId) => electron.ipcRenderer.invoke("conversation:delete-session", { projectPath, sessionId }),
+  autoSaveAllSessions: (projectPath, sessions) => electron.ipcRenderer.invoke("conversation:auto-save-all", { projectPath, sessions }),
   // Process event listeners - 支持AI意图数据
   onProcessStarted: (callback) => {
     electron.ipcRenderer.on("process:started", callback);

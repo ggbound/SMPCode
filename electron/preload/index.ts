@@ -85,6 +85,18 @@ const api = {
   getProjectAIHistory: (cwd: string) =>
     ipcRenderer.invoke('process:get-ai-history', { cwd }),
 
+  // Conversation storage - TRAE风格项目级对话存储
+  saveConversation: (projectPath: string, sessionId: string, messages: any[], sessionTitle?: string) =>
+    ipcRenderer.invoke('conversation:save', { projectPath, sessionId, messages, sessionTitle }),
+  loadConversation: (projectPath: string, sessionId: string) =>
+    ipcRenderer.invoke('conversation:load', { projectPath, sessionId }),
+  listSessions: (projectPath: string) =>
+    ipcRenderer.invoke('conversation:list-sessions', { projectPath }),
+  deleteSession: (projectPath: string, sessionId: string) =>
+    ipcRenderer.invoke('conversation:delete-session', { projectPath, sessionId }),
+  autoSaveAllSessions: (projectPath: string, sessions: any[]) =>
+    ipcRenderer.invoke('conversation:auto-save-all', { projectPath, sessions }),
+
   // Process event listeners - 支持AI意图数据
   onProcessStarted: (callback: (event: unknown, data: { 
     processId: string; 

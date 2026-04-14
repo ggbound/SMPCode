@@ -7171,12 +7171,17 @@ const useStore = create$1((set) => ({
   messages: [],
   inputTokens: 0,
   outputTokens: 0,
+  currentProjectPath: null,
   // New: commands and tools
   commands: [],
   tools: [],
   routeMatches: [],
   // Model providers configuration - empty by default, user must configure
   providers: [],
+  // TRAE风格：流式消息状态
+  streamingMessageId: null,
+  // Chat mode: default to 'chat' for simple Q&A
+  chatMode: "chat",
   setApiKey: (apiKey) => set({ apiKey }),
   setModel: (model) => set({ model }),
   setDefaultModel: (defaultModel) => set({ defaultModel }),
@@ -7188,8 +7193,18 @@ const useStore = create$1((set) => ({
     currentSession: session.id
   })),
   selectSession: (currentSession) => set({ currentSession }),
+  updateSessionTitle: (id2, title) => set((state) => ({
+    sessions: state.sessions.map((s15) => s15.id === id2 ? { ...s15, title } : s15)
+  })),
+  deleteSession: (id2) => set((state) => ({
+    sessions: state.sessions.filter((s15) => s15.id !== id2),
+    currentSession: state.currentSession === id2 ? null : state.currentSession
+  })),
   addMessage: (message) => set((state) => ({
     messages: [...state.messages, { ...message, timestamp: Date.now() }]
+  })),
+  updateMessage: (index2, message) => set((state) => ({
+    messages: state.messages.map((msg, i) => i === index2 ? { ...msg, ...message } : msg)
   })),
   clearMessages: () => set({ messages: [], inputTokens: 0, outputTokens: 0 }),
   setMessages: (messages2) => set({ messages: messages2 }),
@@ -7206,7 +7221,43 @@ const useStore = create$1((set) => ({
   })),
   setCommands: (commands) => set({ commands }),
   setTools: (tools) => set({ tools }),
-  setRouteMatches: (routeMatches) => set({ routeMatches })
+  setRouteMatches: (routeMatches) => set({ routeMatches }),
+  setCurrentProjectPath: (currentProjectPath) => set({ currentProjectPath }),
+  setChatMode: (chatMode) => set({ chatMode }),
+  // TRAE风格：步骤和工具调用管理
+  addStepToMessage: (messageIndex, step) => set((state) => ({
+    messages: state.messages.map(
+      (msg, i) => i === messageIndex ? { ...msg, steps: [...msg.steps || [], step] } : msg
+    )
+  })),
+  updateStepStatus: (messageIndex, stepId, status) => set((state) => ({
+    messages: state.messages.map(
+      (msg, i) => i === messageIndex && msg.steps ? {
+        ...msg,
+        steps: msg.steps.map(
+          (s15) => s15.id === stepId ? { ...s15, status, duration: Date.now() - s15.timestamp } : s15
+        )
+      } : msg
+    )
+  })),
+  addToolCallToMessage: (messageIndex, toolCall) => set((state) => ({
+    messages: state.messages.map(
+      (msg, i) => i === messageIndex ? { ...msg, toolCalls: [...msg.toolCalls || [], toolCall] } : msg
+    )
+  })),
+  updateToolCallStatus: (messageIndex, toolCallId, status) => set((state) => ({
+    messages: state.messages.map(
+      (msg, i) => i === messageIndex && msg.toolCalls ? {
+        ...msg,
+        toolCalls: msg.toolCalls.map(
+          (t2) => t2.id === toolCallId ? { ...t2, status, duration: Date.now() - t2.timestamp } : t2
+        )
+      } : msg
+    )
+  })),
+  // TRAE风格：流式消息控制
+  startStreaming: (streamingMessageId) => set({ streamingMessageId }),
+  stopStreaming: () => set({ streamingMessageId: null })
 }));
 function ok$1() {
 }
@@ -43219,6 +43270,441 @@ let currentLanguage = "zh";
 function t$1(key) {
   return translations[currentLanguage][key] || key;
 }
+function CodeBlock({
+  code,
+  language: language2 = "typescript",
+  filePath,
+  showLineNumbers = true,
+  maxHeight = 400
+}) {
+  const [isCopied, setIsCopied] = reactExports.useState(false);
+  const [isExpanded, setIsExpanded] = reactExports.useState(false);
+  const lines = code.split("\n");
+  const hasOverflow = lines.length > 20 || code.length > 1e3;
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2e3);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+  const languageLabels = {
+    "ts": "TypeScript",
+    "tsx": "TypeScript React",
+    "js": "JavaScript",
+    "jsx": "JavaScript React",
+    "py": "Python",
+    "java": "Java",
+    "go": "Go",
+    "rs": "Rust",
+    "cpp": "C++",
+    "c": "C",
+    "cs": "C#",
+    "php": "PHP",
+    "rb": "Ruby",
+    "swift": "Swift",
+    "kt": "Kotlin",
+    "scala": "Scala",
+    "sh": "Shell",
+    "bash": "Bash",
+    "zsh": "Zsh",
+    "ps1": "PowerShell",
+    "sql": "SQL",
+    "json": "JSON",
+    "yaml": "YAML",
+    "yml": "YAML",
+    "xml": "XML",
+    "html": "HTML",
+    "css": "CSS",
+    "scss": "SCSS",
+    "less": "LESS",
+    "md": "Markdown",
+    "dockerfile": "Dockerfile",
+    "makefile": "Makefile",
+    "cmake": "CMake",
+    "vim": "Vim",
+    "lua": "Lua",
+    "perl": "Perl",
+    "r": "R",
+    "matlab": "MATLAB",
+    "groovy": "Groovy",
+    "gradle": "Gradle",
+    "dart": "Dart",
+    "flutter": "Flutter",
+    "vue": "Vue",
+    "svelte": "Svelte",
+    "angular": "Angular",
+    "solidity": "Solidity",
+    "vyper": "Vyper",
+    "move": "Move",
+    "cairo": "Cairo",
+    "rust": "Rust",
+    "text": "Text",
+    "plaintext": "Plain Text"
+  };
+  const displayLanguage = languageLabels[language2.toLowerCase()] || language2.toUpperCase();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-container", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-meta", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "code-block-language", children: displayLanguage }),
+        filePath && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "code-block-filepath", children: filePath })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-actions", children: [
+        hasOverflow && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "code-block-action-btn",
+            onClick: () => setIsExpanded(!isExpanded),
+            children: isExpanded ? "收起" : "展开"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "code-block-action-btn",
+            onClick: handleCopy,
+            children: isCopied ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "20 6 9 17 4 12" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "已复制" })
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "9", y: "9", width: "13", height: "13", rx: "2", ry: "2" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "复制" })
+            ] })
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "code-block-content",
+        style: {
+          maxHeight: isExpanded ? "none" : `${maxHeight}px`,
+          overflow: isExpanded ? "auto" : "hidden"
+        },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          highlighter,
+          {
+            language: language2.toLowerCase(),
+            style: vscDarkPlus,
+            showLineNumbers,
+            lineNumberStyle: {
+              minWidth: "3em",
+              paddingRight: "1em",
+              color: "#6e7681",
+              fontSize: "12px"
+            },
+            customStyle: {
+              margin: 0,
+              padding: "16px",
+              background: "#161b22",
+              fontSize: "13px",
+              lineHeight: "1.6",
+              borderRadius: "0 0 8px 8px"
+            },
+            children: code
+          }
+        )
+      }
+    ),
+    !isExpanded && hasOverflow && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "code-block-expand-mask", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        className: "code-block-expand-btn",
+        onClick: () => setIsExpanded(true),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "6 9 12 15 18 9" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "展开全部" })
+        ]
+      }
+    ) })
+  ] });
+}
+function getStepIcon(type, status) {
+  const iconClass = status === "running" ? "rotating" : "";
+  switch (type) {
+    case "search":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: iconClass, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "11", cy: "11", r: "8" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M21 21l-4.35-4.35" })
+      ] });
+    case "analysis":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: iconClass, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "14 2 14 8 20 8" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "16", y1: "13", x2: "8", y2: "13" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "16", y1: "17", x2: "8", y2: "17" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "10 9 9 9 8 9" })
+      ] });
+    case "code":
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: iconClass, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "16 18 22 12 16 6" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "8 6 2 12 8 18" })
+      ] });
+    case "command":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: iconClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M4 17l6-6-6-6M12 19h8" }) });
+    case "result":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: iconClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "20 6 9 17 4 12" }) });
+    default:
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", className: iconClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "10" }) });
+  }
+}
+function getStepStatusColor(status) {
+  switch (status) {
+    case "running":
+      return "var(--accent-color)";
+    case "completed":
+      return "var(--success-color)";
+    case "failed":
+      return "var(--danger-color)";
+    default:
+      return "var(--text-tertiary)";
+  }
+}
+function ThinkingStepItem({ step, index: index2 }) {
+  const [isExpanded, setIsExpanded] = reactExports.useState(step.type === "code" || step.type === "command");
+  const hasContent2 = step.content || step.filePath;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `thinking-step ${step.type} ${step.status || ""}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "thinking-step-header",
+        onClick: () => hasContent2 && setIsExpanded(!isExpanded),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "thinking-step-icon", style: { color: getStepStatusColor(step.status) }, children: getStepIcon(step.type, step.status) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "thinking-step-title", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "thinking-step-number", children: [
+              index2 + 1,
+              "."
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "thinking-step-text", children: step.title })
+          ] }),
+          hasContent2 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "svg",
+            {
+              width: "12",
+              height: "12",
+              viewBox: "0 0 24 24",
+              fill: "none",
+              stroke: "currentColor",
+              strokeWidth: "2",
+              className: `thinking-step-toggle ${isExpanded ? "expanded" : ""}`,
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "6 9 12 15 18 9" })
+            }
+          )
+        ]
+      }
+    ),
+    isExpanded && hasContent2 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "thinking-step-content", children: [
+      step.filePath && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "thinking-step-filepath", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "14 2 14 8 20 8" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: step.filePath })
+      ] }),
+      step.content && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "thinking-step-code", children: /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { children: step.content }) })
+    ] })
+  ] });
+}
+function ThinkingPanel({ steps }) {
+  const [expandedSteps, setExpandedSteps] = reactExports.useState(/* @__PURE__ */ new Set());
+  const toggleAll = () => {
+    if (expandedSteps.size === steps.length) {
+      setExpandedSteps(/* @__PURE__ */ new Set());
+    } else {
+      setExpandedSteps(new Set(steps.map((_2, i) => i)));
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "thinking-panel", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "thinking-panel-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "thinking-panel-title", children: "思考过程" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "thinking-panel-toggle", onClick: toggleAll, children: expandedSteps.size === steps.length ? "收起全部" : "展开全部" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "thinking-steps", children: steps.map((step, index2) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ThinkingStepItem,
+      {
+        step,
+        index: index2
+      },
+      index2
+    )) })
+  ] });
+}
+function TimeoutPrompt({
+  onContinue,
+  onStop,
+  message = "请求超时，可点击继续"
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "timeout-prompt", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "timeout-prompt-content", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "timeout-prompt-icon", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "20", height: "20", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "10" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "12", y1: "8", x2: "12", y2: "12" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "12", y1: "16", x2: "12.01", y2: "16" })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "timeout-prompt-text", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "timeout-prompt-title", children: message }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "timeout-prompt-desc", children: "AI响应时间较长，您可以选择继续等待或停止当前请求" })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "timeout-prompt-actions", children: [
+      onStop && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "timeout-prompt-btn secondary",
+          onClick: onStop,
+          children: "停止"
+        }
+      ),
+      onContinue && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "timeout-prompt-btn primary",
+          onClick: onContinue,
+          children: "继续"
+        }
+      )
+    ] })
+  ] });
+}
+function BuilderBadge() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-badge", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", ry: "2" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "9", y1: "9", x2: "15", y2: "9" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "9", y1: "15", x2: "15", y2: "15" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Builder" })
+  ] });
+}
+function parseMessageContent(content2) {
+  const thinkingSteps = [];
+  let mainContent = content2;
+  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+  let match;
+  while ((match = codeBlockRegex.exec(content2)) !== null) {
+    const language2 = match[1] || "text";
+    const code = match[2];
+    const beforeText = content2.substring(Math.max(0, match.index - 200), match.index);
+    const filePathMatch = beforeText.match(/([\w\-]+\/)+[\w\-]+\.\w+/);
+    const filePath = filePathMatch ? filePathMatch[0] : void 0;
+    thinkingSteps.push({
+      type: "code",
+      title: filePath ? `问题找到了！在 ${filePath}` : "代码",
+      content: code,
+      filePath,
+      language: language2,
+      lineNumbers: true
+    });
+  }
+  const searchRegex = /在工作区搜索 ['"]([^'"]+)['"]/g;
+  while ((match = searchRegex.exec(content2)) !== null) {
+    thinkingSteps.push({
+      type: "search",
+      title: `在工作区搜索 '${match[1]}'`
+    });
+  }
+  const commandRegex = /\$ (.+)/g;
+  while ((match = commandRegex.exec(content2)) !== null) {
+    thinkingSteps.push({
+      type: "command",
+      title: "执行命令",
+      content: match[1]
+    });
+  }
+  return { thinkingSteps, mainContent };
+}
+function BuilderMessage({ message, onContinue, onStop }) {
+  const [isThinkingExpanded, setIsThinkingExpanded] = reactExports.useState(true);
+  const { thinkingSteps, mainContent } = parseMessageContent(message.content);
+  const hasThinkingSteps = thinkingSteps.length > 0;
+  const isTimeout = message.content.includes("请求超时") || message.content.includes("timeout");
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-message-header", children: /* @__PURE__ */ jsxRuntimeExports.jsx(BuilderBadge, {}) }),
+    hasThinkingSteps && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-thinking-section", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: "builder-thinking-toggle",
+          onClick: () => setIsThinkingExpanded(!isThinkingExpanded),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "svg",
+              {
+                width: "12",
+                height: "12",
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                className: `builder-toggle-icon ${isThinkingExpanded ? "expanded" : ""}`,
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "9 18 15 12 9 6" })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "思考过程" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "builder-thinking-count", children: [
+              thinkingSteps.length,
+              " 个步骤"
+            ] })
+          ]
+        }
+      ),
+      isThinkingExpanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-thinking-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ThinkingPanel, { steps: thinkingSteps }) })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message-content", children: [
+      thinkingSteps.filter((s15) => s15.type === "code").map((step, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        CodeBlock,
+        {
+          code: step.content || "",
+          language: step.language || "typescript",
+          filePath: step.filePath,
+          showLineNumbers: step.lineNumbers
+        },
+        idx
+      )),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-text-content markdown-body", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Markdown,
+        {
+          components: {
+            p: ({ children }) => {
+              const text2 = String(children);
+              const filePathRegex = /([\w\-]+\/)+[\w\-]+\.\w+/g;
+              const parts = text2.split(filePathRegex);
+              const matches = text2.match(filePathRegex) || [];
+              if (matches.length === 0) {
+                return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children });
+              }
+              return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: parts.map((part, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                part,
+                matches[i] && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-path-highlight", children: matches[i] })
+              ] }, i)) });
+            }
+          },
+          children: mainContent.replace(/```[\s\S]*?```/g, "")
+        }
+      ) })
+    ] }),
+    isTimeout && onContinue && /* @__PURE__ */ jsxRuntimeExports.jsx(TimeoutPrompt, { onContinue, onStop }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message-actions", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "builder-action-btn", title: "复制", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: "9", y: "9", width: "13", height: "13", rx: "2", ry: "2" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "builder-action-btn", title: "重新生成", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "23 4 23 10 17 10" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M20.49 15a9 9 0 1 1-2.12-9.36L23 10" })
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "builder-action-btn", title: "点赞", children: /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3" }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "builder-action-btn", title: "点踩", children: /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zM17 2h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3" }) }) })
+    ] })
+  ] });
+}
 function ChatArea({
   messages: messages2,
   isLoading,
@@ -43233,7 +43719,13 @@ function ChatArea({
   model = "",
   onModelChange,
   onContinueExecution,
-  showContinueButton
+  showContinueButton,
+  onContinueTimeout,
+  onStopTimeout,
+  isTimeout = false,
+  timeoutMessageIndex = null,
+  chatMode = "agent",
+  onChatModeChange
 }) {
   const [input, setInput] = reactExports.useState("");
   const getPermissionLabel = (mode) => {
@@ -43252,9 +43744,11 @@ function ChatArea({
   const [selectedIndex, setSelectedIndex] = reactExports.useState(0);
   const [filteredCommands, setFilteredCommands] = reactExports.useState([]);
   const [showModelSelector, setShowModelSelector] = reactExports.useState(false);
+  const [showChatModeSelector, setShowChatModeSelector] = reactExports.useState(false);
   const textareaRef = reactExports.useRef(null);
   const messagesContainerRef = reactExports.useRef(null);
   const modelSelectorRef = reactExports.useRef(null);
+  const chatModeSelectorRef = reactExports.useRef(null);
   const getEnabledModels = reactExports.useCallback(() => {
     const models = [];
     providers.filter((p2) => p2.enabled).forEach((provider) => {
@@ -43276,6 +43770,9 @@ function ChatArea({
     const handleClickOutside = (event) => {
       if (modelSelectorRef.current && !modelSelectorRef.current.contains(event.target)) {
         setShowModelSelector(false);
+      }
+      if (chatModeSelectorRef.current && !chatModeSelectorRef.current.contains(event.target)) {
+        setShowChatModeSelector(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -43410,7 +43907,17 @@ function ChatArea({
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "user-message-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "user-message-bubble", children: msg.content }) })
           ) : (
             // Assistant message - left aligned with thinking tags
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assistant-message-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "assistant-message-content", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "assistant-message-wrapper", children: msg.isBuilder ? (
+              // TRAE Builder模式消息
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                BuilderMessage,
+                {
+                  message: msg,
+                  onContinue: idx === timeoutMessageIndex ? onContinueTimeout : void 0,
+                  onStop: idx === timeoutMessageIndex ? onStopTimeout : void 0
+                }
+              )
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "assistant-message-content", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 Markdown,
                 {
@@ -43482,7 +43989,14 @@ function ChatArea({
                     "继续执行"
                   ] })
                 }
-              ) })
+              ) }),
+              isTimeout && idx === timeoutMessageIndex && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                TimeoutPrompt,
+                {
+                  onContinue: onContinueTimeout,
+                  onStop: onStopTimeout
+                }
+              )
             ] }) })
           ) }, idx)),
           isLoading && // Only show loading spinner if the last message is not from assistant
@@ -43548,6 +44062,110 @@ function ChatArea({
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "input-toolbar", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toolbar-left", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-mode-selector-container", ref: chatModeSelectorRef, style: { position: "relative", marginRight: "8px" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                className: "toolbar-btn chat-mode-selector-btn",
+                onClick: () => setShowChatModeSelector(!showChatModeSelector),
+                title: chatMode === "agent" ? "智能体模式 - 可调用工具" : "智能问答模式 - 纯对话",
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "6px 12px",
+                  fontSize: "13px",
+                  maxWidth: "140px",
+                  minWidth: "100px"
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", style: { flexShrink: 0 }, children: chatMode === "agent" ? /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: "1"
+                  }, children: chatMode === "agent" ? "智能体" : "智能问答" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "12", height: "12", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", style: {
+                    transform: showChatModeSelector ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.2s",
+                    flexShrink: 0
+                  }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "6 9 12 15 18 9" }) })
+                ]
+              }
+            ),
+            showChatModeSelector && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+              position: "absolute",
+              bottom: "100%",
+              left: 0,
+              marginBottom: "4px",
+              minWidth: "140px",
+              maxHeight: "200px",
+              overflowY: "auto",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border-color)",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              zIndex: 100
+            }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    onChatModeChange?.("chat");
+                    setShowChatModeSelector(false);
+                  },
+                  style: {
+                    width: "100%",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    border: "none",
+                    background: chatMode === "chat" ? "var(--bg-tertiary)" : "transparent",
+                    color: chatMode === "chat" ? "var(--accent-color)" : "var(--text-primary)",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    borderBottom: "1px solid var(--border-color)"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "智能问答" })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    onChatModeChange?.("agent");
+                    setShowChatModeSelector(false);
+                  },
+                  style: {
+                    width: "100%",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    border: "none",
+                    background: chatMode === "agent" ? "var(--bg-tertiary)" : "transparent",
+                    color: chatMode === "agent" ? "var(--accent-color)" : "var(--text-primary)",
+                    cursor: "pointer",
+                    fontSize: "13px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "智能体" })
+                  ]
+                }
+              )
+            ] })
+          ] }),
           providers.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "model-selector-container", ref: modelSelectorRef, style: { position: "relative" }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
@@ -86375,6 +86993,195 @@ const Terminal = reactExports.forwardRef(({ isVisible, projectPath }, ref) => {
   ] });
 });
 Terminal.displayName = "Terminal";
+function SessionSidebar({
+  sessions,
+  currentSession,
+  projectPath,
+  onSelectSession,
+  onCreateSession,
+  onDeleteSession,
+  onRenameSession,
+  isOpen,
+  onToggle
+}) {
+  const [editingId, setEditingId] = reactExports.useState(null);
+  const [editTitle, setEditTitle] = reactExports.useState("");
+  const [contextMenu, setContextMenu] = reactExports.useState(null);
+  const loadProjectSessions = reactExports.useCallback(async () => {
+    if (!projectPath || !window.api?.listSessions) return;
+    try {
+      const result = await window.api.listSessions(projectPath);
+      if (result.success && result.sessions) {
+        console.log("Loaded sessions:", result.sessions);
+      }
+    } catch (error) {
+      console.error("Failed to load sessions:", error);
+    }
+  }, [projectPath]);
+  reactExports.useEffect(() => {
+    loadProjectSessions();
+  }, [loadProjectSessions]);
+  const handleContextMenu = (e, sessionId) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, sessionId });
+  };
+  reactExports.useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, []);
+  const startRename = (session) => {
+    setEditingId(session.id);
+    setEditTitle(session.title || `会话 ${session.id.slice(0, 8)}`);
+    setContextMenu(null);
+  };
+  const confirmRename = () => {
+    if (editingId && editTitle.trim()) {
+      onRenameSession(editingId, editTitle.trim());
+      setEditingId(null);
+      setEditTitle("");
+    }
+  };
+  const cancelRename = () => {
+    setEditingId(null);
+    setEditTitle("");
+  };
+  const handleDelete2 = (sessionId) => {
+    if (confirm("确定要删除这个会话吗？")) {
+      onDeleteSession(sessionId);
+    }
+    setContextMenu(null);
+  };
+  const formatDate = (dateStr) => {
+    try {
+      const date = new Date(dateStr);
+      const now = /* @__PURE__ */ new Date();
+      const diff2 = now.getTime() - date.getTime();
+      if (diff2 < 60 * 60 * 1e3) {
+        const minutes = Math.floor(diff2 / (60 * 1e3));
+        return minutes < 1 ? "刚刚" : `${minutes}分钟前`;
+      }
+      if (diff2 < 24 * 60 * 60 * 1e3) {
+        const hours = Math.floor(diff2 / (60 * 60 * 1e3));
+        return `${hours}小时前`;
+      }
+      if (diff2 < 7 * 24 * 60 * 60 * 1e3) {
+        const days = Math.floor(diff2 / (24 * 60 * 60 * 1e3));
+        return `${days}天前`;
+      }
+      return date.toLocaleDateString();
+    } catch {
+      return dateStr;
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        className: "session-sidebar-toggle",
+        onClick: onToggle,
+        title: isOpen ? "收起会话列表" : "展开会话列表",
+        children: isOpen ? "◀" : "▶"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `session-sidebar ${isOpen ? "open" : "closed"}`, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-sidebar-header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-sidebar-title", children: "会话历史" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            className: "session-new-btn",
+            onClick: onCreateSession,
+            title: "新建会话",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "12", y1: "5", x2: "12", y2: "19" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: "5", y1: "12", x2: "19", y2: "12" })
+              ] }),
+              "新建"
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-sidebar-content", children: !projectPath ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-empty", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-empty-icon", children: "📁" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-empty-text", children: "请先打开一个项目" })
+      ] }) : sessions.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-empty", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-empty-icon", children: "💬" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-empty-text", children: "暂无会话" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-empty-hint", children: '点击上方"新建"开始对话' })
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-list", children: sessions.map((session) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: `session-item ${currentSession === session.id ? "active" : ""}`,
+          onClick: () => onSelectSession(session.id),
+          onContextMenu: (e) => handleContextMenu(e, session.id),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-icon", children: "💬" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-info", children: editingId === session.id ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "text",
+                className: "session-edit-input",
+                value: editTitle,
+                onChange: (e) => setEditTitle(e.target.value),
+                onBlur: confirmRename,
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") confirmRename();
+                  if (e.key === "Escape") cancelRename();
+                },
+                autoFocus: true,
+                onClick: (e) => e.stopPropagation()
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-title", children: session.title || `会话 ${session.id.slice(0, 8)}` }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "session-meta", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "session-date", children: formatDate(session.createdAt) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "session-count", children: [
+                  session.messageCount,
+                  " 条消息"
+                ] })
+              ] })
+            ] }) })
+          ]
+        },
+        session.id
+      )) }) }),
+      projectPath && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "session-sidebar-footer", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "project-path", title: projectPath, children: [
+        "📁 ",
+        projectPath.split("/").pop()
+      ] }) })
+    ] }),
+    contextMenu && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "session-context-menu",
+        style: { left: contextMenu.x, top: contextMenu.y },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "session-context-item",
+              onClick: () => {
+                const session = sessions.find((s15) => s15.id === contextMenu.sessionId);
+                if (session) startRename(session);
+              },
+              children: "重命名"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "session-context-item delete",
+              onClick: () => handleDelete2(contextMenu.sessionId),
+              children: "删除"
+            }
+          )
+        ]
+      }
+    )
+  ] });
+}
 const API_BASE = "http://localhost:3847/api";
 let cachedProjectContext = "";
 let cachedProjectPath = "";
@@ -86683,6 +87490,8 @@ function App() {
   const [tabs, setTabs] = reactExports.useState([]);
   const [activeTabId, setActiveTabId] = reactExports.useState(null);
   const [selectedFilePath, setSelectedFilePath] = reactExports.useState(null);
+  const [sessionSidebarOpen, setSessionSidebarOpen] = reactExports.useState(false);
+  const [localSessions, setLocalSessions] = reactExports.useState([]);
   const {
     apiKey,
     model,
@@ -86696,6 +87505,7 @@ function App() {
     commands,
     tools,
     providers,
+    chatMode,
     setApiKey,
     setModel,
     setDefaultModel,
@@ -86703,12 +87513,19 @@ function App() {
     setProviders,
     setCommands,
     setTools,
+    setChatMode,
     addSession,
     selectSession,
+    updateSessionTitle,
+    deleteSession,
     addMessage,
     clearMessages,
     setMessages,
-    updateTokens
+    updateTokens,
+    setSessions,
+    setCurrentProjectPath,
+    addStepToMessage,
+    updateStepStatus
   } = useStore();
   reactExports.useEffect(() => {
     const loadData = async () => {
@@ -86825,10 +87642,13 @@ function App() {
     console.log("[handleContinueExecution] Continuing execution...");
     setIsLoading(true);
     try {
-      const enabledProvider = providers.find((p2) => p2.enabled);
-      const providerApiKey = enabledProvider?.apiKey || apiKey;
+      const providerForModel = providers.find(
+        (p2) => p2.enabled && p2.models.some((m2) => m2.id === model)
+      );
+      const providerApiKey = providerForModel?.apiKey;
+      const providerApiUrl = providerForModel?.apiUrl;
       if (!providerApiKey) {
-        addMessage({ role: "assistant", content: "请先在设置中配置 API 密钥" });
+        addMessage({ role: "assistant", content: "请先在设置中为所选模型配置 API 密钥" });
         setIsLoading(false);
         return;
       }
@@ -86876,6 +87696,7 @@ function App() {
         userOriginalRequest,
         currentCwd,
         providerApiKey,
+        providerApiUrl,
         100,
         // maxIterations - this is the max for this batch
         true,
@@ -86973,22 +87794,6 @@ ${result.content}`
         console.error("Failed to auto-open file:", readError);
       }
     }
-    if (sessionId) {
-      try {
-        await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: "user", content: userContent })
-        });
-        await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: "assistant", content: result.content })
-        });
-      } catch (error) {
-        console.error("Failed to save messages to session:", error);
-      }
-    }
   };
   const fetchProjectContext = reactExports.useCallback(async (projectPath2) => {
     if (cachedProjectContext && cachedProjectPath === projectPath2) {
@@ -87020,56 +87825,122 @@ ${result.content}`
   const handleProjectPathChange = reactExports.useCallback(async (newPath) => {
     console.log("[handleProjectPathChange] New project path:", newPath);
     setProjectPath(newPath);
-    if (!newPath) return;
+    setCurrentProjectPath(newPath);
+    if (!newPath) {
+      setLocalSessions([]);
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE}/sessions/by-project?path=${encodeURIComponent(newPath)}`);
-      if (res.ok) {
-        const data2 = await res.json();
-        if (data2.found && data2.session) {
-          const session = data2.session;
-          console.log("[handleProjectPathChange] Found existing session:", session.id);
-          selectSession(session.id);
-          setMessages(session.messages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-            timestamp: Date.now()
-          })));
-          const totalContent = session.messages.map((m2) => m2.content).join(" ");
-          updateTokens(totalContent.length / 4, 0);
-          console.log("[handleProjectPathChange] Loaded session with", session.messages.length, "messages");
-        } else {
-          console.log("[handleProjectPathChange] No existing session found for this project, creating new one");
-          const createRes = await fetch(`${API_BASE}/sessions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectPath: newPath })
-          });
-          if (createRes.ok) {
-            const newSession = await createRes.json();
-            addSession({
-              id: newSession.id,
-              createdAt: newSession.createdAt,
-              messageCount: 0,
-              projectPath: newPath
-            });
-            selectSession(newSession.id);
-            clearMessages();
-            console.log("[handleProjectPathChange] Created new session:", newSession.id);
+      if (window.api?.listSessions) {
+        const result = await window.api.listSessions(newPath);
+        if (result.success && result.sessions) {
+          const loadedSessions = result.sessions.map((s15) => ({
+            id: s15.id,
+            createdAt: s15.updatedAt,
+            messageCount: s15.messageCount,
+            projectPath: newPath,
+            title: s15.title
+          }));
+          setLocalSessions(loadedSessions);
+          setSessions(loadedSessions);
+          if (loadedSessions.length > 0) {
+            const latestSession = loadedSessions[0];
+            selectSession(latestSession.id);
+            const msgResult = await window.api.loadConversation(newPath, latestSession.id);
+            if (msgResult.success && msgResult.messages) {
+              setMessages(msgResult.messages);
+              console.log("[handleProjectPathChange] Loaded session with", msgResult.messages.length, "messages");
+            }
+          } else {
+            await createNewSession(newPath);
           }
+        } else {
+          await createNewSession(newPath);
         }
       } else {
-        console.error("[handleProjectPathChange] Failed to check for existing session:", res.status);
+        await createNewSession(newPath);
       }
     } catch (error) {
       console.error("[handleProjectPathChange] Error:", error);
+      await createNewSession(newPath);
     }
-  }, [setProjectPath, selectSession, setMessages, addSession, clearMessages, updateTokens]);
-  reactExports.useCallback((sessionProjectPath) => {
-    if (sessionProjectPath && sessionProjectPath !== projectPath) {
-      console.log("[handleSessionSelect] Updating project path to:", sessionProjectPath);
-      setProjectPath(sessionProjectPath);
+  }, [setProjectPath, setCurrentProjectPath, setLocalSessions, setSessions, selectSession, setMessages]);
+  const createNewSession = async (projectPath2) => {
+    const newSessionId = `session-${Date.now()}`;
+    const newSession = {
+      id: newSessionId,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      messageCount: 0,
+      projectPath: projectPath2,
+      title: `会话 ${(/* @__PURE__ */ new Date()).toLocaleString()}`
+    };
+    addSession(newSession);
+    selectSession(newSessionId);
+    clearMessages();
+    setLocalSessions((prev) => [newSession, ...prev]);
+    if (window.api?.saveConversation) {
+      await window.api.saveConversation(projectPath2, newSessionId, [], newSession.title);
     }
+    console.log("[handleProjectPathChange] Created new session:", newSessionId);
+  };
+  const handleSelectSessionFromSidebar = reactExports.useCallback(async (sessionId) => {
+    if (!projectPath) return;
+    selectSession(sessionId);
+    if (window.api?.loadConversation) {
+      const result = await window.api.loadConversation(projectPath, sessionId);
+      if (result.success && result.messages) {
+        setMessages(result.messages);
+      } else {
+        clearMessages();
+      }
+    }
+  }, [projectPath, selectSession, setMessages, clearMessages]);
+  const handleCreateSessionFromSidebar = reactExports.useCallback(async () => {
+    if (!projectPath) {
+      alert("请先打开一个项目");
+      return;
+    }
+    await createNewSession(projectPath);
   }, [projectPath]);
+  const handleDeleteSessionFromSidebar = reactExports.useCallback(async (sessionId) => {
+    if (!projectPath) return;
+    if (window.api?.deleteSession) {
+      await window.api.deleteSession(projectPath, sessionId);
+    }
+    deleteSession(sessionId);
+    setLocalSessions((prev) => prev.filter((s15) => s15.id !== sessionId));
+    if (currentSession === sessionId) {
+      clearMessages();
+    }
+  }, [projectPath, currentSession, deleteSession, clearMessages]);
+  const handleRenameSessionFromSidebar = reactExports.useCallback(async (sessionId, title) => {
+    if (!projectPath) return;
+    updateSessionTitle(sessionId, title);
+    setLocalSessions((prev) => prev.map((s15) => s15.id === sessionId ? { ...s15, title } : s15));
+    if (window.api?.saveConversation) {
+      const session = localSessions.find((s15) => s15.id === sessionId);
+      if (session) {
+        const msgResult = await window.api.loadConversation(projectPath, sessionId);
+        await window.api.saveConversation(projectPath, sessionId, msgResult.messages || [], title);
+      }
+    }
+  }, [projectPath, localSessions, updateSessionTitle]);
+  reactExports.useEffect(() => {
+    const autoSave = async () => {
+      if (!projectPath || !currentSession || messages2.length === 0) return;
+      if (window.api?.saveConversation) {
+        const session = localSessions.find((s15) => s15.id === currentSession);
+        await window.api.saveConversation(
+          projectPath,
+          currentSession,
+          messages2,
+          session?.title || `会话 ${(/* @__PURE__ */ new Date()).toLocaleString()}`
+        );
+      }
+    };
+    const timer = setTimeout(autoSave, 2e3);
+    return () => clearTimeout(timer);
+  }, [messages2, projectPath, currentSession, localSessions]);
   const handleNewSession = reactExports.useCallback(async () => {
     try {
       const res = await fetch(`${API_BASE}/sessions`, { method: "POST" });
@@ -87215,7 +88086,7 @@ ${result.content}`
     return toolCalls.length > 0 ? toolCalls : null;
   };
   const [pendingContinuation, setPendingContinuation] = reactExports.useState(null);
-  const processWithTools = async (apiMessages, userContent, workingDir, providerApiKey, maxIterations = 100, isContinuation = false, previousState) => {
+  const processWithTools = async (apiMessages, userContent, workingDir, providerApiKey, providerApiUrl, maxIterations = 100, isContinuation = false, previousState) => {
     console.log("[processWithTools] Starting execution, isContinuation:", isContinuation);
     let iterations = previousState?.iterations || 0;
     let conversationHistory = previousState?.conversationHistory && previousState.conversationHistory.length > 0 ? [...previousState.conversationHistory] : [...apiMessages];
@@ -87226,11 +88097,24 @@ ${result.content}`
     const MAX_CONSECUTIVE_TRUNCATIONS = 3;
     const userOriginalRequest = apiMessages[apiMessages.length - 1]?.content || "";
     const readFilesSet = /* @__PURE__ */ new Set();
-    let executionPlan = [];
-    const completedSteps = [];
     const taskMemory = {};
+    let assistantMessageIndex = -1;
     if (!isContinuation) {
-      addMessage({ role: "assistant", content: "🔄 正在处理..." });
+      addMessage({
+        role: "assistant",
+        content: "",
+        isBuilder: true,
+        thinkingSteps: []
+      });
+      assistantMessageIndex = useStore.getState().messages.length - 1;
+    } else {
+      const msgs = useStore.getState().messages;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === "assistant") {
+          assistantMessageIndex = i;
+          break;
+        }
+      }
     }
     abortControllerRef.current = new AbortController();
     try {
@@ -87453,7 +88337,8 @@ ${contextSummary}
               messages: conversationHistory,
               tools: availableTools,
               tool_choice: "auto",
-              stream: false
+              stream: false,
+              apiUrl: providerApiUrl
             }),
             signal: abortControllerRef.current.signal
           });
@@ -87599,22 +88484,40 @@ ${contextSummary}
           console.log("[ToolLoop] Blocked duplicate reads:", duplicateReads);
         }
         const toolCallsToExecute = filteredToolCalls.length > 0 ? filteredToolCalls : toolCalls;
-        const toolDetails = toolCallsToExecute.map((t2, idx) => {
-          const args = Object.entries(t2.arguments).map(([k2, v3]) => `${k2}=${JSON.stringify(v3).substring(0, 50)}`).join(", ");
-          return `${idx + 1}. **${t2.tool}** (${args})`;
-        }).join("\n");
-        const planDisplay = executionPlan.length > 0 ? `📋 **执行计划:**
-${executionPlan.map((step, idx) => `${idx + 1}. ${completedSteps.includes(step) ? "✅" : "⏳"} ${step}`).join("\n")}
-
-` : "";
-        const currentProgress = `📍 **步骤 ${iterations}/${maxIterations}**
-
-${planDisplay}🔄 **正在调用工具:**
-${toolDetails}`;
-        updateLastMessage(currentProgress);
+        const currentSteps = [];
+        if (assistantMessageIndex >= 0) {
+          const existingSteps = useStore.getState().messages[assistantMessageIndex]?.steps || [];
+          existingSteps.forEach((step) => {
+            if (step.status === "running") {
+              updateStepStatus(assistantMessageIndex, step.id, "completed");
+            }
+          });
+          toolCallsToExecute.forEach((toolCall, idx) => {
+            const step = {
+              id: `step-${iterations}-${idx}-${Date.now()}`,
+              title: `执行 ${toolCall.tool}`,
+              status: idx === 0 ? "running" : "pending",
+              timestamp: Date.now(),
+              stepNumber: iterations,
+              totalSteps: maxIterations,
+              action: "正在调用工具",
+              toolName: toolCall.tool,
+              toolArgs: toolCall.arguments
+            };
+            addStepToMessage(assistantMessageIndex, step);
+            currentSteps.push(step);
+          });
+        }
         const results = [];
         console.log(`[ToolLoop] Starting execution of ${toolCallsToExecute.length} tool calls`);
-        for (const toolCall of toolCallsToExecute) {
+        for (let toolIdx = 0; toolIdx < toolCallsToExecute.length; toolIdx++) {
+          const toolCall = toolCallsToExecute[toolIdx];
+          if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
+            if (toolIdx > 0 && currentSteps[toolIdx - 1]) {
+              updateStepStatus(assistantMessageIndex, currentSteps[toolIdx - 1].id, "completed");
+            }
+            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, "running");
+          }
           const maxRetries = 3;
           const toolTimeout = 6e4;
           let retryCount = 0;
@@ -87673,9 +88576,15 @@ ${toolDetails}`;
           }
           if (toolResult) {
             results.push({ tool: toolCall.tool, result: toolResult });
+            if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
+              updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, toolResult.success ? "completed" : "failed");
+            }
           } else {
             results.push({ tool: toolCall.tool, result: { success: false, output: "", error: lastError || "Unknown error after retries" } });
             console.error(`[ToolLoop] Tool ${toolCall.tool} failed after ${maxRetries} attempts:`, lastError);
+            if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
+              updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, "failed");
+            }
           }
         }
         console.log(`[ToolLoop] All tool calls completed, results:`, results);
@@ -87755,13 +88664,22 @@ ${r2.result.output.substring(0, 300)}${r2.result.output.length > 300 ? "..." : "
    ⚠️ 错误: ${r2.result.error.substring(0, 200)}` : "";
           return `**${idx + 1}. ${r2.tool}** - ${toolStatus}${output}${error}`;
         }).join("\n\n");
-        const progressMessage = `📍 **步骤 ${iterations}/${maxIterations}**
+        if (assistantMessageIndex >= 0) {
+          const state = useStore.getState();
+          const msgs = [...state.messages];
+          if (msgs[assistantMessageIndex]) {
+            msgs[assistantMessageIndex] = {
+              ...msgs[assistantMessageIndex],
+              content: `**步骤 ${iterations}/${maxIterations}**
 
 ${statusEmoji} **工具执行完成** (${successCount}/${results.length} 成功)
 
 ${fileOpsSummary.length > 0 ? "📁 **文件操作:**\n" + fileOpsSummary.join("\n") + "\n\n" : ""}**详细结果:**
-${detailedResults}`;
-        updateLastMessage(progressMessage);
+${detailedResults}`
+            };
+            useStore.setState({ messages: msgs });
+          }
+        }
         console.log("[ToolLoop] Tool execution cycle completed, continuing to next iteration...");
         console.log("[ToolLoop] Current iteration:", iterations, "of max", maxIterations);
       }
@@ -87810,10 +88728,13 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
   };
   const handleSendMessage = async (content2) => {
     if (!content2.trim()) return;
-    const enabledProvider = providers.find((p2) => p2.enabled);
-    const providerApiKey = enabledProvider?.apiKey || apiKey;
+    const providerForModel = providers.find(
+      (p2) => p2.enabled && p2.models.some((m2) => m2.id === model)
+    );
+    const providerApiKey = providerForModel?.apiKey;
+    const providerApiUrl = providerForModel?.apiUrl;
     if (!providerApiKey) {
-      addMessage({ role: "assistant", content: "请先在设置中配置 API 密钥" });
+      addMessage({ role: "assistant", content: "请先在设置中为所选模型配置 API 密钥" });
       return;
     }
     let commandResult = null;
@@ -87868,7 +88789,10 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
       setIsLoading(false);
       return;
     }
-    const isCodeRequest = true;
+    const isCodeRequest = chatMode === "agent";
+    if (!isCodeRequest) {
+      addMessage({ role: "assistant", content: "" });
+    }
     try {
       let currentCwd = projectPath || "/";
       if (!currentCwd || currentCwd === "/") {
@@ -87904,6 +88828,7 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
             pendingContinuation.userOriginalRequest,
             currentCwd,
             providerApiKey,
+            providerApiUrl,
             100,
             // maxIterations
             true,
@@ -87918,7 +88843,7 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
           await handleProcessResult(result, content2, currentSession);
         } else {
           console.log("[handleSendMessage] Calling processWithTools...");
-          const result = await processWithTools(apiMessages, content2, currentCwd, providerApiKey);
+          const result = await processWithTools(apiMessages, content2, currentCwd, providerApiKey, providerApiUrl);
           console.log("[handleSendMessage] processWithTools returned:", result.content?.substring(0, 100));
           console.log("[handleSendMessage] writtenFiles:", result.writtenFiles);
           if (result.needsContinuation) {
@@ -87975,6 +88900,51 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
           await handleProcessResult(result, content2, currentSession);
         }
         return;
+      } else {
+        const res = await fetch(`${API_BASE}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey: providerApiKey,
+            apiUrl: providerApiUrl,
+            model,
+            messages: apiMessages,
+            stream: true
+          })
+        });
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+        }
+        const reader = res.body?.getReader();
+        if (!reader) {
+          throw new Error("No response body");
+        }
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let fullContent = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const data2 = line.slice(6);
+              if (data2 === "[DONE]") continue;
+              try {
+                const parsed = JSON.parse(data2);
+                if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+                  fullContent += parsed.delta.text;
+                  updateLastMessage(fullContent);
+                }
+              } catch (e) {
+              }
+            }
+          }
+        }
+        updateTokens(content2.length / 4, fullContent.length / 4);
       }
     } catch (error) {
       console.error("[handleSendMessage] Error caught:", error);
@@ -88216,79 +89186,97 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
       return newTabs;
     });
   }, [activeTabId]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-container", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "header-title", children: t$1("appName") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "header-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-ghost", onClick: () => setShowSettings(true), children: t$1("settings") }) })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "main-content three-column-layout", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        FileExplorer,
-        {
-          onFileSelect: handleFileSelect,
-          selectedPath: selectedFilePath,
-          onRootPathChange: handleProjectPathChange,
-          openFile,
-          onFileRenamed: handleFileRenamed,
-          onFileDeleted: handleFileDeleted
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "center-column", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `app-container ${sessionSidebarOpen ? "with-session-sidebar" : ""}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SessionSidebar,
+      {
+        sessions: localSessions,
+        currentSession,
+        projectPath,
+        onSelectSession: handleSelectSessionFromSidebar,
+        onCreateSession: handleCreateSessionFromSidebar,
+        onDeleteSession: handleDeleteSessionFromSidebar,
+        onRenameSession: handleRenameSessionFromSidebar,
+        isOpen: sessionSidebarOpen,
+        onToggle: () => setSessionSidebarOpen(!sessionSidebarOpen)
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-main-wrapper", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "header", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "header-title", children: t$1("appName") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "header-actions", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "btn btn-ghost", onClick: () => setShowSettings(true), children: t$1("settings") }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "main-content three-column-layout", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
-          FileTabs,
+          FileExplorer,
           {
-            tabs,
-            activeTabId,
-            onTabSelect: handleTabSelect,
-            onTabClose: handleTabClose,
-            onTabCloseOthers: handleTabCloseOthers,
-            onTabCloseAll: handleTabCloseAll,
-            onTabCloseToRight: handleTabCloseToRight,
-            onTabCloseToLeft: handleTabCloseToLeft
+            onFileSelect: handleFileSelect,
+            selectedPath: selectedFilePath,
+            onRootPathChange: handleProjectPathChange,
+            openFile,
+            onFileRenamed: handleFileRenamed,
+            onFileDeleted: handleFileDeleted
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          FileViewer,
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "center-column", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            FileTabs,
+            {
+              tabs,
+              activeTabId,
+              onTabSelect: handleTabSelect,
+              onTabClose: handleTabClose,
+              onTabCloseOthers: handleTabCloseOthers,
+              onTabCloseAll: handleTabCloseAll,
+              onTabCloseToRight: handleTabCloseToRight,
+              onTabCloseToLeft: handleTabCloseToLeft
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "file-viewer-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            FileViewer,
+            {
+              tab: activeTab,
+              onContentChange: handleTabContentChange,
+              onSave: handleTabSave
+            }
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { ref: terminalRef, isVisible: showTerminal, projectPath })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          ChatArea,
           {
-            tab: activeTab,
-            onContentChange: handleTabContentChange,
-            onSave: handleTabSave
+            messages: messages2,
+            isLoading,
+            onSendMessage: handleSendMessage,
+            onStopGeneration: handleStopGeneration,
+            messagesEndRef,
+            commands,
+            permissionMode,
+            inputTokens,
+            outputTokens,
+            providers,
+            model,
+            onModelChange: setModel,
+            onContinueExecution: handleContinueExecution,
+            showContinueButton: !!pendingContinuation,
+            chatMode,
+            onChatModeChange: setChatMode
           }
-        ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { ref: terminalRef, isVisible: showTerminal, projectPath })
+        )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ChatArea,
+      showSettings && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SettingsModal,
         {
-          messages: messages2,
-          isLoading,
-          onSendMessage: handleSendMessage,
-          onStopGeneration: handleStopGeneration,
-          messagesEndRef,
-          commands,
-          permissionMode,
-          inputTokens,
-          outputTokens,
-          providers,
+          apiKey,
           model,
-          onModelChange: setModel,
-          onContinueExecution: handleContinueExecution,
-          showContinueButton: !!pendingContinuation
+          defaultModel,
+          permissionMode,
+          providers,
+          onSave: handleSettingsSave,
+          onClose: handleSettingsClose
         }
       )
-    ] }),
-    showSettings && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      SettingsModal,
-      {
-        apiKey,
-        model,
-        defaultModel,
-        permissionMode,
-        providers,
-        onSave: handleSettingsSave,
-        onClose: handleSettingsClose
-      }
-    )
+    ] })
   ] });
 }
 client.createRoot(document.getElementById("root")).render(

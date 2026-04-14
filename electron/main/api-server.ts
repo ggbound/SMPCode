@@ -695,8 +695,8 @@ export async function startApiServer(): Promise<void> {
 
   expressApp.post('/api/chat', async (req: Request, res: Response) => {
     try {
-      const { apiKey, model, messages, tools, stream = false } = req.body
-      log.info('[API] /api/chat called with', messages?.length, 'messages')
+      const { apiKey, model, messages, tools, stream = false, apiUrl } = req.body
+      log.info('[API] /api/chat called with', messages?.length, 'messages', 'apiUrl:', apiUrl || 'default')
 
       if (!apiKey) {
         res.status(400).json({ error: 'API key is required' })
@@ -708,14 +708,14 @@ export async function startApiServer(): Promise<void> {
         res.setHeader('Cache-Control', 'no-cache')
         res.setHeader('Connection', 'keep-alive')
 
-        const asyncIter = streamChatMessage({ apiKey, model, messages, tools, stream })
+        const asyncIter = streamChatMessage({ apiKey, model, messages, tools, stream, apiUrl })
         for await (const chunk of asyncIter) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`)
         }
         res.write('data: [DONE]\n\n')
         res.end()
       } else {
-        const response = await sendChatMessage({ apiKey, model, messages, tools, stream })
+        const response = await sendChatMessage({ apiKey, model, messages, tools, stream, apiUrl })
 
         // Debug: log original response
         writeDebugLog('ORIGINAL_RESPONSE', response.content)

@@ -24,11 +24,11 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 const electron = require("electron");
 const path = require("path");
 const fs = require("fs");
+const util = require("util");
 const log = require("electron-log");
 const express = require("express");
 const uuid = require("uuid");
 const child_process = require("child_process");
-const util = require("util");
 const events = require("events");
 const pty = require("node-pty");
 const os = require("os");
@@ -54,8 +54,8 @@ const path__namespace = /* @__PURE__ */ _interopNamespaceDefault(path);
 const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs);
 const pty__namespace = /* @__PURE__ */ _interopNamespaceDefault(pty);
 const os__namespace = /* @__PURE__ */ _interopNamespaceDefault(os);
-const OPENAI_API_URL = "https://coding.dashscope.aliyuncs.com/v1/chat/completions";
-const ANTHROPIC_API_URL = "https://coding.dashscope.aliyuncs.com/apps/anthropic/v1/messages";
+const DEFAULT_OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS = [
   "claude-3-5-sonnet",
   "claude-3-7-sonnet"
@@ -63,27 +63,43 @@ const ANTHROPIC_MODELS = [
 function isAnthropicModel(model) {
   return ANTHROPIC_MODELS.some((m) => model.toLowerCase().includes(m.toLowerCase()));
 }
+function getApiUrl(apiUrl, isAnthropic) {
+  if (apiUrl) {
+    if (apiUrl.includes("/chat/completions")) {
+      return apiUrl;
+    }
+    const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
+    if (baseUrl.endsWith("/v1")) {
+      return `${baseUrl}/chat/completions`;
+    }
+    return `${baseUrl}/chat/completions`;
+  }
+  return isAnthropic ? DEFAULT_ANTHROPIC_API_URL : DEFAULT_OPENAI_API_URL;
+}
 async function sendChatMessage(request) {
-  const { apiKey, model, messages, tools, stream = false } = request;
+  const { apiKey, model, messages, tools, stream = false, apiUrl } = request;
   if (isAnthropicModel(model)) {
-    return sendAnthropicMessage(apiKey, model, messages, tools, stream);
+    return sendAnthropicMessage(apiKey, model, messages, tools, stream, apiUrl);
   } else {
-    return sendOpenAIMessage(apiKey, model, messages, tools, stream);
+    return sendOpenAIMessage(apiKey, model, messages, tools, stream, apiUrl);
   }
 }
-async function sendOpenAIMessage(apiKey, model, messages, tools, stream = false) {
+async function sendOpenAIMessage(apiKey, model, messages, tools, stream = false, apiUrl) {
   const requestBody = {
     model,
     messages,
     max_tokens: 8192,
     stream
   };
-  if (tools && tools.length > 0) {
+  const isDeepSeek = apiUrl?.includes("deepseek") || model.toLowerCase().includes("deepseek");
+  if (tools && tools.length > 0 && !isDeepSeek) {
     requestBody.tools = tools;
     requestBody.tool_choice = "auto";
   }
+  const url = getApiUrl(apiUrl, false);
+  log.info(`[LLM] Sending request to: ${url}, model: ${model}, isDeepSeek: ${isDeepSeek}`);
   try {
-    const response = await fetch(OPENAI_API_URL, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -93,6 +109,7 @@ async function sendOpenAIMessage(apiKey, model, messages, tools, stream = false)
     });
     if (!response.ok) {
       const errorText = await response.text();
+      log.error(`[LLM] API error: ${response.status} - ${errorText}`);
       throw new Error(`API error: ${response.status} - ${errorText}`);
     }
     const data = await response.json();
@@ -120,7 +137,7 @@ async function sendOpenAIMessage(apiKey, model, messages, tools, stream = false)
     throw error;
   }
 }
-async function sendAnthropicMessage(apiKey, model, messages, tools, stream = false) {
+async function sendAnthropicMessage(apiKey, model, messages, tools, stream = false, apiUrl) {
   const requestBody = {
     model,
     messages,
@@ -130,8 +147,9 @@ async function sendAnthropicMessage(apiKey, model, messages, tools, stream = fal
   if (tools && tools.length > 0) {
     requestBody.tools = tools;
   }
+  const url = getApiUrl(apiUrl, true);
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -169,22 +187,23 @@ async function sendAnthropicMessage(apiKey, model, messages, tools, stream = fal
   }
 }
 async function* streamChatMessage(request) {
-  const { apiKey, model, messages, tools } = request;
+  const { apiKey, model, messages, tools, apiUrl } = request;
   if (isAnthropicModel(model)) {
-    yield* streamAnthropicMessage(apiKey, model, messages);
+    yield* streamAnthropicMessage(apiKey, model, messages, tools, apiUrl);
   } else {
-    yield* streamOpenAIMessage(apiKey, model, messages);
+    yield* streamOpenAIMessage(apiKey, model, messages, tools, apiUrl);
   }
 }
-async function* streamOpenAIMessage(apiKey, model, messages, tools) {
+async function* streamOpenAIMessage(apiKey, model, messages, tools, apiUrl) {
   const requestBody = {
     model,
     messages,
     max_tokens: 8192,
     stream: true
   };
+  const url = getApiUrl(apiUrl, false);
   try {
-    const response = await fetch(OPENAI_API_URL, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -231,15 +250,16 @@ async function* streamOpenAIMessage(apiKey, model, messages, tools) {
     throw error;
   }
 }
-async function* streamAnthropicMessage(apiKey, model, messages, tools) {
+async function* streamAnthropicMessage(apiKey, model, messages, tools, apiUrl) {
   const requestBody = {
     model,
     messages,
     max_tokens: 8192,
     stream: true
   };
+  const url = getApiUrl(apiUrl, true);
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -4220,8 +4240,8 @@ async function startApiServer() {
   });
   expressApp.post("/api/chat", async (req, res) => {
     try {
-      const { apiKey, model, messages, tools, stream = false } = req.body;
-      log.info("[API] /api/chat called with", messages?.length, "messages");
+      const { apiKey, model, messages, tools, stream = false, apiUrl } = req.body;
+      log.info("[API] /api/chat called with", messages?.length, "messages", "apiUrl:", apiUrl || "default");
       if (!apiKey) {
         res.status(400).json({ error: "API key is required" });
         return;
@@ -4230,7 +4250,7 @@ async function startApiServer() {
         res.setHeader("Content-Type", "text/event-stream");
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
-        const asyncIter = streamChatMessage({ apiKey, model, messages, tools, stream });
+        const asyncIter = streamChatMessage({ apiKey, model, messages, tools, stream, apiUrl });
         for await (const chunk of asyncIter) {
           res.write(`data: ${JSON.stringify(chunk)}
 
@@ -4239,7 +4259,7 @@ async function startApiServer() {
         res.write("data: [DONE]\n\n");
         res.end();
       } else {
-        const response = await sendChatMessage({ apiKey, model, messages, tools, stream });
+        const response = await sendChatMessage({ apiKey, model, messages, tools, stream, apiUrl });
         writeDebugLog("ORIGINAL_RESPONSE", response.content);
         let convertedContent = response.content;
         if (typeof convertedContent === "string") {
@@ -5590,6 +5610,8 @@ const cliEntry = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProp
   __proto__: null,
   getCLIProgram
 }, Symbol.toStringTag, { value: "Module" }));
+const readdirAsync = util.promisify(fs.readdir);
+const unlinkAsync = util.promisify(fs.unlink);
 log.transports.file.level = "info";
 log.transports.console.level = "debug";
 log.info("Application starting...");
@@ -5624,6 +5646,8 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: "SMP Code",
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 12, y: 10 },
     backgroundColor: electron.nativeTheme.shouldUseDarkColors ? "#1a1a1a" : "#ffffff",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
@@ -5989,6 +6013,128 @@ function setupProcessBridgeHandlers() {
   });
   log.info("Process bridge handlers registered");
 }
+function setupConversationHandlers() {
+  const CONVERSATION_DIR = ".smp-code/conversations";
+  const ensureConversationDir = (projectPath) => {
+    const dir = path.join(projectPath, CONVERSATION_DIR);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  };
+  electron.ipcMain.handle("conversation:save", async (_event, { projectPath, sessionId, messages, sessionTitle }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: "No project path provided" };
+      }
+      const dir = ensureConversationDir(projectPath);
+      const filePath = path.join(dir, `${sessionId}.json`);
+      const data = {
+        sessionId,
+        title: sessionTitle || `会话 ${(/* @__PURE__ */ new Date()).toLocaleString()}`,
+        messages,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+      log.info(`Conversation saved to ${filePath}`);
+      return { success: true };
+    } catch (error) {
+      log.error("Failed to save conversation:", error);
+      return { success: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("conversation:load", async (_event, { projectPath, sessionId }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: "No project path provided", messages: [] };
+      }
+      const filePath = path.join(projectPath, CONVERSATION_DIR, `${sessionId}.json`);
+      if (!fs.existsSync(filePath)) {
+        return { success: true, messages: [] };
+      }
+      const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+      log.info(`Conversation loaded from ${filePath}`);
+      return { success: true, messages: data.messages || [], title: data.title };
+    } catch (error) {
+      log.error("Failed to load conversation:", error);
+      return { success: false, error: String(error), messages: [] };
+    }
+  });
+  electron.ipcMain.handle("conversation:list-sessions", async (_event, { projectPath }) => {
+    try {
+      if (!projectPath) {
+        return { success: true, sessions: [] };
+      }
+      const dir = path.join(projectPath, CONVERSATION_DIR);
+      if (!fs.existsSync(dir)) {
+        return { success: true, sessions: [] };
+      }
+      const files = await readdirAsync(dir);
+      const sessions2 = [];
+      for (const file of files) {
+        if (file.endsWith(".json")) {
+          try {
+            const filePath = path.join(dir, file);
+            const data = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+            sessions2.push({
+              id: data.sessionId,
+              title: data.title || `会话 ${data.updatedAt || file}`,
+              updatedAt: data.updatedAt,
+              messageCount: data.messages?.length || 0
+            });
+          } catch (e) {
+            log.error(`Failed to parse session file ${file}:`, e);
+          }
+        }
+      }
+      sessions2.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      return { success: true, sessions: sessions2 };
+    } catch (error) {
+      log.error("Failed to list sessions:", error);
+      return { success: false, error: String(error), sessions: [] };
+    }
+  });
+  electron.ipcMain.handle("conversation:delete-session", async (_event, { projectPath, sessionId }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: "No project path provided" };
+      }
+      const filePath = path.join(projectPath, CONVERSATION_DIR, `${sessionId}.json`);
+      if (fs.existsSync(filePath)) {
+        await unlinkAsync(filePath);
+        log.info(`Session deleted: ${filePath}`);
+      }
+      return { success: true };
+    } catch (error) {
+      log.error("Failed to delete session:", error);
+      return { success: false, error: String(error) };
+    }
+  });
+  electron.ipcMain.handle("conversation:auto-save-all", async (_event, { projectPath, sessions: sessions2 }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: "No project path provided" };
+      }
+      const dir = ensureConversationDir(projectPath);
+      for (const session of sessions2) {
+        const filePath = path.join(dir, `${session.id}.json`);
+        const data = {
+          sessionId: session.id,
+          title: session.title || `会话 ${(/* @__PURE__ */ new Date()).toLocaleString()}`,
+          messages: session.messages || [],
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+      }
+      log.info(`All sessions auto-saved to ${dir}`);
+      return { success: true };
+    } catch (error) {
+      log.error("Failed to auto-save sessions:", error);
+      return { success: false, error: String(error) };
+    }
+  });
+  log.info("Conversation storage handlers registered");
+}
 function initializeCLIRegistries() {
   commandRegistry.register({
     name: "help",
@@ -6260,6 +6406,7 @@ electron.app.whenReady().then(async () => {
     log.error("Failed to initialize terminal service: mainWindow is null");
   }
   setupProcessBridgeHandlers();
+  setupConversationHandlers();
   createTray();
   registerGlobalShortcuts();
   electron.app.on("activate", () => {

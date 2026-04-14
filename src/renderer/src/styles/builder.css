@@ -1,0 +1,439 @@
+/* TRAE Builder模式样式 */
+
+/* Builder消息容器 */
+.builder-message {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 8px;
+}
+
+/* Builder标签 */
+.builder-message-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.builder-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.builder-badge svg {
+  color: var(--accent-color);
+}
+
+/* 思考过程面板 */
+.builder-thinking-section {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-primary);
+}
+
+.builder-thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.builder-thinking-toggle:hover {
+  background: var(--bg-tertiary);
+}
+
+.builder-toggle-icon {
+  transition: transform 0.2s ease;
+}
+
+.builder-toggle-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.builder-thinking-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.builder-thinking-content {
+  padding: 12px;
+}
+
+/* 思考步骤 */
+.thinking-panel {
+  background: var(--bg-secondary);
+}
+
+.thinking-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.thinking-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.thinking-panel-toggle {
+  font-size: 11px;
+  color: var(--accent-color);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.thinking-panel-toggle:hover {
+  background: var(--bg-tertiary);
+}
+
+.thinking-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.thinking-step {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.thinking-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.thinking-step-header:hover {
+  background: var(--bg-tertiary);
+}
+
+.thinking-step-icon {
+  flex-shrink: 0;
+}
+
+.thinking-step-icon.rotating {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.thinking-step-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.thinking-step-number {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.thinking-step-text {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.thinking-step-toggle {
+  transition: transform 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.thinking-step-toggle.expanded {
+  transform: rotate(180deg);
+}
+
+.thinking-step-content {
+  padding: 8px 10px 8px 32px;
+  background: var(--bg-primary);
+}
+
+.thinking-step-filepath {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--accent-color);
+  font-family: 'JetBrains Mono', monospace;
+  margin-bottom: 8px;
+}
+
+.thinking-step-code {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.thinking-step-code pre {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 步骤状态 */
+.thinking-step.running .thinking-step-text {
+  color: var(--accent-color);
+}
+
+.thinking-step.completed .thinking-step-icon {
+  color: var(--success-color);
+}
+
+.thinking-step.failed .thinking-step-icon {
+  color: var(--danger-color);
+}
+
+/* 代码块 */
+.code-block-container {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.code-block-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.code-block-language {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-color);
+  text-transform: uppercase;
+}
+
+.code-block-filepath {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.code-block-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-block-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.code-block-action-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.code-block-content {
+  max-height: 400px;
+  overflow: auto;
+}
+
+.code-block-expand-mask {
+  position: relative;
+  height: 60px;
+  margin-top: -60px;
+  background: linear-gradient(transparent, var(--bg-secondary));
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 8px;
+}
+
+.code-block-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--accent-color);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Builder消息内容 */
+.builder-message-content {
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.builder-text-content {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.builder-text-content p {
+  margin: 0 0 12px 0;
+}
+
+.builder-text-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* 文件路径高亮 */
+.file-path-highlight {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  color: var(--accent-color);
+  background: rgba(47, 129, 247, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Builder消息操作按钮 */
+.builder-message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.builder-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.builder-action-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* 超时提示框 */
+.timeout-prompt {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(210, 153, 34, 0.1);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+  border-radius: 8px;
+}
+
+.timeout-prompt-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.timeout-prompt-icon {
+  color: #d29922;
+  flex-shrink: 0;
+}
+
+.timeout-prompt-text {
+  flex: 1;
+}
+
+.timeout-prompt-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+}
+
+.timeout-prompt-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.timeout-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.timeout-prompt-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.timeout-prompt-btn.primary {
+  color: white;
+  background: var(--accent-color);
+  border: none;
+}
+
+.timeout-prompt-btn.primary:hover {
+  background: #1f6feb;
+}
+
+.timeout-prompt-btn.secondary {
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.timeout-prompt-btn.secondary:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}

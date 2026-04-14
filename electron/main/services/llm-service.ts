@@ -1,4 +1,4 @@
-// LLM Service supporting OpenAI and Anthropic compatible APIs via DashScope
+// LLM Service supporting OpenAI and Anthropic compatible APIs
 import log from 'electron-log'
 
 // Types for API calls
@@ -13,6 +13,7 @@ export interface ChatRequest {
   messages: Message[]
   tools?: unknown[]
   stream?: boolean
+  apiUrl?: string  // 自定义 API 端点
 }
 
 export interface ChatResponse {
@@ -41,9 +42,9 @@ export interface StreamChunk {
   [key: string]: unknown
 }
 
-// API Endpoints
-const OPENAI_API_URL = 'https://coding.dashscope.aliyuncs.com/v1/chat/completions'
-const ANTHROPIC_API_URL = 'https://coding.dashscope.aliyuncs.com/apps/anthropic/v1/messages'
+// Default API Endpoints (fallback)
+const DEFAULT_OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions'
+const DEFAULT_ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 
 // Models that use Anthropic protocol
 const ANTHROPIC_MODELS = [
@@ -59,15 +60,40 @@ function isAnthropicModel(model: string): boolean {
 }
 
 /**
+ * Get API URL for the request
+ */
+function getApiUrl(apiUrl: string | undefined, isAnthropic: boolean): string {
+  if (apiUrl) {
+    // If user provided URL already ends with /chat/completions, use it as-is
+    if (apiUrl.includes('/chat/completions')) {
+      return apiUrl
+    }
+    
+    // Remove trailing slash if present
+    const baseUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl
+    
+    // If URL ends with /v1, append /chat/completions (OpenAI, Azure, DashScope style)
+    if (baseUrl.endsWith('/v1')) {
+      return `${baseUrl}/chat/completions`
+    }
+    
+    // For other cases (like DeepSeek: https://api.deepseek.com), just append /chat/completions
+    // DeepSeek API: https://api.deepseek.com/chat/completions (no /v1)
+    return `${baseUrl}/chat/completions`
+  }
+  return isAnthropic ? DEFAULT_ANTHROPIC_API_URL : DEFAULT_OPENAI_API_URL
+}
+
+/**
  * Send chat message to LLM API
  */
 export async function sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
-  const { apiKey, model, messages, tools, stream = false } = request
+  const { apiKey, model, messages, tools, stream = false, apiUrl } = request
 
   if (isAnthropicModel(model)) {
-    return sendAnthropicMessage(apiKey, model, messages, tools, stream)
+    return sendAnthropicMessage(apiKey, model, messages, tools, stream, apiUrl)
   } else {
-    return sendOpenAIMessage(apiKey, model, messages, tools, stream)
+    return sendOpenAIMessage(apiKey, model, messages, tools, stream, apiUrl)
   }
 }
 
@@ -79,7 +105,8 @@ async function sendOpenAIMessage(
   model: string,
   messages: Message[],
   tools?: unknown[],
-  stream = false
+  stream = false,
+  apiUrl?: string
 ): Promise<ChatResponse> {
   const requestBody: Record<string, unknown> = {
     model,
@@ -88,14 +115,21 @@ async function sendOpenAIMessage(
     stream
   }
 
-  // Enable tools if provided
-  if (tools && tools.length > 0) {
+  // Check if this is DeepSeek API (based on URL or model name)
+  const isDeepSeek = apiUrl?.includes('deepseek') || model.toLowerCase().includes('deepseek')
+
+  // Enable tools if provided (but not for DeepSeek as it may not support function calling)
+  if (tools && tools.length > 0 && !isDeepSeek) {
     requestBody.tools = tools
     requestBody.tool_choice = 'auto'
   }
 
+  const url = getApiUrl(apiUrl, false)
+
+  log.info(`[LLM] Sending request to: ${url}, model: ${model}, isDeepSeek: ${isDeepSeek}`)
+
   try {
-    const response = await fetch(OPENAI_API_URL, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -106,6 +140,7 @@ async function sendOpenAIMessage(
 
     if (!response.ok) {
       const errorText = await response.text()
+      log.error(`[LLM] API error: ${response.status} - ${errorText}`)
       throw new Error(`API error: ${response.status} - ${errorText}`)
     }
 
@@ -149,7 +184,8 @@ async function sendAnthropicMessage(
   model: string,
   messages: Message[],
   tools?: unknown[],
-  stream = false
+  stream = false,
+  apiUrl?: string
 ): Promise<ChatResponse> {
   const requestBody: Record<string, unknown> = {
     model,
@@ -163,8 +199,10 @@ async function sendAnthropicMessage(
     requestBody.tools = tools
   }
 
+  const url = getApiUrl(apiUrl, true)
+
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -212,12 +250,12 @@ async function sendAnthropicMessage(
  * Stream chat message to LLM API
  */
 export async function* streamChatMessage(request: ChatRequest): AsyncGenerator<StreamChunk> {
-  const { apiKey, model, messages, tools } = request
+  const { apiKey, model, messages, tools, apiUrl } = request
 
   if (isAnthropicModel(model)) {
-    yield* streamAnthropicMessage(apiKey, model, messages, tools)
+    yield* streamAnthropicMessage(apiKey, model, messages, tools, apiUrl)
   } else {
-    yield* streamOpenAIMessage(apiKey, model, messages, tools)
+    yield* streamOpenAIMessage(apiKey, model, messages, tools, apiUrl)
   }
 }
 
@@ -228,7 +266,8 @@ async function* streamOpenAIMessage(
   apiKey: string,
   model: string,
   messages: Message[],
-  tools?: unknown[]
+  tools?: unknown[],
+  apiUrl?: string
 ): AsyncGenerator<StreamChunk> {
   const requestBody: Record<string, unknown> = {
     model,
@@ -243,8 +282,10 @@ async function* streamOpenAIMessage(
   //   requestBody.tools = tools
   // }
 
+  const url = getApiUrl(apiUrl, false)
+
   try {
-    const response = await fetch(OPENAI_API_URL, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -306,7 +347,8 @@ async function* streamAnthropicMessage(
   apiKey: string,
   model: string,
   messages: Message[],
-  tools?: unknown[]
+  tools?: unknown[],
+  apiUrl?: string
 ): AsyncGenerator<StreamChunk> {
   const requestBody: Record<string, unknown> = {
     model,
@@ -321,8 +363,10 @@ async function* streamAnthropicMessage(
   //   requestBody.tools = tools
   // }
 
+  const url = getApiUrl(apiUrl, true)
+
   try {
-    const response = await fetch(ANTHROPIC_API_URL, {
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -378,10 +422,13 @@ async function* streamAnthropicMessage(
 /**
  * Validate API key by making a simple request
  */
-export async function validateApiKey(apiKey: string, model: string): Promise<boolean> {
+export async function validateApiKey(apiKey: string, model: string, apiUrl?: string): Promise<boolean> {
   try {
-    if (isAnthropicModel(model)) {
-      const response = await fetch(ANTHROPIC_API_URL, {
+    const isAnthropic = isAnthropicModel(model)
+    const url = getApiUrl(apiUrl, isAnthropic)
+
+    if (isAnthropic) {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -396,7 +443,7 @@ export async function validateApiKey(apiKey: string, model: string): Promise<boo
       })
       return response.ok
     } else {
-      const response = await fetch(OPENAI_API_URL, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

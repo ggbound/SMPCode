@@ -1,6 +1,10 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, dialog, nativeTheme } from 'electron'
 import { join } from 'path'
-import { readFileSync, existsSync, readFile } from 'fs'
+import { readFileSync, existsSync, readFile, writeFileSync, mkdirSync, readdir, unlink } from 'fs'
+import { promisify } from 'util'
+
+const readdirAsync = promisify(readdir)
+const unlinkAsync = promisify(unlink)
 import log from 'electron-log'
 import { startApiServer, stopApiServer } from './api-server'
 import { 
@@ -64,6 +68,8 @@ function createWindow(): void {
     minWidth: 800,
     minHeight: 600,
     title: 'SMP Code',
+    titleBarStyle: 'hiddenInset',
+    trafficLightPosition: { x: 12, y: 10 },
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1a1a1a' : '#ffffff',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -501,6 +507,177 @@ function setupProcessBridgeHandlers(): void {
   log.info('Process bridge handlers registered')
 }
 
+// Conversation storage handlers - TRAE风格项目级对话存储
+function setupConversationHandlers(): void {
+  const CONVERSATION_DIR = '.smp-code/conversations'
+  const SETTINGS_FILE = '.smp-code/settings.json'
+
+  // 确保对话目录存在
+  const ensureConversationDir = (projectPath: string) => {
+    const dir = join(projectPath, CONVERSATION_DIR)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    return dir
+  }
+
+  // 保存对话
+  ipcMain.handle('conversation:save', async (_event, { projectPath, sessionId, messages, sessionTitle }: { 
+    projectPath: string
+    sessionId: string
+    messages: any[]
+    sessionTitle?: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided' }
+      }
+
+      const dir = ensureConversationDir(projectPath)
+      const filePath = join(dir, `${sessionId}.json`)
+      
+      const data = {
+        sessionId,
+        title: sessionTitle || `会话 ${new Date().toLocaleString()}`,
+        messages,
+        updatedAt: new Date().toISOString()
+      }
+      
+      writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+      log.info(`Conversation saved to ${filePath}`)
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to save conversation:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 加载对话
+  ipcMain.handle('conversation:load', async (_event, { projectPath, sessionId }: { 
+    projectPath: string
+    sessionId: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided', messages: [] }
+      }
+
+      const filePath = join(projectPath, CONVERSATION_DIR, `${sessionId}.json`)
+      
+      if (!existsSync(filePath)) {
+        return { success: true, messages: [] }
+      }
+      
+      const data = JSON.parse(readFileSync(filePath, 'utf-8'))
+      log.info(`Conversation loaded from ${filePath}`)
+      return { success: true, messages: data.messages || [], title: data.title }
+    } catch (error) {
+      log.error('Failed to load conversation:', error)
+      return { success: false, error: String(error), messages: [] }
+    }
+  })
+
+  // 加载所有会话列表
+  ipcMain.handle('conversation:list-sessions', async (_event, { projectPath }: { projectPath: string }) => {
+    try {
+      if (!projectPath) {
+        return { success: true, sessions: [] }
+      }
+
+      const dir = join(projectPath, CONVERSATION_DIR)
+      
+      if (!existsSync(dir)) {
+        return { success: true, sessions: [] }
+      }
+
+      const files = await readdirAsync(dir)
+      const sessions = []
+      
+      for (const file of files) {
+        if (file.endsWith('.json')) {
+          try {
+            const filePath = join(dir, file)
+            const data = JSON.parse(readFileSync(filePath, 'utf-8'))
+            sessions.push({
+              id: data.sessionId,
+              title: data.title || `会话 ${data.updatedAt || file}`,
+              updatedAt: data.updatedAt,
+              messageCount: data.messages?.length || 0
+            })
+          } catch (e) {
+            log.error(`Failed to parse session file ${file}:`, e)
+          }
+        }
+      }
+      
+      // 按更新时间排序
+      sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      
+      return { success: true, sessions }
+    } catch (error) {
+      log.error('Failed to list sessions:', error)
+      return { success: false, error: String(error), sessions: [] }
+    }
+  })
+
+  // 删除会话
+  ipcMain.handle('conversation:delete-session', async (_event, { projectPath, sessionId }: { 
+    projectPath: string
+    sessionId: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided' }
+      }
+
+      const filePath = join(projectPath, CONVERSATION_DIR, `${sessionId}.json`)
+      
+      if (existsSync(filePath)) {
+        await unlinkAsync(filePath)
+        log.info(`Session deleted: ${filePath}`)
+      }
+      
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to delete session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 自动保存所有会话
+  ipcMain.handle('conversation:auto-save-all', async (_event, { projectPath, sessions }: { 
+    projectPath: string
+    sessions: any[]
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided' }
+      }
+
+      const dir = ensureConversationDir(projectPath)
+      
+      for (const session of sessions) {
+        const filePath = join(dir, `${session.id}.json`)
+        const data = {
+          sessionId: session.id,
+          title: session.title || `会话 ${new Date().toLocaleString()}`,
+          messages: session.messages || [],
+          updatedAt: new Date().toISOString()
+        }
+        writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+      }
+      
+      log.info(`All sessions auto-saved to ${dir}`)
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to auto-save sessions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  log.info('Conversation storage handlers registered')
+}
+
 // 初始化 CLI 注册表
 function initializeCLIRegistries(): void {
   // 注册内置命令
@@ -833,6 +1010,9 @@ app.whenReady().then(async () => {
 
   // Setup process bridge IPC handlers
   setupProcessBridgeHandlers()
+  
+  // Setup conversation storage handlers
+  setupConversationHandlers()
   
   createTray()
   registerGlobalShortcuts()

@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { t } from '../i18n'
+import BuilderMessage from './BuilderMessage'
+import { TimeoutPrompt } from './TimeoutPrompt'
 
 interface ChatAreaProps {
   messages: Message[]
@@ -21,6 +23,12 @@ interface ChatAreaProps {
   onModelChange?: (model: string) => void
   onContinueExecution?: () => void
   showContinueButton?: boolean
+  onContinueTimeout?: () => void
+  onStopTimeout?: () => void
+  isTimeout?: boolean
+  timeoutMessageIndex?: number | null
+  chatMode?: 'agent' | 'chat'
+  onChatModeChange?: (mode: 'agent' | 'chat') => void
 }
 
 function ChatArea({
@@ -37,7 +45,13 @@ function ChatArea({
   model = '',
   onModelChange,
   onContinueExecution,
-  showContinueButton
+  showContinueButton,
+  onContinueTimeout,
+  onStopTimeout,
+  isTimeout = false,
+  timeoutMessageIndex = null,
+  chatMode = 'agent',
+  onChatModeChange
 }: ChatAreaProps) {
   const [input, setInput] = useState('')
 
@@ -54,9 +68,11 @@ function ChatArea({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [filteredCommands, setFilteredCommands] = useState<Command[]>([])
   const [showModelSelector, setShowModelSelector] = useState(false)
+  const [showChatModeSelector, setShowChatModeSelector] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const modelSelectorRef = useRef<HTMLDivElement>(null)
+  const chatModeSelectorRef = useRef<HTMLDivElement>(null)
 
   // Get all enabled models from providers
   const getEnabledModels = useCallback(() => {
@@ -84,6 +100,9 @@ function ChatArea({
     const handleClickOutside = (event: MouseEvent) => {
       if (modelSelectorRef.current && !modelSelectorRef.current.contains(event.target as Node)) {
         setShowModelSelector(false)
+      }
+      if (chatModeSelectorRef.current && !chatModeSelectorRef.current.contains(event.target as Node)) {
+        setShowChatModeSelector(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -258,92 +277,108 @@ function ChatArea({
               ) : (
                 // Assistant message - left aligned with thinking tags
                 <div className="assistant-message-wrapper">
-                  <div className="assistant-message-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        pre: ({ children, ...props }) => {
-                          const codeElement = children as React.ReactElement<{ className?: string; children?: React.ReactNode }>
-                          const className = codeElement?.props?.className || ''
-                          const language = className.replace('language-', '') || 'text'
-                          const codeContent = codeElement?.props?.children || ''
-                          const codeId = `${language}-${String(codeContent).slice(0, 20)}`
-                          const isCopied = copiedId === codeId
+                  {msg.isBuilder ? (
+                    // TRAE Builder模式消息
+                    <BuilderMessage 
+                      message={msg}
+                      onContinue={idx === timeoutMessageIndex ? onContinueTimeout : undefined}
+                      onStop={idx === timeoutMessageIndex ? onStopTimeout : undefined}
+                    />
+                  ) : (
+                    <div className="assistant-message-content">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={{
+                          pre: ({ children, ...props }) => {
+                            const codeElement = children as React.ReactElement<{ className?: string; children?: React.ReactNode }>
+                            const className = codeElement?.props?.className || ''
+                            const language = className.replace('language-', '') || 'text'
+                            const codeContent = codeElement?.props?.children || ''
+                            const codeId = `${language}-${String(codeContent).slice(0, 20)}`
+                            const isCopied = copiedId === codeId
 
-                          return (
-                            <div className="code-block-wrapper">
-                              <div className="code-block-header">
-                                <span className="code-language">{language}</span>
-                                <button
-                                  onClick={() => copyToClipboard(String(codeContent), codeId)}
-                                  className={`copy-button ${isCopied ? 'copied' : ''}`}
-                                >
-                                  {isCopied ? t('copied') : t('copy')}
-                                </button>
+                            return (
+                              <div className="code-block-wrapper">
+                                <div className="code-block-header">
+                                  <span className="code-language">{language}</span>
+                                  <button
+                                    onClick={() => copyToClipboard(String(codeContent), codeId)}
+                                    className={`copy-button ${isCopied ? 'copied' : ''}`}
+                                  >
+                                    {isCopied ? t('copied') : t('copy')}
+                                  </button>
+                                </div>
+                                <div className="code-block-content">
+                                  <SyntaxHighlighter
+                                    language={language}
+                                    style={vscDarkPlus}
+                                    customStyle={{
+                                      margin: 0,
+                                      padding: '16px',
+                                      background: '#1e1e1e',
+                                      fontSize: '13px',
+                                      lineHeight: '1.6',
+                                      minWidth: 'fit-content',
+                                      borderRadius: '0'
+                                    }}
+                                    showLineNumbers={true}
+                                    lineNumberStyle={{
+                                      color: '#6e7681',
+                                      fontSize: '12px',
+                                      minWidth: '2.5em'
+                                    }}
+                                  >
+                                    {String(codeContent).replace(/\n$/, '')}
+                                  </SyntaxHighlighter>
+                                </div>
                               </div>
-                              <div className="code-block-content">
-                                <SyntaxHighlighter
-                                  language={language}
-                                  style={vscDarkPlus}
-                                  customStyle={{
-                                    margin: 0,
-                                    padding: '16px',
-                                    background: '#1e1e1e',
-                                    fontSize: '13px',
-                                    lineHeight: '1.6',
-                                    minWidth: 'fit-content',
-                                    borderRadius: '0'
-                                  }}
-                                  showLineNumbers={true}
-                                  lineNumberStyle={{
-                                    color: '#6e7681',
-                                    fontSize: '12px',
-                                    minWidth: '2.5em'
-                                  }}
-                                >
-                                  {String(codeContent).replace(/\n$/, '')}
-                                </SyntaxHighlighter>
-                              </div>
-                            </div>
-                          )
-                        },
-                        code: ({ children, className }) => {
-                          const isInline = !className
-                          return isInline ? (
-                            <code className="inline-code">{children}</code>
-                          ) : (
-                            <code>{children}</code>
-                          )
-                        }
-                      }}
-                    >
-                      {msg.content}
-                    </ReactMarkdown>
-                    {/* Show continue button for messages that need action */}
-                    {msg.needsAction === 'continue' && onContinueExecution && (
-                      <div className="continue-action-container">
-                        <button
-                          className="continue-button"
-                          onClick={onContinueExecution}
-                          disabled={isLoading}
-                        >
-                          {isLoading ? (
-                            <>
-                              <span className="spinner-small" />
-                              继续执行中...
-                            </>
-                          ) : (
-                            <>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M5 12h14M12 5l7 7-7 7"/>
-                              </svg>
-                              继续执行
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                            )
+                          },
+                          code: ({ children, className }) => {
+                            const isInline = !className
+                            return isInline ? (
+                              <code className="inline-code">{children}</code>
+                            ) : (
+                              <code>{children}</code>
+                            )
+                          }
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
+                      {/* Show continue button for messages that need action */}
+                      {msg.needsAction === 'continue' && onContinueExecution && (
+                        <div className="continue-action-container">
+                          <button
+                            className="continue-button"
+                            onClick={onContinueExecution}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                              <>
+                                <span className="spinner-small" />
+                                继续执行中...
+                              </>
+                            ) : (
+                              <>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                                </svg>
+                                继续执行
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                      {/* Timeout prompt for non-builder messages */}
+                      {isTimeout && idx === timeoutMessageIndex && (
+                        <TimeoutPrompt 
+                          onContinue={onContinueTimeout}
+                          onStop={onStopTimeout}
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -422,6 +457,115 @@ function ChatArea({
         {/* Toolbar */}
         <div className="input-toolbar">
           <div className="toolbar-left">
+            {/* Chat Mode Selector - Styled like model selector */}
+            <div className="chat-mode-selector-container" ref={chatModeSelectorRef} style={{ position: 'relative', marginRight: '8px' }}>
+              <button
+                type="button"
+                className="toolbar-btn chat-mode-selector-btn"
+                onClick={() => setShowChatModeSelector(!showChatModeSelector)}
+                title={chatMode === 'agent' ? '智能体模式 - 可调用工具' : '智能问答模式 - 纯对话'}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  fontSize: '13px',
+                  maxWidth: '140px',
+                  minWidth: '100px'
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                  {chatMode === 'agent' ? (
+                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                  ) : (
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  )}
+                </svg>
+                <span style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flex: '1'
+                }}>{chatMode === 'agent' ? '智能体' : '智能问答'}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{
+                  transform: showChatModeSelector ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s',
+                  flexShrink: 0
+                }}>
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              
+              {showChatModeSelector && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: '100%',
+                  left: 0,
+                  marginBottom: '4px',
+                  minWidth: '140px',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                  zIndex: 100
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChatModeChange?.('chat')
+                      setShowChatModeSelector(false)
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      textAlign: 'left',
+                      border: 'none',
+                      background: chatMode === 'chat' ? 'var(--bg-tertiary)' : 'transparent',
+                      color: chatMode === 'chat' ? 'var(--accent-color)' : 'var(--text-primary)',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      borderBottom: '1px solid var(--border-color)'
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span>智能问答</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChatModeChange?.('agent')
+                      setShowChatModeSelector(false)
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      textAlign: 'left',
+                      border: 'none',
+                      background: chatMode === 'agent' ? 'var(--bg-tertiary)' : 'transparent',
+                      color: chatMode === 'agent' ? 'var(--accent-color)' : 'var(--text-primary)',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    <span>智能体</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Model Selector - Moved to toolbar */}
             {providers.length > 0 && (
               <div className="model-selector-container" ref={modelSelectorRef} style={{ position: 'relative' }}>

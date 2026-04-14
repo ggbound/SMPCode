@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useStore, type ProviderConfig } from './store'
+import { useStore, type ProviderConfig, type Session, type Step } from './store'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import SettingsModal from './components/SettingsModal'
@@ -8,6 +8,7 @@ import FileExplorer from './components/FileExplorer'
 import FileViewer from './components/FileViewer'
 import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
+import SessionSidebar from './components/SessionSidebar'
 import { t } from './i18n'
 
 const API_BASE = 'http://localhost:3847/api'
@@ -207,6 +208,10 @@ function App() {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  
+  // Session sidebar state - 默认关闭，显示文件浏览器
+  const [sessionSidebarOpen, setSessionSidebarOpen] = useState(false)
+  const [localSessions, setLocalSessions] = useState<Session[]>([])
 
   const {
     apiKey,
@@ -221,6 +226,7 @@ function App() {
     commands,
     tools,
     providers,
+    chatMode,
     setApiKey,
     setModel,
     setDefaultModel,
@@ -228,12 +234,19 @@ function App() {
     setProviders,
     setCommands,
     setTools,
+    setChatMode,
     addSession,
     selectSession,
+    updateSessionTitle,
+    deleteSession,
     addMessage,
     clearMessages,
     setMessages,
-    updateTokens
+    updateTokens,
+    setSessions,
+    setCurrentProjectPath,
+    addStepToMessage,
+    updateStepStatus
   } = useStore()
 
   // Load commands and tools on mount
@@ -381,12 +394,17 @@ function App() {
     setIsLoading(true)
 
     try {
-      // Get API key from enabled provider
-      const enabledProvider = providers.find(p => p.enabled)
-      const providerApiKey = enabledProvider?.apiKey || apiKey
+      // Find provider by selected model
+      const providerForModel = providers.find(p => 
+        p.enabled && p.models.some(m => m.id === model)
+      )
+      
+      // Get API key and URL from the provider that has the selected model
+      const providerApiKey = providerForModel?.apiKey
+      const providerApiUrl = providerForModel?.apiUrl
 
       if (!providerApiKey) {
-        addMessage({ role: 'assistant', content: '请先在设置中配置 API 密钥' })
+        addMessage({ role: 'assistant', content: '请先在设置中为所选模型配置 API 密钥' })
         setIsLoading(false)
         return
       }
@@ -452,6 +470,7 @@ function App() {
         userOriginalRequest,
         currentCwd,
         providerApiKey,
+        providerApiUrl,
         100, // maxIterations - this is the max for this batch
         true, // isContinuation
         {
@@ -564,23 +583,8 @@ function App() {
       }
     }
 
-    // Save messages to session
-    if (sessionId) {
-      try {
-        await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'user', content: userContent })
-        })
-        await fetch(`${API_BASE}/sessions/${sessionId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'assistant', content: result.content })
-        })
-      } catch (error) {
-        console.error('Failed to save messages to session:', error)
-      }
-    }
+    // 注意：消息保存已由 auto-save useEffect 处理，使用 window.api.saveConversation
+    // 不需要再手动调用 HTTP API
   }
 
   // Fetch project context from main process
@@ -616,76 +620,166 @@ function App() {
     }
   }, [projectPath, fetchProjectContext])
 
-  // Handle project path change - auto load associated session
+  // Handle project path change - auto load associated session from local storage
   const handleProjectPathChange = useCallback(async (newPath: string) => {
     console.log('[handleProjectPathChange] New project path:', newPath)
     setProjectPath(newPath)
+    setCurrentProjectPath(newPath)
 
-    if (!newPath) return
+    if (!newPath) {
+      setLocalSessions([])
+      return
+    }
 
     try {
-      // Try to find existing session for this project
-      const res = await fetch(`${API_BASE}/sessions/by-project?path=${encodeURIComponent(newPath)}`)
-
-      if (res.ok) {
-        const data = await res.json()
-
-        if (data.found && data.session) {
-          // Found existing session - load it
-          const session = data.session
-          console.log('[handleProjectPathChange] Found existing session:', session.id)
-
-          // Select the session and load its messages
-          selectSession(session.id)
-          setMessages(session.messages.map((msg: { role: 'user' | 'assistant'; content: string }) => ({
-            role: msg.role,
-            content: msg.content,
-            timestamp: Date.now()
-          })))
-
-          // Update tokens estimate
-          const totalContent = session.messages.map((m: { content: string }) => m.content).join(' ')
-          updateTokens(totalContent.length / 4, 0)
-
-          console.log('[handleProjectPathChange] Loaded session with', session.messages.length, 'messages')
-        } else {
-          // No existing session for this project - this is expected for new projects
-          console.log('[handleProjectPathChange] No existing session found for this project, creating new one')
-          const createRes = await fetch(`${API_BASE}/sessions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectPath: newPath })
-          })
-
-          if (createRes.ok) {
-            const newSession = await createRes.json()
-            addSession({
-              id: newSession.id,
-              createdAt: newSession.createdAt,
-              messageCount: 0,
-              projectPath: newPath
-            })
-            selectSession(newSession.id)
-            clearMessages()
-            console.log('[handleProjectPathChange] Created new session:', newSession.id)
+      // TRAE风格：从本地存储加载会话列表
+      if (window.api?.listSessions) {
+        const result = await window.api.listSessions(newPath)
+        if (result.success && result.sessions) {
+          const loadedSessions = result.sessions.map(s => ({
+            id: s.id,
+            createdAt: s.updatedAt,
+            messageCount: s.messageCount,
+            projectPath: newPath,
+            title: s.title
+          }))
+          setLocalSessions(loadedSessions)
+          setSessions(loadedSessions)
+          
+          // 如果有会话，加载最新的一个
+          if (loadedSessions.length > 0) {
+            const latestSession = loadedSessions[0]
+            selectSession(latestSession.id)
+            
+            // 加载消息
+            const msgResult = await window.api.loadConversation(newPath, latestSession.id)
+            if (msgResult.success && msgResult.messages) {
+              setMessages(msgResult.messages)
+              console.log('[handleProjectPathChange] Loaded session with', msgResult.messages.length, 'messages')
+            }
+          } else {
+            // 没有会话，创建新的
+            await createNewSession(newPath)
           }
+        } else {
+          // 加载失败，创建新的
+          await createNewSession(newPath)
         }
       } else {
-        // Error response
-        console.error('[handleProjectPathChange] Failed to check for existing session:', res.status)
+        // API不可用，创建新的
+        await createNewSession(newPath)
       }
     } catch (error) {
       console.error('[handleProjectPathChange] Error:', error)
+      await createNewSession(newPath)
     }
-  }, [setProjectPath, selectSession, setMessages, addSession, clearMessages, updateTokens])
+  }, [setProjectPath, setCurrentProjectPath, setLocalSessions, setSessions, selectSession, setMessages])
+  
+  // 创建新会话的辅助函数
+  const createNewSession = async (projectPath: string) => {
+    const newSessionId = `session-${Date.now()}`
+    const newSession: Session = {
+      id: newSessionId,
+      createdAt: new Date().toISOString(),
+      messageCount: 0,
+      projectPath: projectPath,
+      title: `会话 ${new Date().toLocaleString()}`
+    }
+    
+    addSession(newSession)
+    selectSession(newSessionId)
+    clearMessages()
+    setLocalSessions(prev => [newSession, ...prev])
+    
+    // 保存到本地
+    if (window.api?.saveConversation) {
+      await window.api.saveConversation(projectPath, newSessionId, [], newSession.title)
+    }
+    
+    console.log('[handleProjectPathChange] Created new session:', newSessionId)
+  }
 
-  // Handle session selection from sidebar - update project path if session has one
-  const handleSessionSelect = useCallback((sessionProjectPath: string | undefined) => {
-    if (sessionProjectPath && sessionProjectPath !== projectPath) {
-      console.log('[handleSessionSelect] Updating project path to:', sessionProjectPath)
-      setProjectPath(sessionProjectPath)
+  // Handle session selection from sidebar
+  const handleSelectSessionFromSidebar = useCallback(async (sessionId: string) => {
+    if (!projectPath) return
+    
+    selectSession(sessionId)
+    
+    // 加载会话消息
+    if (window.api?.loadConversation) {
+      const result = await window.api.loadConversation(projectPath, sessionId)
+      if (result.success && result.messages) {
+        setMessages(result.messages)
+      } else {
+        clearMessages()
+      }
     }
+  }, [projectPath, selectSession, setMessages, clearMessages])
+
+  // Handle create new session from sidebar
+  const handleCreateSessionFromSidebar = useCallback(async () => {
+    if (!projectPath) {
+      alert('请先打开一个项目')
+      return
+    }
+    
+    await createNewSession(projectPath)
   }, [projectPath])
+
+  // Handle delete session from sidebar
+  const handleDeleteSessionFromSidebar = useCallback(async (sessionId: string) => {
+    if (!projectPath) return
+    
+    if (window.api?.deleteSession) {
+      await window.api.deleteSession(projectPath, sessionId)
+    }
+    
+    deleteSession(sessionId)
+    setLocalSessions(prev => prev.filter(s => s.id !== sessionId))
+    
+    // 如果删除的是当前会话，清空消息
+    if (currentSession === sessionId) {
+      clearMessages()
+    }
+  }, [projectPath, currentSession, deleteSession, clearMessages])
+
+  // Handle rename session from sidebar
+  const handleRenameSessionFromSidebar = useCallback(async (sessionId: string, title: string) => {
+    if (!projectPath) return
+    
+    updateSessionTitle(sessionId, title)
+    setLocalSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title } : s))
+    
+    // 保存到本地
+    if (window.api?.saveConversation) {
+      const session = localSessions.find(s => s.id === sessionId)
+      if (session) {
+        const msgResult = await window.api.loadConversation(projectPath, sessionId)
+        await window.api.saveConversation(projectPath, sessionId, msgResult.messages || [], title)
+      }
+    }
+  }, [projectPath, localSessions, updateSessionTitle])
+
+  // Auto-save conversation when messages change
+  useEffect(() => {
+    const autoSave = async () => {
+      if (!projectPath || !currentSession || messages.length === 0) return
+      
+      if (window.api?.saveConversation) {
+        const session = localSessions.find(s => s.id === currentSession)
+        await window.api.saveConversation(
+          projectPath, 
+          currentSession, 
+          messages, 
+          session?.title || `会话 ${new Date().toLocaleString()}`
+        )
+      }
+    }
+    
+    // 延迟保存，避免频繁写入
+    const timer = setTimeout(autoSave, 2000)
+    return () => clearTimeout(timer)
+  }, [messages, projectPath, currentSession, localSessions])
 
   const handleNewSession = useCallback(async () => {
     // Always create a new session using legacy API (compatible with messages API)
@@ -901,6 +995,7 @@ function App() {
     userContent: string,
     workingDir: string,
     providerApiKey: string,
+    providerApiUrl: string | undefined,
     maxIterations = 100,
     isContinuation: boolean = false,
     previousState?: {
@@ -943,8 +1038,25 @@ function App() {
     } = {}
 
     // Add initial assistant message for tool calling progress - only if not continuation
+    let assistantMessageIndex = -1
     if (!isContinuation) {
-      addMessage({ role: 'assistant', content: '🔄 正在处理...' })
+      // TRAE Builder模式：添加带有isBuilder标记的助手消息
+      addMessage({ 
+        role: 'assistant', 
+        content: '',
+        isBuilder: true,
+        thinkingSteps: []
+      })
+      assistantMessageIndex = useStore.getState().messages.length - 1
+    } else {
+      // 找到最后一条助手消息
+      const msgs = useStore.getState().messages
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant') {
+          assistantMessageIndex = i
+          break
+        }
+      }
     }
 
     // Create new abort controller for this request
@@ -1190,7 +1302,8 @@ ${contextSummary}
             messages: conversationHistory,
             tools: availableTools,
             tool_choice: 'auto',
-            stream: false
+            stream: false,
+            apiUrl: providerApiUrl
           }),
           signal: abortControllerRef.current.signal
         })
@@ -1367,28 +1480,51 @@ ${contextSummary}
       // 使用过滤后的工具调用
       const toolCallsToExecute = filteredToolCalls.length > 0 ? filteredToolCalls : toolCalls
       
-      // 显示正在执行的工具 - 详细展示
-      const toolDetails = toolCallsToExecute.map((t, idx) => {
-        const args = Object.entries(t.arguments as Record<string, unknown>)
-          .map(([k, v]) => `${k}=${JSON.stringify(v).substring(0, 50)}`)
-          .join(', ')
-        return `${idx + 1}. **${t.tool}** (${args})`
-      }).join('\n')
-      
-      // 显示执行计划（如果有）
-      const planDisplay = executionPlan.length > 0 
-        ? `📋 **执行计划:**\n${executionPlan.map((step, idx) => `${idx + 1}. ${completedSteps.includes(step) ? '✅' : '⏳'} ${step}`).join('\n')}\n\n`
-        : ''
-      
-      const currentProgress = `📍 **步骤 ${iterations}/${maxIterations}**\n\n${planDisplay}🔄 **正在调用工具:**\n${toolDetails}`
-      updateLastMessage(currentProgress)
+      // TRAE风格：为每个工具调用创建步骤
+      const currentSteps: Step[] = []
+      if (assistantMessageIndex >= 0) {
+        // 将之前的运行中步骤标记为完成
+        const existingSteps = useStore.getState().messages[assistantMessageIndex]?.steps || []
+        existingSteps.forEach(step => {
+          if (step.status === 'running') {
+            updateStepStatus(assistantMessageIndex, step.id, 'completed')
+          }
+        })
+        
+        // 为当前迭代的每个工具创建步骤
+        toolCallsToExecute.forEach((toolCall, idx) => {
+          const step: Step = {
+            id: `step-${iterations}-${idx}-${Date.now()}`,
+            title: `执行 ${toolCall.tool}`,
+            status: idx === 0 ? 'running' : 'pending',
+            timestamp: Date.now(),
+            stepNumber: iterations,
+            totalSteps: maxIterations,
+            action: '正在调用工具',
+            toolName: toolCall.tool,
+            toolArgs: toolCall.arguments as Record<string, any>
+          }
+          addStepToMessage(assistantMessageIndex, step)
+          currentSteps.push(step)
+        })
+      }
       
       // Execute tool calls with retry and error handling
       const results: Array<{ tool: string; result: { success: boolean; output: string; error?: string } }> = []
       
       console.log(`[ToolLoop] Starting execution of ${toolCallsToExecute.length} tool calls`)
       
-      for (const toolCall of toolCallsToExecute) {
+      for (let toolIdx = 0; toolIdx < toolCallsToExecute.length; toolIdx++) {
+        const toolCall = toolCallsToExecute[toolIdx]
+        
+        // 更新当前步骤状态为运行中
+        if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
+          // 将之前的步骤标记为完成
+          if (toolIdx > 0 && currentSteps[toolIdx - 1]) {
+            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx - 1].id, 'completed')
+          }
+          updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, 'running')
+        }
         const maxRetries = 3
         const toolTimeout = 60000 // 60秒超时
         let retryCount = 0
@@ -1460,10 +1596,18 @@ ${contextSummary}
         // Add result (either success or final failure)
         if (toolResult) {
           results.push({ tool: toolCall.tool, result: toolResult })
+          // TRAE风格：更新步骤状态为完成
+          if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
+            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, toolResult.success ? 'completed' : 'failed')
+          }
         } else {
           // All retries failed
           results.push({ tool: toolCall.tool, result: { success: false, output: '', error: lastError || 'Unknown error after retries' } })
           console.error(`[ToolLoop] Tool ${toolCall.tool} failed after ${maxRetries} attempts:`, lastError)
+          // TRAE风格：更新步骤状态为失败
+          if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
+            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, 'failed')
+          }
         }
       }
       
@@ -1556,12 +1700,21 @@ ${contextSummary}
         return `**${idx + 1}. ${r.tool}** - ${toolStatus}${output}${error}`
       }).join('\n\n')
       
-      const progressMessage = `📍 **步骤 ${iterations}/${maxIterations}**\n\n` +
-        `${statusEmoji} **工具执行完成** (${successCount}/${results.length} 成功)\n\n` +
-        `${fileOpsSummary.length > 0 ? '📁 **文件操作:**\n' + fileOpsSummary.join('\n') + '\n\n' : ''}` +
-        `**详细结果:**\n${detailedResults}`
-      
-      updateLastMessage(progressMessage)
+      // TRAE风格：更新消息内容（保留步骤信息）
+      if (assistantMessageIndex >= 0) {
+        const state = useStore.getState()
+        const msgs = [...state.messages]
+        if (msgs[assistantMessageIndex]) {
+          msgs[assistantMessageIndex] = { 
+            ...msgs[assistantMessageIndex], 
+            content: `**步骤 ${iterations}/${maxIterations}**\n\n` +
+              `${statusEmoji} **工具执行完成** (${successCount}/${results.length} 成功)\n\n` +
+              `${fileOpsSummary.length > 0 ? '📁 **文件操作:**\n' + fileOpsSummary.join('\n') + '\n\n' : ''}` +
+              `**详细结果:**\n${detailedResults}`
+          }
+          useStore.setState({ messages: msgs })
+        }
+      }
       console.log('[ToolLoop] Tool execution cycle completed, continuing to next iteration...')
       console.log('[ToolLoop] Current iteration:', iterations, 'of max', maxIterations)
       }
@@ -1621,12 +1774,18 @@ ${contextSummary}
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return
 
-    // Get API key from enabled provider
-    const enabledProvider = providers.find(p => p.enabled)
-    const providerApiKey = enabledProvider?.apiKey || apiKey
+    // Find provider by selected model
+    const providerForModel = providers.find(p => 
+      p.enabled && p.models.some(m => m.id === model)
+    )
+    
+    // Get API key and URL from the provider that has the selected model
+    // Note: providerForModel should always exist if a model is selected
+    const providerApiKey = providerForModel?.apiKey
+    const providerApiUrl = providerForModel?.apiUrl
     
     if (!providerApiKey) {
-      addMessage({ role: 'assistant', content: '请先在设置中配置 API 密钥' })
+      addMessage({ role: 'assistant', content: '请先在设置中为所选模型配置 API 密钥' })
       return
     }
 
@@ -1694,9 +1853,8 @@ ${contextSummary}
       return
     }
 
-    // Check if message requests code changes, project creation, or running commands (heuristic)
-    // Default to true to always use tool calling mode
-    const isCodeRequest = true
+    // Check chat mode: 'agent' uses tools, 'chat' uses simple Q&A
+    const isCodeRequest = chatMode === 'agent'
 
     // For code requests, processWithTools will add the assistant message
     // For regular chat, add empty assistant message for streaming
@@ -1756,6 +1914,7 @@ ${contextSummary}
             pendingContinuation.userOriginalRequest,
             currentCwd,
             providerApiKey,
+            providerApiUrl,
             100, // maxIterations
             true, // isContinuation
             {
@@ -1771,7 +1930,7 @@ ${contextSummary}
         } else {
           // Normal execution
           console.log('[handleSendMessage] Calling processWithTools...')
-          const result = await processWithTools(apiMessages, content, currentCwd, providerApiKey)
+          const result = await processWithTools(apiMessages, content, currentCwd, providerApiKey, providerApiUrl)
           console.log('[handleSendMessage] processWithTools returned:', result.content?.substring(0, 100))
           console.log('[handleSendMessage] writtenFiles:', result.writtenFiles)
 
@@ -1829,6 +1988,7 @@ ${contextSummary}
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             apiKey: providerApiKey,
+            apiUrl: providerApiUrl,
             model,
             messages: apiMessages,
             stream: true
@@ -1879,25 +2039,8 @@ ${contextSummary}
         // Update tokens (estimate if not provided)
         updateTokens(content.length / 4, fullContent.length / 4)
 
-        // Save messages to session if we have a current session
-        if (currentSession) {
-          try {
-            // Save user message
-            await fetch(`${API_BASE}/sessions/${currentSession}/messages`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ role: 'user', content })
-            })
-            // Save assistant message
-            await fetch(`${API_BASE}/sessions/${currentSession}/messages`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ role: 'assistant', content: fullContent })
-            })
-          } catch (error) {
-            console.error('Failed to save messages to session:', error)
-          }
-        }
+        // 注意：消息保存已由 auto-save useEffect 处理，使用 window.api.saveConversation
+        // 不需要再手动调用 HTTP API
       }
 
     } catch (error) {
@@ -2206,7 +2349,21 @@ ${contextSummary}
   }, [activeTabId])
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${sessionSidebarOpen ? 'with-session-sidebar' : ''}`}>
+      {/* Session Sidebar - TRAE风格会话管理 */}
+      <SessionSidebar
+        sessions={localSessions}
+        currentSession={currentSession}
+        projectPath={projectPath}
+        onSelectSession={handleSelectSessionFromSidebar}
+        onCreateSession={handleCreateSessionFromSidebar}
+        onDeleteSession={handleDeleteSessionFromSidebar}
+        onRenameSession={handleRenameSessionFromSidebar}
+        isOpen={sessionSidebarOpen}
+        onToggle={() => setSessionSidebarOpen(!sessionSidebarOpen)}
+      />
+
+      <div className="app-main-wrapper">
       <header className="header">
         <h1 className="header-title">{t('appName')}</h1>
         <div className="header-actions">
@@ -2268,6 +2425,8 @@ ${contextSummary}
           onModelChange={setModel}
           onContinueExecution={handleContinueExecution}
           showContinueButton={!!pendingContinuation}
+          chatMode={chatMode}
+          onChatModeChange={setChatMode}
         />
 
 
@@ -2284,6 +2443,7 @@ ${contextSummary}
           onClose={handleSettingsClose}
         />
       )}
+      </div>
     </div>
   )
 }

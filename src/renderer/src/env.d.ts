@@ -70,6 +70,13 @@ declare global {
       getAIIntentContext: (processId: string) => Promise<{ taskType: string; originalPrompt: string } | undefined>
       getProjectAIHistory: (cwd: string) => Promise<Array<{ prompt: string; timestamp: string; taskType: string }>>
       
+      // Conversation storage - TRAE风格项目级对话存储
+      saveConversation: (projectPath: string, sessionId: string, messages: any[], sessionTitle?: string) => Promise<{ success: boolean; error?: string }>
+      loadConversation: (projectPath: string, sessionId: string) => Promise<{ success: boolean; error?: string; messages?: any[]; title?: string }>
+      listSessions: (projectPath: string) => Promise<{ success: boolean; error?: string; sessions?: Array<{ id: string; title: string; updatedAt: string; messageCount: number }> }>
+      deleteSession: (projectPath: string, sessionId: string) => Promise<{ success: boolean; error?: string }>
+      autoSaveAllSessions: (projectPath: string, sessions: any[]) => Promise<{ success: boolean; error?: string }>
+      
       // Process event listeners
       onProcessStarted: (callback: (event: unknown, data: { processId: string; command: string; cwd: string; terminalId?: string; aiIntentId?: string; taskType?: string }) => void) => () => void
       onProcessData: (callback: (event: unknown, data: { terminalId: string; processId: string; data: string }) => void) => () => void
