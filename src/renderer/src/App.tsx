@@ -17,6 +17,55 @@ const API_BASE = 'http://localhost:3847/api'
 let cachedProjectContext: string = ''
 let cachedProjectPath: string = ''
 
+// Build chat mode system prompt (with tools but only use when needed)
+function buildChatSystemPrompt(cwd: string, projectContext: string = ''): string {
+  const platform = navigator.platform.toLowerCase().includes('win') ? 'Windows' :
+                   navigator.platform.toLowerCase().includes('mac') ? 'macOS' : 'Linux'
+
+  let prompt = `You are a helpful AI assistant. Answer the user's questions clearly and concisely.
+
+=== SYSTEM INFORMATION ===
+Platform: ${platform}
+Working Directory: ${cwd}
+Current Time: ${new Date().toISOString()}
+`
+
+  // Add project context if available
+  if (projectContext) {
+    prompt += `\n${projectContext}\n`
+  }
+
+  prompt += `
+=== AVAILABLE TOOLS ===
+You have access to the following tools. ONLY use them when the user explicitly asks you to analyze, read, or explore files/projects:
+
+read_file: Read file contents. Use when user asks to analyze or view specific files.
+list_directory: List directory contents. Use when user asks to explore project structure.
+search_code: Search for code patterns. Use when user asks to find specific code.
+execute_bash: Execute shell commands. Use only when user explicitly requests command execution.
+
+=== TOOL INVOCATION FORMAT ===
+When you need to use a tool, output ONLY the JSON code block:
+
+\`\`\`json
+{"tool": "tool_name", "arguments": {"arg1": "value1"}}
+\`\`\`
+
+=== IMPORTANT RULES ===
+1. For general questions and conversations, respond naturally WITHOUT using tools
+2. ONLY use tools when the user explicitly asks you to analyze, read, explore, or work with files
+3. Examples of when to use tools:
+   - "帮我分析下这个项目" → Use list_directory, read_file to explore
+   - "查看一下这个文件" → Use read_file
+   - "搜索一下这段代码" → Use search_code
+4. For greetings, general coding questions, or explanations, do NOT use tools
+
+Please provide helpful, accurate, and concise responses to the user's questions.
+`
+
+  return prompt
+}
+
 // Build system prompt with available commands, tools, and project context
 function buildSystemPrompt(
   commands: { name: string; responsibility: string }[],
@@ -1884,8 +1933,10 @@ ${contextSummary}
         projectContextStr = await fetchProjectContext(projectPath)
       }
 
-      // Build system prompt with available commands, tools, and project context
-      const systemPrompt = buildSystemPrompt(commands, tools, currentCwd, projectContextStr)
+      // Build system prompt based on chat mode
+      const systemPrompt = isCodeRequest
+        ? buildSystemPrompt(commands, tools, currentCwd, projectContextStr)
+        : buildChatSystemPrompt(currentCwd, projectContextStr)
 
       // Prepare messages for API
       const apiMessages: Message[] = []
@@ -1893,7 +1944,7 @@ ${contextSummary}
       // Add system prompt as first message
       if (systemPrompt) {
         apiMessages.push({ role: 'user', content: systemPrompt })
-        apiMessages.push({ role: 'assistant', content: ' understood. I will use the available commands and tools when needed.' })
+        apiMessages.push({ role: 'assistant', content: isCodeRequest ? ' understood. I will use the available commands and tools when needed.' : ' understood. I will answer your questions clearly and concisely.' })
       }
 
       // Add existing messages
@@ -1982,65 +2033,23 @@ ${contextSummary}
         }
         return
       } else {
-        // Use streaming for regular chat
-        const res = await fetch(`${API_BASE}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey: providerApiKey,
-            apiUrl: providerApiUrl,
-            model,
-            messages: apiMessages,
-            stream: true
-          })
-        })
+        // Chat mode: Use processWithTools with limited iterations for tool support
+        console.log('[handleSendMessage] Chat mode - using processWithTools with limited iterations')
+        addMessage({ role: 'assistant', content: '' })
+        const result = await processWithTools(apiMessages, content, currentCwd, providerApiKey, providerApiUrl, 5) // Max 5 iterations for chat mode
+        console.log('[handleSendMessage] Chat mode processWithTools returned:', result.content?.substring(0, 100))
 
-        if (!res.ok) {
-          const errorData = await res.json()
-          throw new Error(errorData.error || `HTTP error! status: ${res.status}`)
-        }
-
-        const reader = res.body?.getReader()
-        if (!reader) {
-          throw new Error('No response body')
-        }
-
-        const decoder = new TextDecoder()
-        let buffer = ''
-        let fullContent = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() || ''
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6)
-              if (data === '[DONE]') continue
-
-              try {
-                const parsed = JSON.parse(data)
-                if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
-                  fullContent += parsed.delta.text
-                  // Update the last assistant message
-                  updateLastMessage(fullContent)
-                }
-              } catch (e) {
-                // Ignore parse errors
-              }
-            }
-          }
-        }
+        // Update the assistant message with final content
+        updateLastMessage(result.content)
 
         // Update tokens (estimate if not provided)
-        updateTokens(content.length / 4, fullContent.length / 4)
+        updateTokens(content.length / 4, result.content.length / 4)
 
-        // 注意：消息保存已由 auto-save useEffect 处理，使用 window.api.saveConversation
-        // 不需要再手动调用 HTTP API
+        // Save to session
+        if (currentSession) {
+          const updatedMessages = [...useStore.getState().messages]
+          window.api.saveConversation(currentSession.id, updatedMessages)
+        }
       }
 
     } catch (error) {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Message } from '../store'
 import { CodeBlock } from './CodeBlock'
 import { ThinkingPanel } from './ThinkingPanel'
@@ -142,6 +143,7 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
         {/* 渲染其他内容（使用 ReactMarkdown 渲染 Markdown） */}
         <div className="builder-text-content markdown-body">
           <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
             components={{
               p: ({ children }) => {
                 // 高亮文件路径
@@ -166,7 +168,17 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
                     ))}
                   </p>
                 )
-              }
+              },
+              table: ({ children }) => (
+                <div className="markdown-table-wrapper">
+                  <table className="markdown-table">{children}</table>
+                </div>
+              ),
+              thead: ({ children }) => <thead className="markdown-table-head">{children}</thead>,
+              tbody: ({ children }) => <tbody className="markdown-table-body">{children}</tbody>,
+              tr: ({ children }) => <tr className="markdown-table-row">{children}</tr>,
+              th: ({ children }) => <th className="markdown-table-header">{children}</th>,
+              td: ({ children }) => <td className="markdown-table-cell">{children}</td>
             }}
           >
             {mainContent.replace(/```[\s\S]*?```/g, '')}

@@ -437,3 +437,58 @@
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
+
+/* Markdown 表格样式 */
+.markdown-table-wrapper {
+  overflow-x: auto;
+  margin: 12px 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.markdown-table-head {
+  background: var(--bg-tertiary);
+}
+
+.markdown-table-header {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.markdown-table-body {
+  background: var(--bg-primary);
+}
+
+.markdown-table-row:hover {
+  background: var(--bg-secondary);
+}
+
+.markdown-table-cell {
+  padding: 8px 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.markdown-table-row:last-child .markdown-table-cell {
+  border-bottom: none;
+}
+
+/* 表格内的代码样式 */
+.markdown-table-cell code {
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'SF Mono', Monaco, monospace;
+}
