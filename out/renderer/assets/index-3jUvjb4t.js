@@ -7257,7 +7257,24 @@ const useStore = create$1((set) => ({
   })),
   // TRAE风格：流式消息控制
   startStreaming: (streamingMessageId) => set({ streamingMessageId }),
-  stopStreaming: () => set({ streamingMessageId: null })
+  stopStreaming: () => set({ streamingMessageId: null }),
+  // 添加迭代消息（用于显示执行进度）
+  addIterationMessage: (content2, needsAction = false) => {
+    let newIndex = -1;
+    set((state) => {
+      newIndex = state.messages.length;
+      return {
+        messages: [...state.messages, {
+          role: "assistant",
+          content: content2,
+          isBuilder: true,
+          timestamp: Date.now(),
+          needsAction: needsAction ? "continue" : void 0
+        }]
+      };
+    });
+    return newIndex;
+  }
 }));
 function ok$1() {
 }
@@ -43573,6 +43590,441 @@ function TimeoutPrompt({
     ] })
   ] });
 }
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const mergeClasses = (...classes) => classes.filter((className, index2, array) => {
+  return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index2;
+}).join(" ").trim();
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const toKebabCase = (string2) => string2.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const toCamelCase = (string2) => string2.replace(
+  /^([A-Z])|[\s-_]+(\w)/g,
+  (match, p1, p2) => p2 ? p2.toUpperCase() : p1.toLowerCase()
+);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const toPascalCase = (string2) => {
+  const camelCase2 = toCamelCase(string2);
+  return camelCase2.charAt(0).toUpperCase() + camelCase2.slice(1);
+};
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+var defaultAttributes = {
+  xmlns: "http://www.w3.org/2000/svg",
+  width: 24,
+  height: 24,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round",
+  strokeLinejoin: "round"
+};
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const hasA11yProp = (props) => {
+  for (const prop in props) {
+    if (prop.startsWith("aria-") || prop === "role" || prop === "title") {
+      return true;
+    }
+  }
+  return false;
+};
+const LucideContext = reactExports.createContext({});
+const useLucideContext = () => reactExports.useContext(LucideContext);
+const Icon = reactExports.forwardRef(
+  ({ color: color2, size, strokeWidth, absoluteStrokeWidth, className = "", children, iconNode, ...rest2 }, ref) => {
+    const {
+      size: contextSize = 24,
+      strokeWidth: contextStrokeWidth = 2,
+      absoluteStrokeWidth: contextAbsoluteStrokeWidth = false,
+      color: contextColor = "currentColor",
+      className: contextClass = ""
+    } = useLucideContext() ?? {};
+    const calculatedStrokeWidth = absoluteStrokeWidth ?? contextAbsoluteStrokeWidth ? Number(strokeWidth ?? contextStrokeWidth) * 24 / Number(size ?? contextSize) : strokeWidth ?? contextStrokeWidth;
+    return reactExports.createElement(
+      "svg",
+      {
+        ref,
+        ...defaultAttributes,
+        width: size ?? contextSize ?? defaultAttributes.width,
+        height: size ?? contextSize ?? defaultAttributes.height,
+        stroke: color2 ?? contextColor,
+        strokeWidth: calculatedStrokeWidth,
+        className: mergeClasses("lucide", contextClass, className),
+        ...!children && !hasA11yProp(rest2) && { "aria-hidden": "true" },
+        ...rest2
+      },
+      [
+        ...iconNode.map(([tag, attrs]) => reactExports.createElement(tag, attrs)),
+        ...Array.isArray(children) ? children : [children]
+      ]
+    );
+  }
+);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const createLucideIcon = (iconName, iconNode) => {
+  const Component = reactExports.forwardRef(
+    ({ className, ...props }, ref) => reactExports.createElement(Icon, {
+      ref,
+      iconNode,
+      className: mergeClasses(
+        `lucide-${toKebabCase(toPascalCase(iconName))}`,
+        `lucide-${iconName}`,
+        className
+      ),
+      ...props
+    })
+  );
+  Component.displayName = toPascalCase(iconName);
+  return Component;
+};
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$b = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$b);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$a = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
+const ChevronRight = createLucideIcon("chevron-right", __iconNode$a);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$9 = [
+  ["path", { d: "M21.801 10A10 10 0 1 1 17 3.335", key: "yps3ct" }],
+  ["path", { d: "m9 11 3 3L22 4", key: "1pflzl" }]
+];
+const CircleCheckBig = createLucideIcon("circle-check-big", __iconNode$9);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$8 = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "M8 12h8", key: "1wcyev" }],
+  ["path", { d: "M12 8v8", key: "napkw2" }]
+];
+const CirclePlus = createLucideIcon("circle-plus", __iconNode$8);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$7 = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
+  ["path", { d: "m9 9 6 6", key: "z0biqf" }]
+];
+const CircleX = createLucideIcon("circle-x", __iconNode$7);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$6 = [
+  [
+    "path",
+    {
+      d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+      key: "1oefj6"
+    }
+  ],
+  ["path", { d: "M14 2v5a1 1 0 0 0 1 1h5", key: "wfsgrz" }],
+  ["circle", { cx: "11.5", cy: "14.5", r: "2.5", key: "1bq0ko" }],
+  ["path", { d: "M13.3 16.3 15 18", key: "2quom7" }]
+];
+const FileSearch = createLucideIcon("file-search", __iconNode$6);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$5 = [
+  [
+    "path",
+    {
+      d: "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+      key: "1oefj6"
+    }
+  ],
+  ["path", { d: "M14 2v5a1 1 0 0 0 1 1h5", key: "wfsgrz" }],
+  ["path", { d: "M10 9H8", key: "b1mrlr" }],
+  ["path", { d: "M16 13H8", key: "t4e002" }],
+  ["path", { d: "M16 17H8", key: "z1uh3a" }]
+];
+const FileText = createLucideIcon("file-text", __iconNode$5);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$4 = [
+  [
+    "path",
+    {
+      d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+      key: "usdka0"
+    }
+  ]
+];
+const FolderOpen = createLucideIcon("folder-open", __iconNode$4);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$3 = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+const LoaderCircle = createLucideIcon("loader-circle", __iconNode$3);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$2 = [
+  ["path", { d: "M13 21h8", key: "1jsn5i" }],
+  [
+    "path",
+    {
+      d: "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
+      key: "1a8usu"
+    }
+  ]
+];
+const PenLine = createLucideIcon("pen-line", __iconNode$2);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode$1 = [
+  ["path", { d: "M12 19h8", key: "baeox8" }],
+  ["path", { d: "m4 17 6-6-6-6", key: "1yngyt" }]
+];
+const Terminal$1 = createLucideIcon("terminal", __iconNode$1);
+/**
+ * @license lucide-react v1.8.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const __iconNode = [
+  ["path", { d: "M10 11v6", key: "nco0om" }],
+  ["path", { d: "M14 11v6", key: "outv1u" }],
+  ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
+  ["path", { d: "M3 6h18", key: "d0wm0j" }],
+  ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
+];
+const Trash2 = createLucideIcon("trash-2", __iconNode);
+const toolNameMap$1 = {
+  "read_file": "读取文件",
+  "write_file": "写入文件",
+  "edit_file": "编辑文件",
+  "delete_file": "删除文件",
+  "list_directory": "列出目录",
+  "search_code": "搜索代码",
+  "execute_bash": "执行命令",
+  "append_file": "追加文件"
+};
+const toolDescriptionMap$1 = {
+  "read_file": "读取指定文件的内容",
+  "write_file": "创建或覆盖文件",
+  "edit_file": "替换文件中的特定文本",
+  "delete_file": "删除文件或目录",
+  "list_directory": "列出目录中的文件和子目录",
+  "search_code": "在代码库中搜索特定模式",
+  "execute_bash": "执行 shell 命令",
+  "append_file": "在文件末尾追加内容"
+};
+function getToolIcon$1(toolName) {
+  switch (toolName) {
+    case "read_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { size: 12 });
+    case "write_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(CirclePlus, { size: 12 });
+    case "edit_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 12 });
+    case "delete_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 12 });
+    case "list_directory":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 12 });
+    case "search_code":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FileSearch, { size: 12 });
+    case "execute_bash":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal$1, { size: 12 });
+    case "append_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 12 });
+    default:
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { size: 12 });
+  }
+}
+function IterationMessage({
+  iteration,
+  status,
+  successCount,
+  totalCount,
+  toolResults,
+  fileOps,
+  summary,
+  isFinal
+}) {
+  const [isExpanded, setIsExpanded] = reactExports.useState(false);
+  const allSuccess = successCount === totalCount;
+  const hasFailures = successCount < totalCount;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-message", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-header", onClick: () => setIsExpanded(!isExpanded), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-title-row", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "iteration-toggle", children: isExpanded ? /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { className: "iteration-toggle-icon", size: 16 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { className: "iteration-toggle-icon", size: 16 }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "iteration-badge", children: isFinal ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheckBig, { className: "iteration-badge-icon success", size: 14 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "完成" })
+        ] }) : status === "running" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "iteration-badge-icon spinning", size: 14 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "第 ",
+            iteration,
+            " 轮"
+          ] })
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          allSuccess ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheckBig, { className: "iteration-badge-icon success", size: 14 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { className: "iteration-badge-icon error", size: 14 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+            "第 ",
+            iteration,
+            " 轮"
+          ] })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "iteration-status", children: allSuccess ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "status-success", children: [
+          successCount,
+          "/",
+          totalCount,
+          " 成功"
+        ] }) : hasFailures ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "status-partial", children: [
+          successCount,
+          "/",
+          totalCount,
+          " 成功"
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "status-running", children: "执行中..." }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "iteration-tools-summary", children: toolResults.map((tr2, idx) => {
+        const chineseName = toolNameMap$1[tr2.tool] || tr2.tool;
+        const description = tr2.description || toolDescriptionMap$1[tr2.tool] || "";
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "span",
+          {
+            className: `tool-tag ${tr2.result.success ? "success" : "failed"}`,
+            title: description,
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-tag-icon", children: getToolIcon$1(tr2.tool) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-tag-name", children: chineseName })
+            ]
+          },
+          idx
+        );
+      }) }),
+      fileOps && (fileOps.read || fileOps.modified || fileOps.created) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-file-ops", children: [
+        fileOps.read ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "file-op-tag read", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { size: 12 }),
+          " ",
+          fileOps.read
+        ] }) : null,
+        fileOps.modified ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "file-op-tag modified", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 12 }),
+          " ",
+          fileOps.modified
+        ] }) : null,
+        fileOps.created ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "file-op-tag created", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(CirclePlus, { size: 12 }),
+          " ",
+          fileOps.created
+        ] }) : null
+      ] })
+    ] }),
+    isExpanded && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-details", children: [
+      summary && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-summary", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "执行摘要" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: summary })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "iteration-tools-detail", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "工具执行详情" }),
+        toolResults.map((tr2, idx) => {
+          const chineseName = toolNameMap$1[tr2.tool] || tr2.tool;
+          const description = tr2.description || toolDescriptionMap$1[tr2.tool] || "";
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: `tool-detail-item ${tr2.result.success ? "success" : "failed"}`,
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-detail-header", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-status-icon", children: tr2.result.success ? "✓" : "✗" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-icon", children: getToolIcon$1(tr2.tool) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-info", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-name", children: chineseName }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-description", children: description })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `tool-status ${tr2.result.success ? "success" : "failed"}`, children: tr2.result.success ? "成功" : "失败" })
+                ] }),
+                tr2.result.output && /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "tool-output", children: tr2.result.output }),
+                tr2.result.error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tool-error", children: tr2.result.error })
+              ]
+            },
+            idx
+          );
+        })
+      ] })
+    ] })
+  ] });
+}
 function BuilderBadge() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-badge", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
@@ -43582,6 +44034,126 @@ function BuilderBadge() {
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Builder" })
   ] });
+}
+function isIterationMessage(content2) {
+  const lines = content2.trim().split("\n");
+  if (lines.length >= 2) {
+    const firstLine = lines[0].trim();
+    if (firstLine.match(/^第\s*\d+\s*轮$/) || firstLine === "完成" || firstLine === "达到限制" || firstLine.includes("响应截断") || firstLine.includes("执行异常") || firstLine.includes("等待工具调用")) {
+      return true;
+    }
+  }
+  return content2.includes("第") && content2.includes("轮") && (content2.includes("成功") || content2.includes("失败") || content2.includes("完成"));
+}
+const toolDescriptionMap = {
+  "read_file": "读取指定文件的内容",
+  "write_file": "创建或覆盖文件",
+  "edit_file": "替换文件中的特定文本",
+  "delete_file": "删除文件或目录",
+  "list_directory": "列出目录中的文件和子目录",
+  "search_code": "在代码库中搜索特定模式",
+  "execute_bash": "执行 shell 命令",
+  "append_file": "在文件末尾追加内容"
+};
+const toolNameMap = {
+  "read_file": "读取文件",
+  "write_file": "写入文件",
+  "edit_file": "编辑文件",
+  "delete_file": "删除文件",
+  "list_directory": "列出目录",
+  "search_code": "搜索代码",
+  "execute_bash": "执行命令",
+  "append_file": "追加文件"
+};
+function getToolIcon(toolName) {
+  switch (toolName) {
+    case "read_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { size: 14 });
+    case "write_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(CirclePlus, { size: 14 });
+    case "edit_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 14 });
+    case "delete_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 14 });
+    case "list_directory":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 14 });
+    case "search_code":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FileSearch, { size: 14 });
+    case "execute_bash":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal$1, { size: 14 });
+    case "append_file":
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 14 });
+    default:
+      return /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { size: 14 });
+  }
+}
+function parseIterationMessage(content2) {
+  const lines = content2.trim().split("\n");
+  const firstLine = lines[0]?.trim() || "";
+  let iteration = 1;
+  const iterationMatch = firstLine.match(/第\s*(\d+)\s*轮/);
+  if (iterationMatch) {
+    iteration = parseInt(iterationMatch[1]);
+  }
+  const isFinal = firstLine === "完成" || content2.includes("完成");
+  const isError = firstLine.includes("异常") || firstLine.includes("截断") || firstLine.includes("限制");
+  const isWaiting = firstLine.includes("等待");
+  let status = "completed";
+  if (isError) status = "failed";
+  else if (isWaiting) status = "running";
+  let successCount = 0;
+  let totalCount = 0;
+  const countMatch = content2.match(/(\d+)\s*\/\s*(\d+)\s*成功/);
+  if (countMatch) {
+    successCount = parseInt(countMatch[1]);
+    totalCount = parseInt(countMatch[2]);
+  }
+  const toolResults = [];
+  const toolMatches = content2.matchAll(/[✓✅✔]\s*(\w+)|[✗❌✖]\s*(\w+)/g);
+  for (const match of toolMatches) {
+    const tool = match[1] || match[2];
+    const isSuccess = match[0].includes("✓") || match[0].includes("✅") || match[0].includes("✔");
+    if (tool) {
+      toolResults.push({
+        tool,
+        result: { success: isSuccess },
+        description: toolDescriptionMap[tool] || ""
+      });
+    }
+  }
+  if (toolResults.length === 0) {
+    const listMatches = content2.matchAll(/list_directory|read_file|write_file|edit_file|execute_bash|delete_file|search_code|append_file/g);
+    for (const match of listMatches) {
+      const tool = match[0];
+      toolResults.push({
+        tool,
+        result: { success: true },
+        description: toolDescriptionMap[tool] || ""
+      });
+    }
+  }
+  const fileOps = {
+    read: 0,
+    modified: 0,
+    created: 0
+  };
+  const readMatch = content2.match(/(\d+)\s*个读取/);
+  if (readMatch) fileOps.read = parseInt(readMatch[1]);
+  const modifiedMatch = content2.match(/(\d+)\s*个修改/);
+  if (modifiedMatch) fileOps.modified = parseInt(modifiedMatch[1]);
+  const createdMatch = content2.match(/(\d+)\s*个创建/);
+  if (createdMatch) fileOps.created = parseInt(createdMatch[1]);
+  const oldReadMatch = content2.match(/(\d+)\s*个文件/);
+  if (oldReadMatch && fileOps.read === 0) fileOps.read = parseInt(oldReadMatch[1]);
+  return {
+    iteration,
+    status,
+    successCount,
+    totalCount,
+    toolResults,
+    fileOps,
+    isFinal
+  };
 }
 function parseMessageContent(content2) {
   const thinkingSteps = [];
@@ -43620,13 +44192,131 @@ function parseMessageContent(content2) {
   }
   return { thinkingSteps, mainContent };
 }
+function ToolCallChain({ toolCalls }) {
+  if (!toolCalls || toolCalls.length === 0) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-call-chain", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-call-chain-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-call-chain-title", children: "工具调用" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "tool-call-chain-count", children: [
+        toolCalls.length,
+        " 个"
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tool-call-chain-list", children: toolCalls.map((toolCall, idx) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `tool-call-item ${toolCall.status}`, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tool-call-status", children: toolCall.status === "running" ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { size: 14, className: "tool-call-spinner" }) : toolCall.status === "completed" ? /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheckBig, { size: 14, className: "tool-call-success" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { size: 14, className: "tool-call-failed" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "tool-call-icon", children: getToolIcon(toolCall.name) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-call-info", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-call-name", children: toolNameMap[toolCall.name] || toolCall.name }),
+        toolCall.args?.path && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tool-call-path", children: toolCall.args.path })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "tool-call-meta", children: [
+        toolCall.duration && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "tool-call-duration", children: [
+          toolCall.duration,
+          "ms"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `tool-call-status-text ${toolCall.status}`, children: toolCall.status === "running" ? "执行中" : toolCall.status === "completed" ? "成功" : "失败" })
+      ] })
+    ] }, toolCall.id)) })
+  ] });
+}
+function StreamingContent({ content: content2, isStreaming }) {
+  const [displayContent, setDisplayContent] = reactExports.useState(content2);
+  reactExports.useEffect(() => {
+    setDisplayContent(content2);
+  }, [content2]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `streaming-content ${isStreaming ? "streaming" : ""}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      Markdown,
+      {
+        remarkPlugins: [remarkGfm],
+        components: {
+          p: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children }),
+          pre: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children }),
+          code: ({ children, className }) => {
+            const match = /language-(\w+)/.exec(className || "");
+            const language2 = match ? match[1] : "text";
+            const code = String(children).replace(/\n$/, "");
+            return /* @__PURE__ */ jsxRuntimeExports.jsx(
+              CodeBlock,
+              {
+                code,
+                language: language2,
+                showLineNumbers: true
+              }
+            );
+          }
+        },
+        children: displayContent
+      }
+    ),
+    isStreaming && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "streaming-cursor", children: "▊" })
+  ] });
+}
 function BuilderMessage({ message, onContinue, onStop }) {
   const [isThinkingExpanded, setIsThinkingExpanded] = reactExports.useState(true);
+  const [isToolChainExpanded, setIsToolChainExpanded] = reactExports.useState(true);
   const { thinkingSteps, mainContent } = parseMessageContent(message.content);
-  const hasThinkingSteps = thinkingSteps.length > 0;
+  const allThinkingSteps = [...message.thinkingSteps || [], ...thinkingSteps];
+  const hasThinkingSteps = allThinkingSteps.length > 0;
   const isTimeout = message.content.includes("请求超时") || message.content.includes("timeout");
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-message-header", children: /* @__PURE__ */ jsxRuntimeExports.jsx(BuilderBadge, {}) }),
+  const isIteration = isIterationMessage(message.content);
+  const hasToolCalls = message.toolCalls && message.toolCalls.length > 0;
+  const hasContent2 = message.content.trim().length > 0 || hasThinkingSteps || hasToolCalls;
+  if (!hasContent2) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message builder-message-loading", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-message-header", children: /* @__PURE__ */ jsxRuntimeExports.jsx(BuilderBadge, {}) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-loading-indicator", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "builder-loading-dot" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "builder-loading-dot" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "builder-loading-dot" })
+      ] })
+    ] });
+  }
+  if (isIteration && !message.isStreaming) {
+    const iterationData = parseIterationMessage(message.content);
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-message-header", children: /* @__PURE__ */ jsxRuntimeExports.jsx(BuilderBadge, {}) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(IterationMessage, { ...iterationData })
+    ] });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `builder-message ${message.isStreaming ? "streaming" : ""}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BuilderBadge, {}),
+      message.isStreaming && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "builder-streaming-indicator", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { size: 14, className: "builder-streaming-spinner" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "思考中..." })
+      ] })
+    ] }),
+    hasToolCalls && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-toolchain-section", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: "builder-toolchain-toggle",
+          onClick: () => setIsToolChainExpanded(!isToolChainExpanded),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "svg",
+              {
+                width: "12",
+                height: "12",
+                viewBox: "0 0 24 24",
+                fill: "none",
+                stroke: "currentColor",
+                strokeWidth: "2",
+                className: `builder-toggle-icon ${isToolChainExpanded ? "expanded" : ""}`,
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx("polyline", { points: "9 18 15 12 9 6" })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "工具调用" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "builder-toolchain-count", children: [
+              message.toolCalls?.length,
+              " 个"
+            ] })
+          ]
+        }
+      ),
+      isToolChainExpanded && message.toolCalls && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-toolchain-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ToolCallChain, { toolCalls: message.toolCalls }) })
+    ] }),
     hasThinkingSteps && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-thinking-section", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
@@ -43649,25 +44339,16 @@ function BuilderMessage({ message, onContinue, onStop }) {
             ),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "思考过程" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "builder-thinking-count", children: [
-              thinkingSteps.length,
+              allThinkingSteps.length,
               " 个步骤"
             ] })
           ]
         }
       ),
-      isThinkingExpanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-thinking-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ThinkingPanel, { steps: thinkingSteps }) })
+      isThinkingExpanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-thinking-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ThinkingPanel, { steps: allThinkingSteps }) })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message-content", children: [
-      thinkingSteps.filter((s15) => s15.type === "code").map((step, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-        CodeBlock,
-        {
-          code: step.content || "",
-          language: step.language || "typescript",
-          filePath: step.filePath,
-          showLineNumbers: step.lineNumbers
-        },
-        idx
-      )),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-message-content", children: message.isStreaming ? /* @__PURE__ */ jsxRuntimeExports.jsx(StreamingContent, { content: message.content, isStreaming: message.isStreaming }) : (
+      /* 渲染内容（使用 ReactMarkdown 渲染 Markdown，包括代码块） */
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "builder-text-content markdown-body", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         Markdown,
         {
@@ -43686,17 +44367,36 @@ function BuilderMessage({ message, onContinue, onStop }) {
                 matches[i] && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "file-path-highlight", children: matches[i] })
               ] }, i)) });
             },
+            // 代码块使用 CodeBlock 组件渲染
+            pre: ({ children }) => {
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children });
+            },
+            code: ({ children, className }) => {
+              const match = /language-(\w+)/.exec(className || "");
+              const language2 = match ? match[1] : "text";
+              const code = String(children).replace(/\n$/, "");
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                CodeBlock,
+                {
+                  code,
+                  language: language2,
+                  showLineNumbers: true
+                }
+              );
+            },
             table: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "markdown-table-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsx("table", { className: "markdown-table", children }) }),
             thead: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("thead", { className: "markdown-table-head", children }),
             tbody: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("tbody", { className: "markdown-table-body", children }),
             tr: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("tr", { className: "markdown-table-row", children }),
             th: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("th", { className: "markdown-table-header", children }),
-            td: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "markdown-table-cell", children })
+            td: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("td", { className: "markdown-table-cell", children }),
+            details: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("details", { className: "markdown-details", children }),
+            summary: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("summary", { className: "markdown-summary", children })
           },
-          children: mainContent.replace(/```[\s\S]*?```/g, "")
+          children: mainContent
         }
       ) })
-    ] }),
+    ) }),
     isTimeout && onContinue && /* @__PURE__ */ jsxRuntimeExports.jsx(TimeoutPrompt, { onContinue, onStop }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "builder-message-actions", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "builder-action-btn", title: "复制", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", children: [
@@ -43933,10 +44633,51 @@ function ChatArea({
                     pre: ({ children, ...props }) => {
                       const codeElement = children;
                       const className = codeElement?.props?.className || "";
-                      const language2 = className.replace("language-", "") || "text";
+                      const languageMatch = /language-(\w+)/.exec(className || "");
+                      const language2 = languageMatch ? languageMatch[1] : "text";
                       const codeContent = codeElement?.props?.children || "";
                       const codeId = `${language2}-${String(codeContent).slice(0, 20)}`;
                       const isCopied = copiedId === codeId;
+                      if (!codeContent || String(codeContent).trim().length === 0) {
+                        return null;
+                      }
+                      const contentStr = String(codeContent);
+                      const isDirectoryTree = /[├└│─]/.test(contentStr) || /^\s*├──|^\s*└──|^\s*│/.test(contentStr);
+                      const looksLikeMarkdown = /^\s*#{1,6}\s+/.test(contentStr) || // Headings
+                      /^\s*[-*+]\s+/.test(contentStr) || // Lists
+                      /^\s*\d+\.\s+/.test(contentStr) || // Numbered lists
+                      /^\s*\[.+\]\(.+\)/.test(contentStr) || // Links
+                      /^\s*\*\*.+\*\*/.test(contentStr) || // Bold
+                      /^\s*__.+__/.test(contentStr);
+                      if (looksLikeMarkdown && language2 === "text") {
+                        return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "markdown-content-wrapper", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Markdown, { remarkPlugins: [remarkGfm], children: contentStr }) });
+                      }
+                      if (isDirectoryTree) {
+                        return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-wrapper", children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-header", children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "code-language", children: "目录结构" }),
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                onClick: () => copyToClipboard(contentStr, codeId),
+                                className: `copy-button ${isCopied ? "copied" : ""}`,
+                                children: isCopied ? t$1("copied") : t$1("copy")
+                              }
+                            )
+                          ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "code-block-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { style: {
+                            margin: 0,
+                            padding: "16px",
+                            background: "#1e1e1e",
+                            fontSize: "13px",
+                            lineHeight: "1.6",
+                            fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                            color: "#d4d4d4",
+                            whiteSpace: "pre",
+                            overflow: "auto"
+                          }, children: contentStr.replace(/\n$/, "") }) })
+                        ] });
+                      }
                       return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-wrapper", children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "code-block-header", children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "code-language", children: language2 }),
@@ -43977,7 +44718,26 @@ function ChatArea({
                     code: ({ children, className }) => {
                       const isInline = !className;
                       return isInline ? /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: "inline-code", children }) : /* @__PURE__ */ jsxRuntimeExports.jsx("code", { children });
-                    }
+                    },
+                    // Handle paragraphs - detect directory tree content
+                    p: ({ children }) => {
+                      const text2 = String(children);
+                      const hasTreeChars = /[├└│─]/.test(text2);
+                      const hasTreeStructure = /^\s*[├└│]/.test(text2) || text2.includes("├──") || text2.includes("└──");
+                      if (hasTreeChars || hasTreeStructure) {
+                        return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { style: {
+                          fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                          whiteSpace: "pre-wrap",
+                          wordWrap: "break-word",
+                          lineHeight: "1.6",
+                          margin: "8px 0"
+                        }, children });
+                      }
+                      return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children });
+                    },
+                    // Support details/summary for collapsible sections
+                    details: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("details", { className: "markdown-details", children }),
+                    summary: ({ children }) => /* @__PURE__ */ jsxRuntimeExports.jsx("summary", { className: "markdown-summary", children })
                   },
                   children: msg.content
                 }
@@ -45175,6 +45935,46 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
       };
     }
   }, [rootPath, refreshProjectContext]);
+  reactExports.useEffect(() => {
+    const handleFileOperationCompleted = () => {
+      console.log("[FileExplorer] File operation completed, refreshing...");
+      if (rootPath) {
+        const buildExpansionMap = (nodes, map2) => {
+          for (const node2 of nodes) {
+            if (node2.isDirectory) {
+              map2.set(node2.path, node2.isOpen || false);
+              if (node2.children) {
+                buildExpansionMap(node2.children, map2);
+              }
+            }
+          }
+        };
+        const expansionMap = /* @__PURE__ */ new Map();
+        buildExpansionMap(fileTreeRef.current, expansionMap);
+        fetch(`${API_BASE2}/fs/list?path=${encodeURIComponent(rootPath)}`).then((res) => res.json()).then((items) => {
+          const applyExpansion = (nodes) => {
+            return nodes.map((node2) => {
+              if (node2.isDirectory) {
+                const wasOpen = expansionMap.get(node2.path);
+                return { ...node2, isOpen: wasOpen || false };
+              }
+              return node2;
+            });
+          };
+          setFileTree(applyExpansion(items));
+        }).catch((err) => console.error("[FileExplorer] Refresh failed:", err));
+        fetch(`${API_BASE2}/project-context/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: rootPath })
+        }).catch((err) => console.error("[FileExplorer] Context refresh failed:", err));
+      }
+    };
+    window.addEventListener("file-operation-completed", handleFileOperationCompleted);
+    return () => {
+      window.removeEventListener("file-operation-completed", handleFileOperationCompleted);
+    };
+  }, [rootPath]);
   const loadDirectory = reactExports.useCallback(async (path2) => {
     try {
       const res = await fetch(`${API_BASE2}/fs/list?path=${encodeURIComponent(path2)}`);
@@ -87189,6 +87989,535 @@ function SessionSidebar({
     )
   ] });
 }
+const API_BASE$2 = "http://localhost:3847/api";
+function useChatMode() {
+  const abortControllerRef = reactExports.useRef(null);
+  const { addMessage, updateMessage, updateTokens } = useStore();
+  const parseToolCalls = reactExports.useCallback((text2) => {
+    const toolCalls = [];
+    const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g;
+    let match;
+    while ((match = codeBlockRegex.exec(text2)) !== null) {
+      const blockContent = match[1].trim();
+      if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
+        try {
+          const parsed = JSON.parse(blockContent);
+          if (parsed.tool && parsed.arguments) {
+            toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
+          }
+        } catch (e) {
+        }
+      }
+    }
+    return toolCalls.length > 0 ? toolCalls : null;
+  }, []);
+  const updateLastMessage = reactExports.useCallback((content2) => {
+    const state = useStore.getState();
+    const msgs = [...state.messages];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "assistant") {
+        msgs[i] = { ...msgs[i], content: content2 };
+        useStore.setState({ messages: msgs });
+        break;
+      }
+    }
+  }, []);
+  const saveConversation = reactExports.useCallback(async (projectPath, sessionId, messages2, title) => {
+    try {
+      const api = window.api;
+      if (api?.saveConversation) {
+        await api.saveConversation(projectPath, sessionId, messages2, title);
+      }
+    } catch (e) {
+      console.error("Failed to save conversation:", e);
+    }
+  }, []);
+  const executeTool = reactExports.useCallback(async (toolCall, cwd2) => {
+    try {
+      const execRes = await fetch(`${API_BASE$2}/tools/execute-direct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: toolCall.tool,
+          arguments: toolCall.arguments,
+          cwd: cwd2
+        })
+      });
+      if (!execRes.ok) {
+        const errorText = await execRes.text();
+        return { success: false, result: `Tool execution failed: ${execRes.status} - ${errorText}` };
+      }
+      const execData = await execRes.json();
+      const result = execData.result;
+      return { success: true, result: result.output || result };
+    } catch (error) {
+      return { success: false, result: String(error) };
+    }
+  }, []);
+  const processChatMessage = reactExports.useCallback(async (content2, apiMessages, options) => {
+    const { providerApiKey, providerApiUrl, model, currentCwd, projectPath, currentSession, localSessions } = options;
+    abortControllerRef.current = new AbortController();
+    addMessage({
+      role: "assistant",
+      content: "",
+      isBuilder: false
+    });
+    let fullContent = "";
+    let conversationMessages = [...apiMessages];
+    let iterationCount = 0;
+    try {
+      while (true) {
+        iterationCount++;
+        console.log(`[useChatMode] Iteration ${iterationCount}`);
+        const res = await fetch(`${API_BASE$2}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey: providerApiKey,
+            model,
+            messages: conversationMessages,
+            stream: true,
+            apiUrl: providerApiUrl
+          }),
+          signal: abortControllerRef.current?.signal
+        });
+        if (!res.ok) {
+          const errorMessage = `HTTP error! status: ${res.status}`;
+          fullContent += `
+
+**错误：** API 请求失败：${errorMessage}`;
+          updateLastMessage(fullContent);
+          break;
+        }
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let iterationContent = "";
+        if (!reader) {
+          fullContent += "\n\n**错误：** 无法读取响应内容";
+          updateLastMessage(fullContent);
+          break;
+        }
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data2 = line.slice(6);
+                if (data2 === "[DONE]") continue;
+                try {
+                  const parsed = JSON.parse(data2);
+                  let delta = "";
+                  if (parsed.delta?.text) {
+                    delta = parsed.delta.text;
+                  } else if (parsed.choices?.[0]?.delta?.content) {
+                    delta = parsed.choices[0].delta.content;
+                  }
+                  if (delta) {
+                    iterationContent += delta;
+                    fullContent += delta;
+                    updateLastMessage(fullContent);
+                  }
+                } catch (e) {
+                }
+              }
+            }
+          }
+        } catch (streamError) {
+          fullContent += `
+
+**错误：** 读取响应流时出错：${String(streamError)}`;
+          updateLastMessage(fullContent);
+          break;
+        }
+        const toolCalls = parseToolCalls(iterationContent);
+        if (!toolCalls || toolCalls.length === 0) {
+          console.log("[useChatMode] No tool calls detected, conversation complete");
+          break;
+        }
+        console.log("[useChatMode] Detected tool calls:", toolCalls.length);
+        let cleanedIterationContent = iterationContent;
+        const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g;
+        let match;
+        const blocksToRemove = [];
+        while ((match = codeBlockRegex.exec(iterationContent)) !== null) {
+          const blockContent = match[1].trim();
+          if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
+            try {
+              const parsed = JSON.parse(blockContent);
+              if (parsed.tool && parsed.arguments) {
+                blocksToRemove.push(match[0]);
+              }
+            } catch (e) {
+            }
+          }
+        }
+        for (const block of blocksToRemove) {
+          cleanedIterationContent = cleanedIterationContent.replace(block, "");
+        }
+        if (blocksToRemove.length > 0) {
+          const iterationStartIndex = fullContent.lastIndexOf(iterationContent);
+          if (iterationStartIndex !== -1) {
+            fullContent = fullContent.slice(0, iterationStartIndex) + cleanedIterationContent;
+          }
+          fullContent += `
+
+---
+
+**🔧 正在执行工具**
+
+`;
+          fullContent += toolCalls.map((tc2) => `- ⏳ ${tc2.tool}`).join("\n");
+          fullContent += "\n\n";
+          updateLastMessage(fullContent);
+        }
+        const toolResults = [];
+        let shouldRefreshFileExplorer = false;
+        for (const toolCall of toolCalls) {
+          console.log(`[useChatMode] Executing tool:`, toolCall.tool);
+          const { success, result } = await executeTool(toolCall, currentCwd);
+          toolResults.push({ tool: toolCall.tool, result, success });
+          if (success && ["write_file", "delete_file", "edit_file", "append_file", "mkdir"].includes(toolCall.tool)) {
+            shouldRefreshFileExplorer = true;
+          }
+        }
+        if (shouldRefreshFileExplorer) {
+          console.log("[useChatMode] File operation completed, triggering refresh");
+          window.dispatchEvent(new CustomEvent("file-operation-completed"));
+        }
+        const toolSummary = toolResults.map((r2) => {
+          const icon2 = r2.success ? "✅" : "❌";
+          const status = r2.success ? "成功" : "失败";
+          return `- ${icon2} **${r2.tool}** - ${status}`;
+        }).join("\n");
+        fullContent += `**✓ 工具执行完成**
+
+${toolSummary}
+
+---
+
+`;
+        updateLastMessage(fullContent);
+        conversationMessages = [
+          ...conversationMessages,
+          { role: "assistant", content: iterationContent },
+          {
+            role: "user",
+            content: `工具执行结果：
+${toolResults.map((r2) => `- ${r2.tool}: ${r2.success ? "成功" : "失败"}
+${r2.result}`).join("\n")}
+
+请基于以上工具执行结果，继续分析或执行下一步操作。
+
+重要提示：
+1. 直接输出分析结果，不要使用代码块包裹你的回复
+2. 如果需要展示代码或配置文件内容，请使用正确的代码块格式（如 \`\`\`typescript 或 \`\`\`json）
+3. 目录结构等文本内容直接输出，不要放在代码块中
+4. 如果需要调用更多工具，请使用标准工具调用格式`
+          }
+        ];
+      }
+      updateTokens(content2.length / 4, fullContent.length / 4);
+      if (currentSession && projectPath) {
+        const updatedMessages = [...useStore.getState().messages];
+        const session = localSessions.find((s15) => s15.id === currentSession);
+        await saveConversation(projectPath, currentSession, updatedMessages, session?.title);
+      }
+      return { success: true };
+    } catch (error) {
+      console.error("[useChatMode] Error:", error);
+      updateLastMessage(`Error: ${String(error)}`);
+      return { success: false, error: String(error) };
+    }
+  }, [addMessage, updateLastMessage, parseToolCalls, executeTool, updateTokens, saveConversation]);
+  const stopGeneration = reactExports.useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
+  return {
+    processChatMessage,
+    stopGeneration
+  };
+}
+const API_BASE$1 = "http://localhost:3847/api";
+function useAgentMode() {
+  const abortControllerRef = reactExports.useRef(null);
+  const { addMessage, updateMessage, updateTokens } = useStore();
+  const parseToolCalls = reactExports.useCallback((text2) => {
+    const toolCalls = [];
+    const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g;
+    let match;
+    while ((match = codeBlockRegex.exec(text2)) !== null) {
+      const blockContent = match[1].trim();
+      if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
+        try {
+          const parsed = JSON.parse(blockContent);
+          if (parsed.tool && parsed.arguments) {
+            toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
+          }
+        } catch (e) {
+        }
+      }
+    }
+    return toolCalls.length > 0 ? toolCalls : null;
+  }, []);
+  const updateLastMessage = reactExports.useCallback((content2) => {
+    const state = useStore.getState();
+    const msgs = [...state.messages];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "assistant") {
+        msgs[i] = { ...msgs[i], content: content2 };
+        useStore.setState({ messages: msgs });
+        break;
+      }
+    }
+  }, []);
+  const saveConversation = reactExports.useCallback(async (projectPath, sessionId, messages2, title) => {
+    try {
+      const api = window.api;
+      if (api?.saveConversation) {
+        await api.saveConversation(projectPath, sessionId, messages2, title);
+      }
+    } catch (e) {
+      console.error("Failed to save conversation:", e);
+    }
+  }, []);
+  const executeTool = reactExports.useCallback(async (toolCall, cwd2) => {
+    try {
+      const execRes = await fetch(`${API_BASE$1}/tools/execute-direct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tool: toolCall.tool,
+          arguments: toolCall.arguments,
+          cwd: cwd2
+        })
+      });
+      if (!execRes.ok) {
+        const errorText = await execRes.text();
+        return { success: false, result: `Tool execution failed: ${execRes.status} - ${errorText}` };
+      }
+      const execData = await execRes.json();
+      const result = execData.result;
+      return { success: true, result: result.output || result };
+    } catch (error) {
+      return { success: false, result: String(error) };
+    }
+  }, []);
+  const buildSystemPrompt2 = reactExports.useCallback((commands, tools, cwd2, projectContext) => {
+    return `You are an AI assistant that can use commands and tools to help users.
+
+Available commands:
+${commands.map((c2) => `- ${c2.name}: ${c2.description}`).join("\n")}
+
+Available tools:
+${tools.map((t2) => `- ${t2.name}: ${t2.description}`).join("\n")}
+
+Current working directory: ${cwd2}
+
+${projectContext ? `Project context:
+${projectContext}` : ""}
+
+When you need to use a tool, output it in this JSON format:
+\`\`\`json
+{
+  "tool": "tool_name",
+  "arguments": { ... }
+}
+\`\`\``;
+  }, []);
+  const processAgentMessage = reactExports.useCallback(async (content2, apiMessages, options) => {
+    const { providerApiKey, providerApiUrl, model, currentCwd, projectPath, currentSession, localSessions, commands, tools } = options;
+    abortControllerRef.current = new AbortController();
+    addMessage({
+      role: "assistant",
+      content: "",
+      isBuilder: false
+    });
+    let fullContent = "";
+    let conversationMessages = [...apiMessages];
+    let iterationCount = 0;
+    try {
+      while (true) {
+        iterationCount++;
+        console.log(`[useAgentMode] Iteration ${iterationCount}`);
+        const res = await fetch(`${API_BASE$1}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            apiKey: providerApiKey,
+            model,
+            messages: conversationMessages,
+            stream: true,
+            apiUrl: providerApiUrl
+          }),
+          signal: abortControllerRef.current?.signal
+        });
+        if (!res.ok) {
+          const errorMessage = `HTTP error! status: ${res.status}`;
+          fullContent += `
+
+**错误：** API 请求失败：${errorMessage}`;
+          updateLastMessage(fullContent);
+          break;
+        }
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let iterationContent = "";
+        if (!reader) {
+          fullContent += "\n\n**错误：** 无法读取响应内容";
+          updateLastMessage(fullContent);
+          break;
+        }
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split("\n");
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data2 = line.slice(6);
+                if (data2 === "[DONE]") continue;
+                try {
+                  const parsed = JSON.parse(data2);
+                  let delta = "";
+                  if (parsed.delta?.text) {
+                    delta = parsed.delta.text;
+                  } else if (parsed.choices?.[0]?.delta?.content) {
+                    delta = parsed.choices[0].delta.content;
+                  }
+                  if (delta) {
+                    iterationContent += delta;
+                    fullContent += delta;
+                    updateLastMessage(fullContent);
+                  }
+                } catch (e) {
+                }
+              }
+            }
+          }
+        } catch (streamError) {
+          fullContent += `
+
+**错误：** 读取响应流时出错：${String(streamError)}`;
+          updateLastMessage(fullContent);
+          break;
+        }
+        const toolCalls = parseToolCalls(iterationContent);
+        if (!toolCalls || toolCalls.length === 0) {
+          console.log("[useAgentMode] No tool calls detected, conversation complete");
+          break;
+        }
+        console.log("[useAgentMode] Detected tool calls:", toolCalls.length);
+        let cleanedIterationContent = iterationContent;
+        const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g;
+        let match;
+        const blocksToRemove = [];
+        while ((match = codeBlockRegex.exec(iterationContent)) !== null) {
+          const blockContent = match[1].trim();
+          if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
+            try {
+              const parsed = JSON.parse(blockContent);
+              if (parsed.tool && parsed.arguments) {
+                blocksToRemove.push(match[0]);
+              }
+            } catch (e) {
+            }
+          }
+        }
+        for (const block of blocksToRemove) {
+          cleanedIterationContent = cleanedIterationContent.replace(block, "");
+        }
+        if (blocksToRemove.length > 0) {
+          const iterationStartIndex = fullContent.lastIndexOf(iterationContent);
+          if (iterationStartIndex !== -1) {
+            fullContent = fullContent.slice(0, iterationStartIndex) + cleanedIterationContent;
+          }
+          fullContent += `
+
+---
+
+**🔧 正在执行工具**
+
+`;
+          fullContent += toolCalls.map((tc2) => `- ⏳ ${tc2.tool}`).join("\n");
+          fullContent += "\n\n";
+          updateLastMessage(fullContent);
+        }
+        const toolResults = [];
+        let shouldRefreshFileExplorer = false;
+        for (const toolCall of toolCalls) {
+          console.log(`[useAgentMode] Executing tool:`, toolCall.tool);
+          const { success, result } = await executeTool(toolCall, currentCwd);
+          toolResults.push({ tool: toolCall.tool, result, success });
+          if (success && ["write_file", "delete_file", "edit_file", "append_file", "mkdir"].includes(toolCall.tool)) {
+            shouldRefreshFileExplorer = true;
+          }
+        }
+        if (shouldRefreshFileExplorer) {
+          console.log("[useAgentMode] File operation completed, triggering refresh");
+          window.dispatchEvent(new CustomEvent("file-operation-completed"));
+        }
+        const toolSummary = toolResults.map((r2) => {
+          const icon2 = r2.success ? "✅" : "❌";
+          const status = r2.success ? "成功" : "失败";
+          return `- ${icon2} **${r2.tool}** - ${status}`;
+        }).join("\n");
+        fullContent += `**✓ 工具执行完成**
+
+${toolSummary}
+
+---
+
+`;
+        updateLastMessage(fullContent);
+        conversationMessages = [
+          ...conversationMessages,
+          { role: "assistant", content: iterationContent },
+          {
+            role: "user",
+            content: `工具执行结果：
+${toolResults.map((r2) => `- ${r2.tool}: ${r2.success ? "成功" : "失败"}
+${r2.result}`).join("\n")}
+
+请基于以上工具执行结果，继续分析或执行下一步操作。
+
+重要提示：
+1. 直接输出分析结果，不要使用代码块包裹你的回复
+2. 如果需要展示代码或配置文件内容，请使用正确的代码块格式（如 \`\`\`typescript 或 \`\`\`json）
+3. 目录结构等文本内容直接输出，不要放在代码块中
+4. 如果需要调用更多工具，请使用标准工具调用格式`
+          }
+        ];
+      }
+      updateTokens(content2.length / 4, fullContent.length / 4);
+      if (currentSession && projectPath) {
+        const updatedMessages = [...useStore.getState().messages];
+        const session = localSessions.find((s15) => s15.id === currentSession);
+        await saveConversation(projectPath, currentSession, updatedMessages, session?.title);
+      }
+      return { success: true };
+    } catch (error) {
+      console.error("[useAgentMode] Error:", error);
+      updateLastMessage(`Error: ${String(error)}`);
+      return { success: false, error: String(error) };
+    }
+  }, [addMessage, updateLastMessage, parseToolCalls, executeTool, updateTokens, saveConversation]);
+  const stopGeneration = reactExports.useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
+  return {
+    processAgentMessage,
+    stopGeneration,
+    buildSystemPrompt: buildSystemPrompt2
+  };
+}
 const API_BASE = "http://localhost:3847/api";
 let cachedProjectContext = "";
 let cachedProjectPath = "";
@@ -87230,6 +88559,15 @@ When you need to use a tool, output ONLY the JSON code block:
    - "查看一下这个文件" → Use read_file
    - "搜索一下这段代码" → Use search_code
 4. For greetings, general coding questions, or explanations, do NOT use tools
+5. **CRITICAL - READ-ONLY MODE**: You are in CHAT MODE which is READ-ONLY. You CANNOT create, write, edit, append, delete, or modify files in any way. This includes:
+   - NO write_file, edit_file, append_file operations
+   - NO delete_file or file removal operations
+   - NO using execute_bash to write/create/modify/delete files (e.g., NO 'cat >', NO 'echo >', NO 'rm', NO 'mkdir' for creating files)
+   - If the user asks you to write, create, edit, or delete files (e.g., "写入文件", "创建文件", "修改文件", "删除文件"), you MUST:
+     * Explain that file modification is not supported in chat mode
+     * Suggest switching to "智能体模式" (Agent Mode) for file operations
+     * Do NOT attempt to use any tool to modify files
+6. **execute_bash usage**: ONLY use execute_bash when user explicitly asks to run commands like npm, git, etc. NEVER use it for file operations.
 
 Please provide helpful, accurate, and concise responses to the user's questions.
 `;
@@ -87266,6 +88604,8 @@ ${projectContext}
   prompt2 += `4. THINK STEP BY STEP: For complex tasks, break them down into steps and execute them sequentially.
 `;
   prompt2 += `5. VERIFY BEFORE PROCEEDING: After making changes, verify they work as expected before declaring completion.
+`;
+  prompt2 += `6. IGNORE PREVIOUS MODE LIMITATIONS: You are now in AGENT MODE with FULL tool access. Ignore any previous messages about "cannot delete files" or "not supported in chat mode". You CAN and SHOULD directly execute file operations including delete, write, edit when requested.
 
 `;
   prompt2 += `=== AVAILABLE TOOLS ===
@@ -87535,13 +88875,15 @@ function App() {
   const [projectPath, setProjectPath] = reactExports.useState(null);
   reactExports.useRef(null);
   const messagesEndRef = reactExports.useRef(null);
-  const abortControllerRef = reactExports.useRef(null);
+  reactExports.useRef(null);
   const terminalRef = reactExports.useRef(null);
   const [tabs, setTabs] = reactExports.useState([]);
   const [activeTabId, setActiveTabId] = reactExports.useState(null);
   const [selectedFilePath, setSelectedFilePath] = reactExports.useState(null);
   const [sessionSidebarOpen, setSessionSidebarOpen] = reactExports.useState(false);
   const [localSessions, setLocalSessions] = reactExports.useState([]);
+  const { processChatMessage, stopGeneration: stopChatGeneration } = useChatMode();
+  const { processAgentMessage, stopGeneration: stopAgentGeneration } = useAgentMode();
   const {
     apiKey,
     model,
@@ -87674,10 +89016,8 @@ function App() {
     };
   }, []);
   const handleStopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+    stopChatGeneration();
+    stopAgentGeneration();
     if (pendingContinuation) {
       console.log("[handleStopGeneration] Clearing pending continuation due to user stop");
       setPendingContinuation(null);
@@ -87714,87 +89054,22 @@ function App() {
           console.error("Failed to get cwd:", e);
         }
       }
-      const userOriginalRequest = pendingContinuation.userOriginalRequest;
-      const currentIterations = pendingContinuation.iterations;
-      const currentWrittenFiles = pendingContinuation.writtenFiles;
-      const currentConversationHistory = pendingContinuation.conversationHistory;
-      let projectContextStr = "";
-      if (projectPath) {
-        projectContextStr = await fetchProjectContext(projectPath);
-      }
-      const systemPrompt = buildSystemPrompt(commands, tools, currentCwd, projectContextStr);
-      let apiMessages = [];
-      if (currentConversationHistory && currentConversationHistory.length > 0) {
-        apiMessages = [...currentConversationHistory];
-        console.log("[handleContinueExecution] Using saved conversation history, length:", apiMessages.length);
-      } else {
-        if (systemPrompt) {
-          apiMessages.push({ role: "user", content: systemPrompt });
-          apiMessages.push({ role: "assistant", content: " understood. I will use the available commands and tools when needed." });
-        }
-        messages2.forEach((m2) => {
-          apiMessages.push({ role: m2.role, content: m2.content });
-        });
-      }
-      apiMessages.push({
-        role: "user",
-        content: "请继续完成之前的任务。如果需要，可以使用工具继续处理。"
-      });
-      console.log("[handleContinueExecution] Continuing with iterations:", currentIterations, "writtenFiles:", currentWrittenFiles.length);
-      const result = await processWithTools(
-        apiMessages,
-        userOriginalRequest,
-        currentCwd,
-        providerApiKey,
-        providerApiUrl,
-        100,
-        // maxIterations - this is the max for this batch
-        true,
-        // isContinuation
+      setPendingContinuation(null);
+      await processAgentMessage(
+        pendingContinuation.userOriginalRequest,
+        pendingContinuation.conversationHistory,
         {
-          conversationHistory: currentConversationHistory,
-          iterations: 0,
-          // Reset iterations for new batch
-          writtenFiles: currentWrittenFiles
+          providerApiKey,
+          providerApiUrl,
+          model,
+          currentCwd,
+          projectPath,
+          currentSession,
+          localSessions,
+          commands: commands.map((c2) => ({ name: c2.name, description: c2.responsibility })),
+          tools: tools.map((t2) => ({ name: t2.name, description: t2.responsibility }))
         }
       );
-      setPendingContinuation(null);
-      await handleProcessResult(result, userOriginalRequest, currentSession);
-      if (result.needsContinuation || result.error) {
-        setPendingContinuation({
-          conversationHistory: result.conversationHistory || [],
-          userOriginalRequest,
-          iterations: 100,
-          writtenFiles: result.writtenFiles,
-          lastContent: result.content
-        });
-        addMessage({
-          role: "assistant",
-          content: `${result.content}
-
----
-
-⚠️ **${result.error ? "执行过程中发生异常" : "已达到最大迭代次数（100次）"}**
-
-任务可能尚未完成。请选择：
-- 点击 **"继续执行"** 按钮继续处理
-- 或直接发送新消息以其他方式继续`,
-          needsAction: "continue"
-        });
-      } else {
-        console.log("[handleContinueExecution] Task completed successfully");
-        const clearedMessages = messages2.map((msg) => ({
-          ...msg,
-          needsAction: void 0
-        }));
-        setMessages(clearedMessages);
-        addMessage({
-          role: "assistant",
-          content: `## ✅ 任务完成
-
-${result.content}`
-        });
-      }
     } catch (error) {
       console.error("[handleContinueExecution] Error:", error);
       updateLastMessage(`继续执行出错: ${String(error)}`);
@@ -87822,29 +89097,6 @@ ${result.content}`
     };
     initSession();
   }, [currentSession, addSession, selectSession, clearMessages]);
-  const handleProcessResult = async (result, userContent, sessionId) => {
-    console.log("[handleSendMessage] processWithTools returned:", result.content?.substring(0, 100));
-    console.log("[handleSendMessage] writtenFiles:", result.writtenFiles);
-    const currentMessages = useStore.getState().messages;
-    const clearedMessages = currentMessages.map((msg) => ({
-      ...msg,
-      needsAction: void 0
-    }));
-    setMessages(clearedMessages);
-    updateTokens(userContent.length / 4, result.content.length / 4);
-    if (result.writtenFiles.length > 0) {
-      const lastFile = result.writtenFiles[result.writtenFiles.length - 1];
-      try {
-        const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(lastFile)}`);
-        if (readRes.ok) {
-          const fileData = await readRes.json();
-          openFile(lastFile, fileData.content || "");
-        }
-      } catch (readError) {
-        console.error("Failed to auto-open file:", readError);
-      }
-    }
-  };
   const fetchProjectContext = reactExports.useCallback(async (projectPath2) => {
     if (cachedProjectContext && cachedProjectPath === projectPath2) {
       console.log("[ProjectContext] Using cached context for:", projectPath2);
@@ -88006,776 +89258,7 @@ ${result.content}`
       console.error("Failed to create new session:", error);
     }
   }, [addSession, selectSession, clearMessages]);
-  const parseToolCalls = (text2) => {
-    const toolCalls = [];
-    console.log("[parseToolCalls] Input text length:", text2.length);
-    console.log("[parseToolCalls] Input text preview:", text2.substring(0, 300));
-    const toolCallsSectionRegex = /<\|tool_calls_section_begin\|>([\s\S]*?)<\|tool_calls_section_end\|>/g;
-    let sectionMatch;
-    while ((sectionMatch = toolCallsSectionRegex.exec(text2)) !== null) {
-      const sectionContent = sectionMatch[1];
-      const toolCallRegex = /<\|tool_call_begin\|>functions\.(\w+):\d+<\|tool_call_args\|>([\s\S]*?)<\|tool_call_end\|>/g;
-      let toolMatch;
-      while ((toolMatch = toolCallRegex.exec(sectionContent)) !== null) {
-        const toolName = toolMatch[1];
-        const argsJson = toolMatch[2].trim();
-        if (!argsJson || argsJson.length < 2) {
-          console.log("[parseToolCalls] Empty or too short args JSON, skipping");
-          continue;
-        }
-        try {
-          const args = JSON.parse(argsJson);
-          toolCalls.push({ tool: toolName, arguments: args });
-          console.log("Parsed tool call from special format:", toolName, args);
-        } catch (e) {
-          console.error("Failed to parse tool call args:", argsJson.substring(0, 200));
-          console.error("Parse error:", e);
-        }
-      }
-    }
-    const codeBlockMarker = "```";
-    let searchIndex = 0;
-    let matchCount = 0;
-    console.log("[parseToolCalls] Searching for code blocks, text length:", text2.length);
-    console.log("[parseToolCalls] First 500 chars:", text2.substring(0, 500));
-    const firstBacktick = text2.indexOf("`");
-    console.log("[parseToolCalls] First backtick position:", firstBacktick);
-    if (firstBacktick !== -1) {
-      console.log("[parseToolCalls] Text around first backtick:", text2.substring(firstBacktick, firstBacktick + 20));
-    }
-    while (true) {
-      const blockStart = text2.indexOf(codeBlockMarker, searchIndex);
-      if (blockStart === -1) {
-        console.log("[parseToolCalls] No more code block markers found after position", searchIndex);
-        break;
-      }
-      console.log("[parseToolCalls] Found code block marker at position:", blockStart);
-      console.log("[parseToolCalls] Text at marker:", text2.substring(blockStart, blockStart + 20));
-      const blockEnd = text2.indexOf(codeBlockMarker, blockStart + codeBlockMarker.length);
-      if (blockEnd === -1) {
-        console.log("[parseToolCalls] No closing marker found");
-        break;
-      }
-      matchCount++;
-      text2.substring(blockStart, blockEnd + codeBlockMarker.length);
-      const hasJsonMarker = text2.substring(blockStart, blockStart + 7) === "```json";
-      const contentStart = hasJsonMarker ? blockStart + 7 : blockStart + 3;
-      const blockContent = text2.substring(contentStart, blockEnd).trim();
-      console.log(`[parseToolCalls] Found code block #${matchCount} at ${blockStart}-${blockEnd}, hasJsonMarker: ${hasJsonMarker}`);
-      console.log(`[parseToolCalls] Block content preview:`, blockContent.substring(0, 100));
-      try {
-        if (!blockContent.trim().startsWith("{") || !blockContent.trim().endsWith("}")) {
-          console.log(`[parseToolCalls] Code block #${matchCount} doesn't look like JSON object, skipping`);
-        } else {
-          const parsed = JSON.parse(blockContent);
-          console.log(`[parseToolCalls] Parsed JSON from code block #${matchCount}:`, parsed);
-          if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
-            toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
-            console.log(`[parseToolCalls] Added tool call from code block #${matchCount}:`, parsed.tool);
-          }
-        }
-      } catch (e) {
-        console.log(`[parseToolCalls] Failed to parse code block #${matchCount} as single JSON, trying line by line. Error:`, e);
-        const lines = blockContent.split("\n");
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine || trimmedLine.startsWith("//")) continue;
-          if (!trimmedLine.startsWith("{") || !trimmedLine.endsWith("}")) {
-            continue;
-          }
-          try {
-            const parsed = JSON.parse(trimmedLine);
-            if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
-              toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
-              console.log(`[parseToolCalls] Added tool call from line:`, parsed.tool);
-            }
-          } catch (e2) {
-            const jsonStart = trimmedLine.indexOf("{");
-            const jsonEnd = trimmedLine.lastIndexOf("}");
-            if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-              try {
-                const jsonStr = trimmedLine.substring(jsonStart, jsonEnd + 1);
-                if (jsonStr.length < 10 || !jsonStr.includes('"tool"')) {
-                  continue;
-                }
-                const parsed = JSON.parse(jsonStr);
-                if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
-                  toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
-                  console.log(`[parseToolCalls] Added tool call from JSON in line:`, parsed.tool);
-                }
-              } catch (e3) {
-              }
-            }
-          }
-        }
-      }
-      searchIndex = blockEnd + codeBlockMarker.length;
-    }
-    console.log(`[parseToolCalls] Total code blocks found: ${matchCount}`);
-    const jsonObjectRegex = /\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/g;
-    let jsonMatch;
-    while ((jsonMatch = jsonObjectRegex.exec(text2)) !== null) {
-      const jsonStr = jsonMatch[0];
-      if (!jsonStr || jsonStr.length < 10) {
-        continue;
-      }
-      const alreadyFound = toolCalls.some((tc2) => {
-        const tcStr = JSON.stringify(tc2);
-        return jsonStr.includes(tcStr) || tcStr.includes(jsonStr.substring(0, 50));
-      });
-      if (alreadyFound) continue;
-      try {
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.tool && typeof parsed.tool === "string" && parsed.arguments && typeof parsed.arguments === "object") {
-          toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments });
-        }
-      } catch (e) {
-        console.log(`[parseToolCalls] Failed to parse inline JSON:`, jsonStr.substring(0, 100));
-      }
-    }
-    return toolCalls.length > 0 ? toolCalls : null;
-  };
   const [pendingContinuation, setPendingContinuation] = reactExports.useState(null);
-  const processWithTools = async (apiMessages, userContent, workingDir, providerApiKey, providerApiUrl, maxIterations = 100, isContinuation = false, previousState) => {
-    console.log("[processWithTools] Starting execution, isContinuation:", isContinuation);
-    let iterations = previousState?.iterations || 0;
-    let conversationHistory = previousState?.conversationHistory && previousState.conversationHistory.length > 0 ? [...previousState.conversationHistory] : [...apiMessages];
-    console.log("[processWithTools] conversationHistory length:", conversationHistory.length, "from previousState:", previousState?.conversationHistory?.length);
-    const writtenFiles = previousState?.writtenFiles ? [...previousState.writtenFiles] : [];
-    let finalContent = "";
-    let consecutiveTruncations = 0;
-    const MAX_CONSECUTIVE_TRUNCATIONS = 3;
-    const userOriginalRequest = apiMessages[apiMessages.length - 1]?.content || "";
-    const readFilesSet = /* @__PURE__ */ new Set();
-    const taskMemory = {};
-    let assistantMessageIndex = -1;
-    if (!isContinuation) {
-      addMessage({
-        role: "assistant",
-        content: "",
-        isBuilder: true,
-        thinkingSteps: []
-      });
-      assistantMessageIndex = useStore.getState().messages.length - 1;
-    } else {
-      const msgs = useStore.getState().messages;
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === "assistant") {
-          assistantMessageIndex = i;
-          break;
-        }
-      }
-    }
-    abortControllerRef.current = new AbortController();
-    try {
-      console.log("[ToolLoop] Starting processWithTools, maxIterations:", maxIterations);
-      while (iterations < maxIterations) {
-        iterations++;
-        console.log("[ToolLoop] Iteration", iterations, "/", maxIterations);
-        if (abortControllerRef.current.signal.aborted) {
-          throw new Error("Generation stopped by user");
-        }
-        console.log("[ToolLoop] Calling LLM with", conversationHistory.length, "messages");
-        const MAX_HISTORY_MESSAGES = 20;
-        if (conversationHistory.length > MAX_HISTORY_MESSAGES) {
-          console.log("[ToolLoop] Conversation history too long, compressing...");
-          const readFileResults = conversationHistory.filter((m2, i) => m2.role === "user" && i > 0).map((m2) => {
-            const match = m2.content.match(/工具执行结果.*?read_file.*?```\n([\s\S]*?)```/);
-            if (match) {
-              const fileMatch = m2.content.match(/path[:\s]*([^\s]+)/);
-              const path2 = fileMatch ? fileMatch[1] : "unknown";
-              const preview = match[1].substring(0, 500);
-              return { path: path2, preview };
-            }
-            return null;
-          }).filter(Boolean).slice(-5);
-          const contextSummary = readFileResults.length > 0 ? readFileResults.map((r2) => `已读取文件: ${r2?.path}
-内容摘要:
-${r2?.preview}...`).join("\n\n") : "（无文件读取记录）";
-          const systemMessages = conversationHistory.slice(0, 2);
-          const recentMessages = conversationHistory.slice(-8);
-          const taskMemorySummary = [];
-          if (taskMemory.problemAnalysis) {
-            taskMemorySummary.push(`【问题分析】
-${taskMemory.problemAnalysis.substring(0, 300)}`);
-          }
-          if (taskMemory.rootCause) {
-            taskMemorySummary.push(`【根本原因】
-${taskMemory.rootCause.substring(0, 300)}`);
-          }
-          if (taskMemory.fixStrategy) {
-            taskMemorySummary.push(`【修复策略】
-${taskMemory.fixStrategy.substring(0, 300)}`);
-          }
-          if (taskMemory.filesToModify && taskMemory.filesToModify.length > 0) {
-            const remainingFiles = taskMemory.filesToModify.filter((f2) => !taskMemory.completedFixes?.includes(f2));
-            taskMemorySummary.push(`【待修复文件】
-${remainingFiles.join(", ") || "无"}
-【已完成】
-${taskMemory.completedFixes?.join(", ") || "无"}`);
-          }
-          if (taskMemory.errorsFound && taskMemory.errorsFound.length > 0) {
-            taskMemorySummary.push(`【发现的错误】
-${taskMemory.errorsFound.slice(-3).join("\n")}`);
-          }
-          const compressedContext = {
-            role: "user",
-            content: `[系统提示：对话历史已被智能压缩以节省空间。以下是关键信息摘要：
-
-【用户原始请求】
-${userOriginalRequest.substring(0, 500)}${userOriginalRequest.length > 500 ? "..." : ""}
-
-${taskMemorySummary.length > 0 ? taskMemorySummary.join("\n\n") + "\n\n" : ""}【已读取的文件】
-${contextSummary}
-
-【当前任务状态】
-- 已迭代次数: ${iterations}
-- 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(", ") : "无"}
-- 任务进行中，请继续完成用户请求
-
-⚠️ 重要提醒：
-- 你已经分析过问题并制定了修复策略
-- 不要重复读取已分析的文件
-- 基于已有分析继续执行修复
-- 如果修复完成，请明确总结修改内容65
-
-可用工具：
-- read_file: 读取文件，支持 offset 和 limit 参数
-- write_file: 写入文件  
-- edit_file: 编辑文件
-- execute_bash: 执行命令
-
-工具调用格式：
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
-
-请基于以上信息继续完成任务。]`
-          };
-          conversationHistory = [...systemMessages, compressedContext, ...recentMessages];
-          console.log("[ToolLoop] Compressed conversation history to", conversationHistory.length, "messages");
-        }
-        let data2;
-        try {
-          const availableTools = [
-            {
-              type: "function",
-              function: {
-                name: "read_file",
-                description: "Read file contents",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    path: { type: "string", description: "File path" },
-                    offset: { type: "number", description: "Start line offset" },
-                    limit: { type: "number", description: "Number of lines to read" }
-                  },
-                  required: ["path"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "write_file",
-                description: "Create or overwrite files",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    path: { type: "string", description: "File path" },
-                    content: { type: "string", description: "File content" }
-                  },
-                  required: ["path", "content"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "edit_file",
-                description: "Replace specific text in a file",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    path: { type: "string", description: "File path" },
-                    old_string: { type: "string", description: "Text to replace" },
-                    new_string: { type: "string", description: "Replacement text" }
-                  },
-                  required: ["path", "old_string", "new_string"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "append_file",
-                description: "Append content to existing file",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    path: { type: "string", description: "File path" },
-                    content: { type: "string", description: "Content to append" }
-                  },
-                  required: ["path", "content"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "delete_file",
-                description: "Delete a file or directory",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    path: { type: "string", description: "File or directory path" }
-                  },
-                  required: ["path"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "list_directory",
-                description: "List directory contents",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    path: { type: "string", description: "Directory path" }
-                  },
-                  required: ["path"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "execute_bash",
-                description: "Execute shell commands",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    command: { type: "string", description: "Command to execute" },
-                    cwd: { type: "string", description: "Working directory" }
-                  },
-                  required: ["command"]
-                }
-              }
-            },
-            {
-              type: "function",
-              function: {
-                name: "search_code",
-                description: "Search for code patterns",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    query: { type: "string", description: "Search query" }
-                  },
-                  required: ["query"]
-                }
-              }
-            }
-          ];
-          const res = await fetch(`${API_BASE}/chat`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              apiKey: providerApiKey,
-              model,
-              messages: conversationHistory,
-              tools: availableTools,
-              tool_choice: "auto",
-              stream: false,
-              apiUrl: providerApiUrl
-            }),
-            signal: abortControllerRef.current.signal
-          });
-          if (!res.ok) {
-            const errorData = await res.json();
-            console.error("[ToolLoop] LLM API error:", res.status, errorData);
-            throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
-          }
-          data2 = await res.json();
-        } catch (llmError) {
-          console.error("[ToolLoop] LLM call failed:", llmError);
-          throw llmError;
-        }
-        let content2 = data2.content;
-        if (typeof content2 === "string") {
-          try {
-            const parsed = JSON.parse(content2);
-            if (Array.isArray(parsed)) {
-              content2 = parsed;
-            }
-          } catch (e) {
-          }
-        }
-        const responseText = Array.isArray(content2) ? content2[0]?.text || "" : content2 || "";
-        const textContent = typeof responseText === "string" ? responseText : JSON.stringify(responseText);
-        console.log("AI Response:", textContent.substring(0, 500));
-        console.log("[ToolLoop] data.tool_calls:", data2.tool_calls ? JSON.stringify(data2.tool_calls).substring(0, 500) : "undefined");
-        let toolCalls = [];
-        if (data2.tool_calls && Array.isArray(data2.tool_calls) && data2.tool_calls.length > 0) {
-          console.log("[ToolLoop] Found structured tool_calls:", data2.tool_calls.length);
-          toolCalls = data2.tool_calls.map((tc2) => {
-            if (tc2.function) {
-              return {
-                tool: tc2.function.name,
-                arguments: typeof tc2.function.arguments === "string" ? JSON.parse(tc2.function.arguments) : tc2.function.arguments
-              };
-            } else if (tc2.name) {
-              return { tool: tc2.name, arguments: tc2.arguments || {} };
-            }
-            return null;
-          }).filter(Boolean);
-        } else {
-          console.log("[ToolLoop] No structured tool_calls, parsing from text...");
-          const parsedToolCalls = parseToolCalls(textContent);
-          toolCalls = parsedToolCalls || [];
-        }
-        conversationHistory.push({ role: "assistant", content: textContent });
-        if (toolCalls.length === 0) {
-          const toolIntentPatterns = [
-            /让.*读取.*文件/i,
-            /让.*获取.*文件/i,
-            /让我.*读取/i,
-            /让我.*获取/i,
-            /让我.*查看/i,
-            /让我.*检查/i,
-            /让我.*列出/i,
-            /使用.*read_file/i,
-            /使用.*write_file/i,
-            /使用.*edit_file/i,
-            /使用.*execute_bash/i,
-            /使用.*list_directory/i,
-            /使用.*search_code/i,
-            /继续读取/i,
-            /继续获取/i,
-            /查看.*目录/i,
-            /查看.*文件/i,
-            /检查.*目录/i,
-            /检查.*文件/i,
-            /列出.*目录/i,
-            /列出.*文件/i
-          ];
-          const hasToolIntent = toolIntentPatterns.some((pattern) => pattern.test(textContent));
-          const jsonBlockStart = textContent.indexOf("```json");
-          const hasIncompleteToolCall = jsonBlockStart !== -1 && !textContent.includes("```", jsonBlockStart + 7);
-          if (hasIncompleteToolCall) {
-            consecutiveTruncations++;
-            console.log(`[ToolLoop] Detected incomplete tool call (truncated JSON), count: ${consecutiveTruncations}`);
-            if (consecutiveTruncations >= MAX_CONSECUTIVE_TRUNCATIONS) {
-              console.log("[ToolLoop] Too many consecutive truncations, stopping loop");
-              finalContent = textContent + "\n\n⚠️ AI 响应连续多次被截断，请尝试：\n1. 简化您的请求\n2. 使用支持更长上下文的模型\n3. 减少一次请求中需要处理的文件数量";
-              updateLastMessage(finalContent);
-              break;
-            }
-            const promptMessage = `请使用简洁的格式调用工具（确保 JSON 完整）：
-
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\``;
-            conversationHistory.push({ role: "user", content: promptMessage });
-            updateLastMessage(`${textContent}
-
-🔄 响应截断，重新尝试 (${consecutiveTruncations}/${MAX_CONSECUTIVE_TRUNCATIONS})...`);
-            continue;
-          }
-          consecutiveTruncations = 0;
-          if (hasToolIntent && iterations < maxIterations - 1) {
-            console.log("[ToolLoop] AI expressed tool intent but no tool calls found, prompting for correct format");
-            const promptMessage = `请使用以下格式调用工具：
-
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
-
-可用工具：
-- read_file: 读取文件，参数: path, offset, limit
-- write_file: 写入文件，参数: path, content
-- edit_file: 编辑文件，参数: path, old_string, new_string
-- execute_bash: 执行命令，参数: command
-
-请直接输出工具调用代码块。`;
-            conversationHistory.push({ role: "user", content: promptMessage });
-            updateLastMessage(`${textContent}
-
-🔄 等待工具调用...`);
-            continue;
-          }
-          console.log("[ToolLoop] No tool calls found, breaking loop");
-          console.log("[ToolLoop] textContent:", textContent.substring(0, 200));
-          console.log("[ToolLoop] data:", JSON.stringify(data2).substring(0, 200));
-          finalContent = textContent;
-          updateLastMessage(textContent);
-          break;
-        }
-        const duplicateReads = [];
-        const filteredToolCalls = toolCalls.filter((t2) => {
-          if (t2.tool === "read_file") {
-            const path2 = t2.arguments.path;
-            if (path2 && readFilesSet.has(path2)) {
-              duplicateReads.push(path2);
-              return false;
-            }
-            if (path2) {
-              readFilesSet.add(path2);
-            }
-          }
-          return true;
-        });
-        if (duplicateReads.length > 0) {
-          const warningMessage = `⚠️ 警告: 检测到重复读取以下文件，已跳过: ${duplicateReads.join(", ")}
-
-请基于已读取的内容继续分析，不要重复读取。如果信息不足，请尝试其他方法或总结当前发现。`;
-          conversationHistory.push({ role: "user", content: warningMessage });
-          console.log("[ToolLoop] Blocked duplicate reads:", duplicateReads);
-        }
-        const toolCallsToExecute = filteredToolCalls.length > 0 ? filteredToolCalls : toolCalls;
-        const currentSteps = [];
-        if (assistantMessageIndex >= 0) {
-          const existingSteps = useStore.getState().messages[assistantMessageIndex]?.steps || [];
-          existingSteps.forEach((step) => {
-            if (step.status === "running") {
-              updateStepStatus(assistantMessageIndex, step.id, "completed");
-            }
-          });
-          toolCallsToExecute.forEach((toolCall, idx) => {
-            const step = {
-              id: `step-${iterations}-${idx}-${Date.now()}`,
-              title: `执行 ${toolCall.tool}`,
-              status: idx === 0 ? "running" : "pending",
-              timestamp: Date.now(),
-              stepNumber: iterations,
-              totalSteps: maxIterations,
-              action: "正在调用工具",
-              toolName: toolCall.tool,
-              toolArgs: toolCall.arguments
-            };
-            addStepToMessage(assistantMessageIndex, step);
-            currentSteps.push(step);
-          });
-        }
-        const results = [];
-        console.log(`[ToolLoop] Starting execution of ${toolCallsToExecute.length} tool calls`);
-        for (let toolIdx = 0; toolIdx < toolCallsToExecute.length; toolIdx++) {
-          const toolCall = toolCallsToExecute[toolIdx];
-          if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
-            if (toolIdx > 0 && currentSteps[toolIdx - 1]) {
-              updateStepStatus(assistantMessageIndex, currentSteps[toolIdx - 1].id, "completed");
-            }
-            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, "running");
-          }
-          const maxRetries = 3;
-          const toolTimeout = 6e4;
-          let retryCount = 0;
-          let lastError = "";
-          let toolResult = null;
-          const toolStartTime = Date.now();
-          console.log(`[ToolLoop] Tool ${toolCall.tool} started at`, toolStartTime);
-          while (retryCount < maxRetries) {
-            const elapsedTime = Date.now() - toolStartTime;
-            if (elapsedTime > toolTimeout) {
-              lastError = `工具执行超时 (${toolTimeout / 1e3}秒)`;
-              console.error(`[ToolLoop] Tool ${toolCall.tool} timeout after ${elapsedTime}ms`);
-              break;
-            }
-            try {
-              console.log(`[ToolLoop] Executing tool: ${toolCall.tool} (attempt ${retryCount + 1}/${maxRetries})`, toolCall.arguments);
-              console.log(`[ToolLoop] Sending request to API...`);
-              const execRes = await fetch(`${API_BASE}/tools/execute-direct`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  tool: toolCall.tool,
-                  arguments: toolCall.arguments,
-                  cwd: workingDir
-                })
-              });
-              if (execRes.ok) {
-                const execData = await execRes.json();
-                toolResult = execData.result;
-                if ((toolCall.tool === "write_file" || toolCall.tool === "edit_file") && execData.result.success) {
-                  const filePath = toolCall.arguments.path;
-                  if (filePath && typeof filePath === "string") {
-                    writtenFiles.push(filePath);
-                    console.log("[ToolLoop] Recorded written file:", filePath);
-                  }
-                }
-              } else {
-                const errorText = await execRes.text();
-                lastError = `HTTP ${execRes.status}: ${errorText}`;
-                console.error(`[ToolLoop] Tool ${toolCall.tool} failed:`, lastError);
-              }
-            } catch (error) {
-              lastError = `Exception: ${String(error)}`;
-              console.error(`[ToolLoop] Tool ${toolCall.tool} exception:`, error);
-            }
-            if (toolResult && toolResult.success) {
-              console.log(`[ToolLoop] Tool ${toolCall.tool} succeeded`);
-              break;
-            } else {
-              retryCount++;
-              if (retryCount < maxRetries) {
-                console.log(`[ToolLoop] Tool ${toolCall.tool} failed, retrying... (${retryCount}/${maxRetries})`);
-                await new Promise((resolve) => setTimeout(resolve, 1e3));
-              }
-            }
-          }
-          if (toolResult) {
-            results.push({ tool: toolCall.tool, result: toolResult });
-            if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
-              updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, toolResult.success ? "completed" : "failed");
-            }
-          } else {
-            results.push({ tool: toolCall.tool, result: { success: false, output: "", error: lastError || "Unknown error after retries" } });
-            console.error(`[ToolLoop] Tool ${toolCall.tool} failed after ${maxRetries} attempts:`, lastError);
-            if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
-              updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, "failed");
-            }
-          }
-        }
-        console.log(`[ToolLoop] All tool calls completed, results:`, results);
-        console.log(`[ToolLoop] Preparing to call LLM again with tool results...`);
-        if (results.length !== toolCallsToExecute.length) {
-          console.error(`[ToolLoop] WARNING: Expected ${toolCallsToExecute.length} results but got ${results.length}`);
-          for (let i = results.length; i < toolCallsToExecute.length; i++) {
-            results.push({
-              tool: toolCallsToExecute[i].tool,
-              result: { success: false, output: "", error: "工具执行结果丢失" }
-            });
-          }
-        }
-        const resultsText = results.map((r2) => {
-          const status = r2.result?.success ? "成功" : "失败";
-          const output = r2.result?.output ? `
-输出: ${r2.result.output.substring(0, 1e3)}` : "";
-          const error = r2.result?.error ? `
-错误: ${r2.result.error.substring(0, 500)}` : "";
-          return `[${r2.tool}] ${status}${output}${error}`;
-        }).join("\n\n");
-        const toolResultMessage = `工具执行结果:
-
-${resultsText}`;
-        conversationHistory.push({ role: "user", content: toolResultMessage });
-        console.log("[ToolLoop] Added tool result to conversation history, now", conversationHistory.length, "messages");
-        const resultsSummary = results.map((r2) => {
-          const status = r2.result?.success ? "✅" : "❌";
-          const output = r2.result?.output ? `
-\`\`\`
-${r2.result.output.substring(0, 300)}${r2.result.output.length > 300 ? "..." : ""}
-\`\`\`` : "";
-          const error = r2.result?.error ? `
-⚠️ ${r2.result.error.substring(0, 200)}` : "";
-          return `${status} **${r2.tool}**${output}${error}`;
-        }).join("\n\n");
-        const allSuccess = results.every((r2) => r2.result?.success);
-        const successCount = results.filter((r2) => r2.result?.success).length;
-        const statusEmoji = allSuccess ? "✅" : successCount > 0 ? "⚠️" : "❌";
-        const readFiles = [];
-        const modifiedFiles = [];
-        const createdFiles = [];
-        const otherOperations = [];
-        results.forEach((r2) => {
-          const args = toolCallsToExecute.find((t2) => t2.tool === r2.tool)?.arguments;
-          const path2 = args?.path || "";
-          if (r2.tool === "read_file" && path2) {
-            readFiles.push(path2);
-          } else if ((r2.tool === "edit_file" || r2.tool === "write_file") && path2 && r2.result?.success) {
-            if (r2.tool === "write_file") {
-              createdFiles.push(path2);
-            } else {
-              modifiedFiles.push(path2);
-            }
-          } else {
-            otherOperations.push(`${r2.tool}${path2 ? ` (${path2})` : ""} - ${r2.result?.success ? "✅" : "❌"}`);
-          }
-        });
-        const fileOpsSummary = [];
-        if (readFiles.length > 0) {
-          fileOpsSummary.push(`📖 已读取: ${readFiles.length} 个文件`);
-        }
-        if (modifiedFiles.length > 0) {
-          fileOpsSummary.push(`✏️ 已修改: ${modifiedFiles.join(", ")}`);
-        }
-        if (createdFiles.length > 0) {
-          fileOpsSummary.push(`📝 已创建: ${createdFiles.join(", ")}`);
-        }
-        const detailedResults = results.map((r2, idx) => {
-          const toolStatus = r2.result?.success ? "✅ 成功" : "❌ 失败";
-          const output = r2.result?.output ? `
-   📤 输出:
-   \`\`\`
-   ${r2.result.output.substring(0, 300)}${r2.result.output.length > 300 ? "..." : ""}
-   \`\`\`` : "";
-          const error = r2.result?.error ? `
-   ⚠️ 错误: ${r2.result.error.substring(0, 200)}` : "";
-          return `**${idx + 1}. ${r2.tool}** - ${toolStatus}${output}${error}`;
-        }).join("\n\n");
-        if (assistantMessageIndex >= 0) {
-          const state = useStore.getState();
-          const msgs = [...state.messages];
-          if (msgs[assistantMessageIndex]) {
-            msgs[assistantMessageIndex] = {
-              ...msgs[assistantMessageIndex],
-              content: `**步骤 ${iterations}/${maxIterations}**
-
-${statusEmoji} **工具执行完成** (${successCount}/${results.length} 成功)
-
-${fileOpsSummary.length > 0 ? "📁 **文件操作:**\n" + fileOpsSummary.join("\n") + "\n\n" : ""}**详细结果:**
-${detailedResults}`
-            };
-            useStore.setState({ messages: msgs });
-          }
-        }
-        console.log("[ToolLoop] Tool execution cycle completed, continuing to next iteration...");
-        console.log("[ToolLoop] Current iteration:", iterations, "of max", maxIterations);
-      }
-      const reachedMaxIterations = iterations >= maxIterations;
-      if (!finalContent) {
-        const lastAssistantMsg = conversationHistory.slice().reverse().find((m2) => m2.role === "assistant");
-        if (lastAssistantMsg) {
-          finalContent = lastAssistantMsg.content;
-          console.log("[ToolLoop] Using last assistant message as finalContent");
-        } else {
-          finalContent = "处理完成（无最终响应）";
-        }
-      }
-      if (reachedMaxIterations) {
-        console.log("[ToolLoop] Reached max iterations, returning needsContinuation=true");
-        const maxIterMessage = `⏹️ **已达到最大迭代次数 (${maxIterations} 次)**
-
-📊 **执行统计:**
-- 总迭代次数: ${iterations}
-- 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(", ") : "无"}
-- 已读取文件: ${readFilesSet.size} 个
-
-🤔 **为什么任务没有完成?**
-AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
-- 读取更多文件
-- 执行更多命令
-- 进行更多修改
-
-💡 **下一步:**
-点击 **"继续执行"** 按钮让 AI 继续处理，或直接发送新消息。`;
-        return {
-          content: maxIterMessage + "\n\n---\n\n**AI 最后响应:**\n" + finalContent,
-          writtenFiles,
-          needsContinuation: true
-        };
-      }
-      console.log("[ToolLoop] Exiting while loop, returning finalContent:", finalContent.substring(0, 100));
-      return { content: finalContent, writtenFiles, needsContinuation: false, error: null, conversationHistory };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error("[ToolLoop] processWithTools error:", errorMessage);
-      console.error("[ToolLoop] Stack:", error instanceof Error ? error.stack : "no stack");
-      updateLastMessage(`执行出错: ${errorMessage}`);
-      return { content: `执行出错: ${errorMessage}`, writtenFiles, needsContinuation: false, error: errorMessage, conversationHistory: conversationHistory.length > 0 ? conversationHistory : apiMessages };
-    }
-  };
   const handleSendMessage = async (content2) => {
     if (!content2.trim()) return;
     const providerForModel = providers.find(
@@ -88828,21 +89311,28 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
     addMessage({ role: "user", content: content2 });
     setIsLoading(true);
     if (commandResult && commandResult.success) {
-      const outputMsg = `**命令执行成功**\\n\\n\`\`\`\\n${commandResult.output}\\n\`\`\`\\n\\n*当前目录: ${commandResult.cwd}*`;
+      const outputMsg = `**命令执行成功**
+
+\`\`\`
+${commandResult.output}
+\`\`\`
+
+*当前目录: ${commandResult.cwd}*`;
       addMessage({ role: "assistant", content: outputMsg });
       setIsLoading(false);
       return;
     }
     if (commandResult && !commandResult.success) {
-      const errorMsg = `**命令执行失败**\\n\\n错误: ${commandResult.error || "未知错误"}\\n\\n*当前目录: ${commandResult.cwd}*`;
+      const errorMsg = `**命令执行失败**
+
+错误: ${commandResult.error || "未知错误"}
+
+*当前目录: ${commandResult.cwd}*`;
       addMessage({ role: "assistant", content: errorMsg });
       setIsLoading(false);
       return;
     }
-    const isCodeRequest = chatMode === "agent";
-    if (!isCodeRequest) {
-      addMessage({ role: "assistant", content: "" });
-    }
+    const isAgentMode = chatMode === "agent";
     try {
       let currentCwd = projectPath || "/";
       if (!currentCwd || currentCwd === "/") {
@@ -88860,107 +89350,41 @@ AI 可能需要更多步骤来完成复杂的任务。任务可能需要:
       if (projectPath) {
         projectContextStr = await fetchProjectContext(projectPath);
       }
-      const systemPrompt = isCodeRequest ? buildSystemPrompt(commands, tools, currentCwd, projectContextStr) : buildChatSystemPrompt(currentCwd, projectContextStr);
+      const systemPrompt = isAgentMode ? buildSystemPrompt(commands, tools, currentCwd, projectContextStr) : buildChatSystemPrompt(currentCwd, projectContextStr);
       const apiMessages = [];
       if (systemPrompt) {
-        apiMessages.push({ role: "user", content: systemPrompt });
-        apiMessages.push({ role: "assistant", content: isCodeRequest ? " understood. I will use the available commands and tools when needed." : " understood. I will answer your questions clearly and concisely." });
+        apiMessages.push({ role: "system", content: systemPrompt });
       }
       messages2.forEach((m2) => {
-        apiMessages.push({ role: m2.role, content: m2.content });
+        if (m2.role !== "system") {
+          apiMessages.push({ role: m2.role, content: m2.content });
+        }
       });
       apiMessages.push({ role: "user", content: content2 });
-      if (isCodeRequest) {
-        if (pendingContinuation) {
-          console.log("[handleSendMessage] Continuing from pending state...");
-          const result = await processWithTools(
-            apiMessages,
-            pendingContinuation.userOriginalRequest,
-            currentCwd,
-            providerApiKey,
-            providerApiUrl,
-            100,
-            // maxIterations
-            true,
-            // isContinuation
-            {
-              conversationHistory: pendingContinuation.conversationHistory,
-              iterations: pendingContinuation.iterations,
-              writtenFiles: pendingContinuation.writtenFiles
-            }
-          );
-          setPendingContinuation(null);
-          await handleProcessResult(result, content2, currentSession);
-        } else {
-          console.log("[handleSendMessage] Calling processWithTools...");
-          const result = await processWithTools(apiMessages, content2, currentCwd, providerApiKey, providerApiUrl);
-          console.log("[handleSendMessage] processWithTools returned:", result.content?.substring(0, 100));
-          console.log("[handleSendMessage] writtenFiles:", result.writtenFiles);
-          if (result.needsContinuation) {
-            console.log("[handleSendMessage] Tool execution needs continuation");
-            setPendingContinuation({
-              conversationHistory: result.conversationHistory || [],
-              userOriginalRequest: content2,
-              iterations: 100,
-              writtenFiles: result.writtenFiles,
-              lastContent: result.content
-            });
-            addMessage({
-              role: "assistant",
-              content: `${result.content}
-
----
-
-⚠️ **已达到最大迭代次数（100次）**
-
-任务可能尚未完成。请选择：
-- 点击 **"继续执行"** 按钮继续处理
-- 或直接发送新消息以其他方式继续`,
-              needsAction: "continue"
-            });
-            setIsLoading(false);
-            return;
-          }
-          if (result.error) {
-            console.log("[handleSendMessage] Tool execution encountered error");
-            setPendingContinuation({
-              conversationHistory: result.conversationHistory || [],
-              userOriginalRequest: content2,
-              iterations: 100,
-              // Assume max reached or error occurred
-              writtenFiles: result.writtenFiles,
-              lastContent: result.content
-            });
-            addMessage({
-              role: "assistant",
-              content: `${result.content}
-
----
-
-⚠️ **执行过程中发生异常**
-
-任务可能尚未完成。请选择：
-- 点击 **"继续执行"** 按钮尝试继续处理
-- 或直接发送新消息以其他方式继续`,
-              needsAction: "continue"
-            });
-            setIsLoading(false);
-            return;
-          }
-          await handleProcessResult(result, content2, currentSession);
-        }
-        return;
+      if (isAgentMode) {
+        console.log("[handleSendMessage] Agent mode - using useAgentMode hook");
+        await processAgentMessage(content2, apiMessages, {
+          providerApiKey,
+          providerApiUrl,
+          model,
+          currentCwd,
+          projectPath,
+          currentSession,
+          localSessions,
+          commands: commands.map((c2) => ({ name: c2.name, description: c2.responsibility })),
+          tools: tools.map((t2) => ({ name: t2.name, description: t2.responsibility }))
+        });
       } else {
-        console.log("[handleSendMessage] Chat mode - using processWithTools with limited iterations");
-        addMessage({ role: "assistant", content: "" });
-        const result = await processWithTools(apiMessages, content2, currentCwd, providerApiKey, providerApiUrl, 5);
-        console.log("[handleSendMessage] Chat mode processWithTools returned:", result.content?.substring(0, 100));
-        updateLastMessage(result.content);
-        updateTokens(content2.length / 4, result.content.length / 4);
-        if (currentSession) {
-          const updatedMessages = [...useStore.getState().messages];
-          window.api.saveConversation(currentSession.id, updatedMessages);
-        }
+        console.log("[handleSendMessage] Chat mode - using useChatMode hook");
+        await processChatMessage(content2, apiMessages, {
+          providerApiKey,
+          providerApiUrl,
+          model,
+          currentCwd,
+          projectPath,
+          currentSession,
+          localSessions
+        });
       }
     } catch (error) {
       console.error("[handleSendMessage] Error caught:", error);

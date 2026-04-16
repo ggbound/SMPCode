@@ -10,6 +10,7 @@ import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
 import SessionSidebar from './components/SessionSidebar'
 import { t } from './i18n'
+import { useChatMode, useAgentMode } from './hooks'
 
 const API_BASE = 'http://localhost:3847/api'
 
@@ -59,6 +60,15 @@ When you need to use a tool, output ONLY the JSON code block:
    - "查看一下这个文件" → Use read_file
    - "搜索一下这段代码" → Use search_code
 4. For greetings, general coding questions, or explanations, do NOT use tools
+5. **CRITICAL - READ-ONLY MODE**: You are in CHAT MODE which is READ-ONLY. You CANNOT create, write, edit, append, delete, or modify files in any way. This includes:
+   - NO write_file, edit_file, append_file operations
+   - NO delete_file or file removal operations
+   - NO using execute_bash to write/create/modify/delete files (e.g., NO 'cat >', NO 'echo >', NO 'rm', NO 'mkdir' for creating files)
+   - If the user asks you to write, create, edit, or delete files (e.g., "写入文件", "创建文件", "修改文件", "删除文件"), you MUST:
+     * Explain that file modification is not supported in chat mode
+     * Suggest switching to "智能体模式" (Agent Mode) for file operations
+     * Do NOT attempt to use any tool to modify files
+6. **execute_bash usage**: ONLY use execute_bash when user explicitly asks to run commands like npm, git, etc. NEVER use it for file operations.
 
 Please provide helpful, accurate, and concise responses to the user's questions.
 `
@@ -95,7 +105,8 @@ function buildSystemPrompt(
   prompt += `2. BE PROACTIVE: Take initiative to complete tasks. If you see issues or improvements, suggest and implement them.\n`
   prompt += `3. EXPLAIN YOUR ACTIONS: After using tools, briefly summarize what you did and why.\n`
   prompt += `4. THINK STEP BY STEP: For complex tasks, break them down into steps and execute them sequentially.\n`
-  prompt += `5. VERIFY BEFORE PROCEEDING: After making changes, verify they work as expected before declaring completion.\n\n`
+  prompt += `5. VERIFY BEFORE PROCEEDING: After making changes, verify they work as expected before declaring completion.\n`
+  prompt += `6. IGNORE PREVIOUS MODE LIMITATIONS: You are now in AGENT MODE with FULL tool access. Ignore any previous messages about "cannot delete files" or "not supported in chat mode". You CAN and SHOULD directly execute file operations including delete, write, edit when requested.\n\n`
 
   prompt += `=== AVAILABLE TOOLS ===\n`
   prompt += `You have access to the following tools. Use them by outputting JSON code blocks:\n\n`
@@ -233,13 +244,13 @@ function buildSystemPrompt(
   return prompt
 }
 
-interface Message {
+// Extended Message interface for API calls (includes 'tool' role)
+interface ApiMessage {
   role: 'user' | 'assistant' | 'tool'
   content: string
   tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>
   tool_call_id?: string
   name?: string
-  needsAction?: 'continue' // 标记消息需要用户操作（如继续执行）
 }
 
 function App() {
@@ -261,6 +272,10 @@ function App() {
   // Session sidebar state - 默认关闭，显示文件浏览器
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(false)
   const [localSessions, setLocalSessions] = useState<Session[]>([])
+
+  // Initialize mode-specific hooks
+  const { processChatMessage, stopGeneration: stopChatGeneration } = useChatMode()
+  const { processAgentMessage, stopGeneration: stopAgentGeneration, buildSystemPrompt: buildAgentSystemPrompt } = useAgentMode()
 
   const {
     apiKey,
@@ -420,10 +435,10 @@ function App() {
 
   // Stop generation handler
   const handleStopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-    }
+    // Stop both chat and agent mode generations
+    stopChatGeneration()
+    stopAgentGeneration()
+    
     // Clear pending continuation to prevent it from being executed on next message
     if (pendingContinuation) {
       console.log('[handleStopGeneration] Clearing pending continuation due to user stop')
@@ -432,7 +447,7 @@ function App() {
     setIsLoading(false)
   }
 
-  // Continue execution handler
+  // Continue execution handler - simplified to work like chat mode
   const handleContinueExecution = async () => {
     if (!pendingContinuation) {
       console.error('[handleContinueExecution] No pending continuation')
@@ -444,10 +459,10 @@ function App() {
 
     try {
       // Find provider by selected model
-      const providerForModel = providers.find(p => 
+      const providerForModel = providers.find(p =>
         p.enabled && p.models.some(m => m.id === model)
       )
-      
+
       // Get API key and URL from the provider that has the selected model
       const providerApiKey = providerForModel?.apiKey
       const providerApiUrl = providerForModel?.apiUrl
@@ -472,98 +487,25 @@ function App() {
         }
       }
 
-      // Save pending continuation data first
-      const userOriginalRequest = pendingContinuation.userOriginalRequest
-      const currentIterations = pendingContinuation.iterations
-      const currentWrittenFiles = pendingContinuation.writtenFiles
-      const currentConversationHistory = pendingContinuation.conversationHistory
-
-      // Build system prompt
-      let projectContextStr = ''
-      if (projectPath) {
-        projectContextStr = await fetchProjectContext(projectPath)
-      }
-      const systemPrompt = buildSystemPrompt(commands, tools, currentCwd, projectContextStr)
-
-      // Prepare messages - use conversationHistory from pendingContinuation if available
-      let apiMessages: Message[] = []
-      
-      if (currentConversationHistory && currentConversationHistory.length > 0) {
-        // Use saved conversation history
-        apiMessages = [...currentConversationHistory]
-        console.log('[handleContinueExecution] Using saved conversation history, length:', apiMessages.length)
-      } else {
-        // Build from scratch
-        if (systemPrompt) {
-          apiMessages.push({ role: 'user', content: systemPrompt })
-          apiMessages.push({ role: 'assistant', content: ' understood. I will use the available commands and tools when needed.' })
-        }
-
-        // Add existing messages
-        messages.forEach(m => {
-          apiMessages.push({ role: m.role, content: m.content })
-        })
-      }
-
-      // Add continuation instruction
-      apiMessages.push({
-        role: 'user',
-        content: '请继续完成之前的任务。如果需要，可以使用工具继续处理。'
-      })
-
-      console.log('[handleContinueExecution] Continuing with iterations:', currentIterations, 'writtenFiles:', currentWrittenFiles.length)
-
-      // Continue execution - reset iterations to 0 for new batch, but keep conversation history
-      const result = await processWithTools(
-        apiMessages,
-        userOriginalRequest,
-        currentCwd,
-        providerApiKey,
-        providerApiUrl,
-        100, // maxIterations - this is the max for this batch
-        true, // isContinuation
-        {
-          conversationHistory: currentConversationHistory,
-          iterations: 0, // Reset iterations for new batch
-          writtenFiles: currentWrittenFiles
-        }
-      )
-
       // Clear pending continuation
       setPendingContinuation(null)
 
-      // Handle result
-      await handleProcessResult(result, userOriginalRequest, currentSession)
-
-      // Check if still needs continuation
-      if (result.needsContinuation || result.error) {
-        setPendingContinuation({
-          conversationHistory: result.conversationHistory || [],
-          userOriginalRequest: userOriginalRequest,
-          iterations: 100,
-          writtenFiles: result.writtenFiles,
-          lastContent: result.content
-        })
-        addMessage({
-          role: 'assistant',
-          content: `${result.content}\n\n---\n\n⚠️ **${result.error ? '执行过程中发生异常' : '已达到最大迭代次数（100次）'}**\n\n任务可能尚未完成。请选择：\n- 点击 **"继续执行"** 按钮继续处理\n- 或直接发送新消息以其他方式继续`,
-          needsAction: 'continue'
-        })
-      } else {
-        // Task completed successfully - add a new clean message without the continue button
-        console.log('[handleContinueExecution] Task completed successfully')
-        // Clear needsAction from all messages to hide all "继续执行" buttons
-        const clearedMessages = messages.map(msg => ({
-          ...msg,
-          needsAction: undefined
-        }))
-        setMessages(clearedMessages)
-        // Add a clear completion message
-        addMessage({
-          role: 'assistant',
-          content: `## ✅ 任务完成\n\n${result.content}`
-        })
-      }
+      // Simply continue with agent mode - no upper limit
+      await processAgentMessage(
+        pendingContinuation.userOriginalRequest,
+        pendingContinuation.conversationHistory as import('./store').Message[],
+        {
+          providerApiKey,
+          providerApiUrl,
+          model,
+          currentCwd,
+          projectPath,
+          currentSession,
+          localSessions,
+          commands: commands.map(c => ({ name: c.name, description: c.responsibility })),
+          tools: tools.map(t => ({ name: t.name, description: t.responsibility }))
+        }
+      )
     } catch (error) {
       console.error('[handleContinueExecution] Error:', error)
       updateLastMessage(`继续执行出错: ${String(error)}`)
@@ -599,7 +541,7 @@ function App() {
 
   // Handle process result (extracted to avoid duplication)
   const handleProcessResult = async (
-    result: { content: string; writtenFiles: string[]; needsContinuation?: boolean; error?: string | null; conversationHistory?: Message[] },
+    result: { content: string; writtenFiles: string[]; needsContinuation?: boolean; error?: string | null; conversationHistory?: import('./store').Message[] },
     userContent: string,
     sessionId: string | null
   ) => {
@@ -1031,794 +973,14 @@ function App() {
 
   // State for pending continuation
   const [pendingContinuation, setPendingContinuation] = useState<{
-    conversationHistory: Message[];
+    conversationHistory: ApiMessage[];
     userOriginalRequest: string;
     iterations: number;
     writtenFiles: string[];
     lastContent: string;
   } | null>(null)
 
-  // Tool calling loop for automatic code editing
-  const processWithTools = async (
-    apiMessages: Message[],
-    userContent: string,
-    workingDir: string,
-    providerApiKey: string,
-    providerApiUrl: string | undefined,
-    maxIterations = 100,
-    isContinuation: boolean = false,
-    previousState?: {
-      conversationHistory: Message[];
-      iterations: number;
-      writtenFiles: string[];
-    }
-  ): Promise<{ content: string; writtenFiles: string[]; needsContinuation?: boolean; error?: string | null; conversationHistory?: Message[] }> => {
-    console.log('[processWithTools] Starting execution, isContinuation:', isContinuation)
-    // 如果是继续执行，恢复之前的状态
-    let iterations = previousState?.iterations || 0
-    // Fix: check if conversationHistory has items, not just if it exists (empty array is truthy)
-    let conversationHistory = (previousState?.conversationHistory && previousState.conversationHistory.length > 0) 
-      ? [...previousState.conversationHistory] 
-      : [...apiMessages]
-    console.log('[processWithTools] conversationHistory length:', conversationHistory.length, 'from previousState:', previousState?.conversationHistory?.length)
-    const writtenFiles: string[] = previousState?.writtenFiles ? [...previousState.writtenFiles] : []
-    let finalContent = ''
-    // 跟踪连续截断次数
-    let consecutiveTruncations = 0
-    const MAX_CONSECUTIVE_TRUNCATIONS = 3
-    // 保存用户原始请求用于上下文压缩
-    const userOriginalRequest = apiMessages[apiMessages.length - 1]?.content || ''
-    // 跟踪已读取的文件内容摘要
-    const fileReadSummaries: string[] = []
-    // 跟踪已读取的文件路径，防止重复读取
-    const readFilesSet = new Set<string>()
-    // 跟踪执行计划
-    let executionPlan: string[] = []
-    // 跟踪已完成的步骤
-    const completedSteps: string[] = []
-    // 任务记忆：存储关键分析结论和修复策略
-    const taskMemory: {
-      problemAnalysis?: string;      // 问题分析
-      rootCause?: string;            // 根本原因
-      fixStrategy?: string;          // 修复策略
-      filesToModify?: string[];      // 需要修改的文件列表
-      completedFixes?: string[];     // 已完成的修复
-      errorsFound?: string[];        // 发现的错误
-    } = {}
 
-    // Add initial assistant message for tool calling progress - only if not continuation
-    let assistantMessageIndex = -1
-    if (!isContinuation) {
-      // TRAE Builder模式：添加带有isBuilder标记的助手消息
-      addMessage({ 
-        role: 'assistant', 
-        content: '',
-        isBuilder: true,
-        thinkingSteps: []
-      })
-      assistantMessageIndex = useStore.getState().messages.length - 1
-    } else {
-      // 找到最后一条助手消息
-      const msgs = useStore.getState().messages
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'assistant') {
-          assistantMessageIndex = i
-          break
-        }
-      }
-    }
-
-    // Create new abort controller for this request
-    abortControllerRef.current = new AbortController()
-
-    // Wrap entire process in try-catch to ensure we always return a result
-    try {
-      console.log('[ToolLoop] Starting processWithTools, maxIterations:', maxIterations)
-      while (iterations < maxIterations) {
-      iterations++
-      console.log('[ToolLoop] Iteration', iterations, '/', maxIterations)
-
-      // Check if aborted
-      if (abortControllerRef.current.signal.aborted) {
-        throw new Error('Generation stopped by user')
-      }
-
-      // Call LLM
-      console.log('[ToolLoop] Calling LLM with', conversationHistory.length, 'messages')
-      
-      // 限制对话历史长度，防止超过模型上下文限制
-      const MAX_HISTORY_MESSAGES = 20
-      if (conversationHistory.length > MAX_HISTORY_MESSAGES) {
-        console.log('[ToolLoop] Conversation history too long, compressing...')
-        
-        // 收集已读取的文件信息
-        const readFileResults = conversationHistory
-          .filter((m, i) => m.role === 'user' && i > 0)
-          .map(m => {
-            const match = m.content.match(/工具执行结果.*?read_file.*?```\n([\s\S]*?)```/)
-            if (match) {
-              const fileMatch = m.content.match(/path[:\s]*([^\s]+)/)
-              const path = fileMatch ? fileMatch[1] : 'unknown'
-              const preview = match[1].substring(0, 500)
-              return { path, preview }
-            }
-            return null
-          })
-          .filter(Boolean)
-          .slice(-5) // 只保留最近5个文件
-        
-        // 构建智能上下文摘要
-        const contextSummary = readFileResults.length > 0 
-          ? readFileResults.map(r => `已读取文件: ${r?.path}\n内容摘要:\n${r?.preview}...`).join('\n\n')
-          : '（无文件读取记录）'
-        
-        // 保留系统提示（前2条）
-        const systemMessages = conversationHistory.slice(0, 2)
-        
-        // 保留最近的消息（工具调用和结果）
-        const recentMessages = conversationHistory.slice(-8)
-        
-        // 构建任务记忆摘要
-        const taskMemorySummary = []
-        if (taskMemory.problemAnalysis) {
-          taskMemorySummary.push(`【问题分析】\n${taskMemory.problemAnalysis.substring(0, 300)}`)
-        }
-        if (taskMemory.rootCause) {
-          taskMemorySummary.push(`【根本原因】\n${taskMemory.rootCause.substring(0, 300)}`)
-        }
-        if (taskMemory.fixStrategy) {
-          taskMemorySummary.push(`【修复策略】\n${taskMemory.fixStrategy.substring(0, 300)}`)
-        }
-        if (taskMemory.filesToModify && taskMemory.filesToModify.length > 0) {
-          const remainingFiles = taskMemory.filesToModify.filter(f => !taskMemory.completedFixes?.includes(f))
-          taskMemorySummary.push(`【待修复文件】\n${remainingFiles.join(', ') || '无'}\n【已完成】\n${taskMemory.completedFixes?.join(', ') || '无'}`)
-        }
-        if (taskMemory.errorsFound && taskMemory.errorsFound.length > 0) {
-          taskMemorySummary.push(`【发现的错误】\n${taskMemory.errorsFound.slice(-3).join('\n')}`)
-        }
-        
-        // 构建压缩后的上下文
-        const compressedContext = {
-          role: 'user' as const,
-          content: `[系统提示：对话历史已被智能压缩以节省空间。以下是关键信息摘要：
-
-【用户原始请求】
-${userOriginalRequest.substring(0, 500)}${userOriginalRequest.length > 500 ? '...' : ''}
-
-${taskMemorySummary.length > 0 ? taskMemorySummary.join('\n\n') + '\n\n' : ''}【已读取的文件】
-${contextSummary}
-
-【当前任务状态】
-- 已迭代次数: ${iterations}
-- 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(', ') : '无'}
-- 任务进行中，请继续完成用户请求
-
-⚠️ 重要提醒：
-- 你已经分析过问题并制定了修复策略
-- 不要重复读取已分析的文件
-- 基于已有分析继续执行修复
-- 如果修复完成，请明确总结修改内容65
-
-可用工具：
-- read_file: 读取文件，支持 offset 和 limit 参数
-- write_file: 写入文件  
-- edit_file: 编辑文件
-- execute_bash: 执行命令
-
-工具调用格式：
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
-
-请基于以上信息继续完成任务。]`
-        }
-        
-        conversationHistory = [...systemMessages, compressedContext, ...recentMessages]
-        console.log('[ToolLoop] Compressed conversation history to', conversationHistory.length, 'messages')
-      }
-      
-      let data
-      try {
-        // 定义可用的工具
-        const availableTools = [
-          {
-            type: 'function',
-            function: {
-              name: 'read_file',
-              description: 'Read file contents',
-              parameters: {
-                type: 'object',
-                properties: {
-                  path: { type: 'string', description: 'File path' },
-                  offset: { type: 'number', description: 'Start line offset' },
-                  limit: { type: 'number', description: 'Number of lines to read' }
-                },
-                required: ['path']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'write_file',
-              description: 'Create or overwrite files',
-              parameters: {
-                type: 'object',
-                properties: {
-                  path: { type: 'string', description: 'File path' },
-                  content: { type: 'string', description: 'File content' }
-                },
-                required: ['path', 'content']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'edit_file',
-              description: 'Replace specific text in a file',
-              parameters: {
-                type: 'object',
-                properties: {
-                  path: { type: 'string', description: 'File path' },
-                  old_string: { type: 'string', description: 'Text to replace' },
-                  new_string: { type: 'string', description: 'Replacement text' }
-                },
-                required: ['path', 'old_string', 'new_string']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'append_file',
-              description: 'Append content to existing file',
-              parameters: {
-                type: 'object',
-                properties: {
-                  path: { type: 'string', description: 'File path' },
-                  content: { type: 'string', description: 'Content to append' }
-                },
-                required: ['path', 'content']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'delete_file',
-              description: 'Delete a file or directory',
-              parameters: {
-                type: 'object',
-                properties: {
-                  path: { type: 'string', description: 'File or directory path' }
-                },
-                required: ['path']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'list_directory',
-              description: 'List directory contents',
-              parameters: {
-                type: 'object',
-                properties: {
-                  path: { type: 'string', description: 'Directory path' }
-                },
-                required: ['path']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'execute_bash',
-              description: 'Execute shell commands',
-              parameters: {
-                type: 'object',
-                properties: {
-                  command: { type: 'string', description: 'Command to execute' },
-                  cwd: { type: 'string', description: 'Working directory' }
-                },
-                required: ['command']
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'search_code',
-              description: 'Search for code patterns',
-              parameters: {
-                type: 'object',
-                properties: {
-                  query: { type: 'string', description: 'Search query' }
-                },
-                required: ['query']
-              }
-            }
-          }
-        ]
-
-        const res = await fetch(`${API_BASE}/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            apiKey: providerApiKey,
-            model,
-            messages: conversationHistory,
-            tools: availableTools,
-            tool_choice: 'auto',
-            stream: false,
-            apiUrl: providerApiUrl
-          }),
-          signal: abortControllerRef.current.signal
-        })
-
-        if (!res.ok) {
-          const errorData = await res.json()
-          console.error('[ToolLoop] LLM API error:', res.status, errorData)
-          throw new Error(errorData.error || `HTTP error! status: ${res.status}`)
-        }
-
-        data = await res.json()
-      } catch (llmError) {
-        console.error('[ToolLoop] LLM call failed:', llmError)
-        throw llmError
-      }
-
-      // 处理 content 可能是字符串化的 JSON 数组的情况
-      let content = data.content
-      if (typeof content === 'string') {
-        try {
-          const parsed = JSON.parse(content)
-          if (Array.isArray(parsed)) {
-            content = parsed
-          }
-        } catch (e) {
-          // 不是 JSON 字符串，保持原样
-        }
-      }
-      
-      const responseText = Array.isArray(content) ? (content[0]?.text || '') : (content || '')
-      const textContent = typeof responseText === 'string' ? responseText : JSON.stringify(responseText)
-
-      console.log('AI Response:', textContent.substring(0, 500))
-      console.log('[ToolLoop] data.tool_calls:', data.tool_calls ? JSON.stringify(data.tool_calls).substring(0, 500) : 'undefined')
-
-      let toolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
-
-      // Check if the API returned structured tool_calls
-      if (data.tool_calls && Array.isArray(data.tool_calls) && data.tool_calls.length > 0) {
-        console.log('[ToolLoop] Found structured tool_calls:', data.tool_calls.length)
-        toolCalls = data.tool_calls.map((tc: { function?: { name: string; arguments: string }; name?: string; arguments?: Record<string, unknown> }) => {
-          if (tc.function) {
-            return {
-              tool: tc.function.name,
-              arguments: typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments) : tc.function.arguments
-            }
-          } else if (tc.name) {
-            return { tool: tc.name, arguments: tc.arguments || {} }
-          }
-          return null
-        }).filter(Boolean) as Array<{ tool: string; arguments: Record<string, unknown> }>
-      } else {
-        // Parse tool calls from the response text as fallback
-        console.log('[ToolLoop] No structured tool_calls, parsing from text...')
-        const parsedToolCalls = parseToolCalls(textContent)
-        toolCalls = parsedToolCalls || []
-      }
-
-      // 将AI响应添加到对话历史
-      conversationHistory.push({ role: 'assistant', content: textContent })
-
-      if (toolCalls.length === 0) {
-        // 检查AI是否表达了使用工具的意图但没有正确调用
-        const toolIntentPatterns = [
-          /让.*读取.*文件/i,
-          /让.*获取.*文件/i,
-          /让我.*读取/i,
-          /让我.*获取/i,
-          /让我.*查看/i,
-          /让我.*检查/i,
-          /让我.*列出/i,
-          /使用.*read_file/i,
-          /使用.*write_file/i,
-          /使用.*edit_file/i,
-          /使用.*execute_bash/i,
-          /使用.*list_directory/i,
-          /使用.*search_code/i,
-          /继续读取/i,
-          /继续获取/i,
-          /查看.*目录/i,
-          /查看.*文件/i,
-          /检查.*目录/i,
-          /检查.*文件/i,
-          /列出.*目录/i,
-          /列出.*文件/i
-        ]
-        
-        const hasToolIntent = toolIntentPatterns.some(pattern => pattern.test(textContent))
-        
-        // 检测是否有不完整的工具调用（JSON 被截断）
-        const jsonBlockStart = textContent.indexOf('```json')
-        const hasIncompleteToolCall = jsonBlockStart !== -1 && 
-                                      !textContent.includes('```', jsonBlockStart + 7)
-        
-        if (hasIncompleteToolCall) {
-          consecutiveTruncations++
-          console.log(`[ToolLoop] Detected incomplete tool call (truncated JSON), count: ${consecutiveTruncations}`)
-          
-          if (consecutiveTruncations >= MAX_CONSECUTIVE_TRUNCATIONS) {
-            console.log('[ToolLoop] Too many consecutive truncations, stopping loop')
-            finalContent = textContent + '\n\n⚠️ AI 响应连续多次被截断，请尝试：\n1. 简化您的请求\n2. 使用支持更长上下文的模型\n3. 减少一次请求中需要处理的文件数量'
-            updateLastMessage(finalContent)
-            break
-          }
-          
-          // 提示 AI 重新调用，但简化提示
-          const promptMessage = `请使用简洁的格式调用工具（确保 JSON 完整）：
-
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\``
-          conversationHistory.push({ role: 'user', content: promptMessage })
-          updateLastMessage(`${textContent}\n\n🔄 响应截断，重新尝试 (${consecutiveTruncations}/${MAX_CONSECUTIVE_TRUNCATIONS})...`)
-          continue
-        }
-        
-        // 重置截断计数（成功解析到工具调用）
-        consecutiveTruncations = 0
-        
-        if (hasToolIntent && iterations < maxIterations - 1) {
-          // AI 想使用工具但没有正确调用，提示它使用正确的格式
-          console.log('[ToolLoop] AI expressed tool intent but no tool calls found, prompting for correct format')
-          const promptMessage = `请使用以下格式调用工具：
-
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
-
-可用工具：
-- read_file: 读取文件，参数: path, offset, limit
-- write_file: 写入文件，参数: path, content
-- edit_file: 编辑文件，参数: path, old_string, new_string
-- execute_bash: 执行命令，参数: command
-
-请直接输出工具调用代码块。`
-          
-          conversationHistory.push({ role: 'user', content: promptMessage })
-          updateLastMessage(`${textContent}\n\n🔄 等待工具调用...`)
-          continue  // 继续循环，让AI重新响应
-        }
-        
-        // No tool calls, task is complete
-        console.log('[ToolLoop] No tool calls found, breaking loop')
-        console.log('[ToolLoop] textContent:', textContent.substring(0, 200))
-        console.log('[ToolLoop] data:', JSON.stringify(data).substring(0, 200))
-        finalContent = textContent
-        updateLastMessage(textContent)
-        break
-      }
-
-      // 检查是否有重复读取的文件
-      const duplicateReads: string[] = []
-      const filteredToolCalls = toolCalls.filter((t) => {
-        if (t.tool === 'read_file') {
-          const path = (t.arguments as { path?: string }).path
-          if (path && readFilesSet.has(path)) {
-            duplicateReads.push(path)
-            return false // 过滤掉重复读取
-          }
-          if (path) {
-            readFilesSet.add(path)
-          }
-        }
-        return true
-      })
-      
-      // 如果有重复读取，添加警告到对话历史
-      if (duplicateReads.length > 0) {
-        const warningMessage = `⚠️ 警告: 检测到重复读取以下文件，已跳过: ${duplicateReads.join(', ')}\n\n请基于已读取的内容继续分析，不要重复读取。如果信息不足，请尝试其他方法或总结当前发现。`
-        conversationHistory.push({ role: 'user', content: warningMessage })
-        console.log('[ToolLoop] Blocked duplicate reads:', duplicateReads)
-      }
-      
-      // 使用过滤后的工具调用
-      const toolCallsToExecute = filteredToolCalls.length > 0 ? filteredToolCalls : toolCalls
-      
-      // TRAE风格：为每个工具调用创建步骤
-      const currentSteps: Step[] = []
-      if (assistantMessageIndex >= 0) {
-        // 将之前的运行中步骤标记为完成
-        const existingSteps = useStore.getState().messages[assistantMessageIndex]?.steps || []
-        existingSteps.forEach(step => {
-          if (step.status === 'running') {
-            updateStepStatus(assistantMessageIndex, step.id, 'completed')
-          }
-        })
-        
-        // 为当前迭代的每个工具创建步骤
-        toolCallsToExecute.forEach((toolCall, idx) => {
-          const step: Step = {
-            id: `step-${iterations}-${idx}-${Date.now()}`,
-            title: `执行 ${toolCall.tool}`,
-            status: idx === 0 ? 'running' : 'pending',
-            timestamp: Date.now(),
-            stepNumber: iterations,
-            totalSteps: maxIterations,
-            action: '正在调用工具',
-            toolName: toolCall.tool,
-            toolArgs: toolCall.arguments as Record<string, any>
-          }
-          addStepToMessage(assistantMessageIndex, step)
-          currentSteps.push(step)
-        })
-      }
-      
-      // Execute tool calls with retry and error handling
-      const results: Array<{ tool: string; result: { success: boolean; output: string; error?: string } }> = []
-      
-      console.log(`[ToolLoop] Starting execution of ${toolCallsToExecute.length} tool calls`)
-      
-      for (let toolIdx = 0; toolIdx < toolCallsToExecute.length; toolIdx++) {
-        const toolCall = toolCallsToExecute[toolIdx]
-        
-        // 更新当前步骤状态为运行中
-        if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
-          // 将之前的步骤标记为完成
-          if (toolIdx > 0 && currentSteps[toolIdx - 1]) {
-            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx - 1].id, 'completed')
-          }
-          updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, 'running')
-        }
-        const maxRetries = 3
-        const toolTimeout = 60000 // 60秒超时
-        let retryCount = 0
-        let lastError: string = ''
-        let toolResult: { success: boolean; output: string; error?: string } | null = null
-        
-        // 记录工具开始执行时间
-        const toolStartTime = Date.now()
-        console.log(`[ToolLoop] Tool ${toolCall.tool} started at`, toolStartTime)
-      
-        while (retryCount < maxRetries) {
-          // 检查是否超时
-          const elapsedTime = Date.now() - toolStartTime
-          if (elapsedTime > toolTimeout) {
-            lastError = `工具执行超时 (${toolTimeout/1000}秒)`
-            console.error(`[ToolLoop] Tool ${toolCall.tool} timeout after ${elapsedTime}ms`)
-            break
-          }
-          try {
-            console.log(`[ToolLoop] Executing tool: ${toolCall.tool} (attempt ${retryCount + 1}/${maxRetries})`, toolCall.arguments)
-            console.log(`[ToolLoop] Sending request to API...`)
-      
-            const execRes = await fetch(`${API_BASE}/tools/execute-direct`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                tool: toolCall.tool,
-                arguments: toolCall.arguments,
-                cwd: workingDir
-              })
-            })
-      
-            if (execRes.ok) {
-              const execData = await execRes.json()
-              toolResult = execData.result
-      
-              // 记录成功写入的文件，用于后续自动打开
-              if ((toolCall.tool === 'write_file' || toolCall.tool === 'edit_file') && execData.result.success) {
-                const filePath = (toolCall.arguments as { path?: string }).path
-                if (filePath && typeof filePath === 'string') {
-                  writtenFiles.push(filePath)
-                  console.log('[ToolLoop] Recorded written file:', filePath)
-                }
-              }
-            } else {
-              const errorText = await execRes.text()
-              lastError = `HTTP ${execRes.status}: ${errorText}`
-              console.error(`[ToolLoop] Tool ${toolCall.tool} failed:`, lastError)
-            }
-          } catch (error) {
-            lastError = `Exception: ${String(error)}`
-            console.error(`[ToolLoop] Tool ${toolCall.tool} exception:`, error)
-          }
-      
-          // Check if the tool executed successfully
-          if (toolResult && toolResult.success) {
-            console.log(`[ToolLoop] Tool ${toolCall.tool} succeeded`)
-            break
-          } else {
-            retryCount++
-            if (retryCount < maxRetries) {
-              console.log(`[ToolLoop] Tool ${toolCall.tool} failed, retrying... (${retryCount}/${maxRetries})`)
-              // Wait before retrying
-              await new Promise(resolve => setTimeout(resolve, 1000))
-            }
-          }
-        }
-      
-        // Add result (either success or final failure)
-        if (toolResult) {
-          results.push({ tool: toolCall.tool, result: toolResult })
-          // TRAE风格：更新步骤状态为完成
-          if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
-            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, toolResult.success ? 'completed' : 'failed')
-          }
-        } else {
-          // All retries failed
-          results.push({ tool: toolCall.tool, result: { success: false, output: '', error: lastError || 'Unknown error after retries' } })
-          console.error(`[ToolLoop] Tool ${toolCall.tool} failed after ${maxRetries} attempts:`, lastError)
-          // TRAE风格：更新步骤状态为失败
-          if (assistantMessageIndex >= 0 && currentSteps[toolIdx]) {
-            updateStepStatus(assistantMessageIndex, currentSteps[toolIdx].id, 'failed')
-          }
-        }
-      }
-      
-      console.log(`[ToolLoop] All tool calls completed, results:`, results)
-      console.log(`[ToolLoop] Preparing to call LLM again with tool results...`)
-
-      // 验证所有工具都已执行完成（关键监控）
-      if (results.length !== toolCallsToExecute.length) {
-        console.error(`[ToolLoop] WARNING: Expected ${toolCallsToExecute.length} results but got ${results.length}`)
-        // 补充缺失的结果
-        for (let i = results.length; i < toolCallsToExecute.length; i++) {
-          results.push({ 
-            tool: toolCallsToExecute[i].tool, 
-            result: { success: false, output: '', error: '工具执行结果丢失' } 
-          })
-        }
-      }
-
-      // 构建工具结果消息 - 这是关键修复
-      const resultsText = results.map(r => {
-        const status = r.result?.success ? '成功' : '失败'
-        const output = r.result?.output ? `\n输出: ${r.result.output.substring(0, 1000)}` : ''
-        const error = r.result?.error ? `\n错误: ${r.result.error.substring(0, 500)}` : ''
-        return `[${r.tool}] ${status}${output}${error}`
-      }).join('\n\n')
-
-      const toolResultMessage = `工具执行结果:\n\n${resultsText}`
-
-      // 将工具结果添加到对话历史 - 关键修复：使用 user role 让AI能看到结果
-      conversationHistory.push({ role: 'user', content: toolResultMessage })
-      console.log('[ToolLoop] Added tool result to conversation history, now', conversationHistory.length, 'messages')
-
-      // 更新UI显示工具执行结果
-      const resultsSummary = results.map(r => {
-        const status = r.result?.success ? '✅' : '❌'
-        const output = r.result?.output ? `\n\`\`\`\n${r.result.output.substring(0, 300)}${r.result.output.length > 300 ? '...' : ''}\n\`\`\`` : ''
-        const error = r.result?.error ? `\n⚠️ ${r.result.error.substring(0, 200)}` : ''
-        return `${status} **${r.tool}**${output}${error}`
-      }).join('\n\n')
-
-      // 详细工具执行结果显示
-      const allSuccess = results.every(r => r.result?.success)
-      const successCount = results.filter(r => r.result?.success).length
-      const statusEmoji = allSuccess ? '✅' : successCount > 0 ? '⚠️' : '❌'
-      
-      // 分类文件操作
-      const readFiles: string[] = []
-      const modifiedFiles: string[] = []
-      const createdFiles: string[] = []
-      const otherOperations: string[] = []
-      
-      results.forEach(r => {
-        const args = toolCallsToExecute.find(t => t.tool === r.tool)?.arguments as { path?: string } | undefined
-        const path = args?.path || ''
-        
-        if (r.tool === 'read_file' && path) {
-          readFiles.push(path)
-        } else if ((r.tool === 'edit_file' || r.tool === 'write_file') && path && r.result?.success) {
-          if (r.tool === 'write_file') {
-            createdFiles.push(path)
-          } else {
-            modifiedFiles.push(path)
-          }
-        } else {
-          otherOperations.push(`${r.tool}${path ? ` (${path})` : ''} - ${r.result?.success ? '✅' : '❌'}`)
-        }
-      })
-      
-      // 构建文件操作摘要
-      const fileOpsSummary = []
-      if (readFiles.length > 0) {
-        fileOpsSummary.push(`📖 已读取: ${readFiles.length} 个文件`)
-      }
-      if (modifiedFiles.length > 0) {
-        fileOpsSummary.push(`✏️ 已修改: ${modifiedFiles.join(', ')}`)
-      }
-      if (createdFiles.length > 0) {
-        fileOpsSummary.push(`📝 已创建: ${createdFiles.join(', ')}`)
-      }
-      
-      // 构建详细的执行结果展示
-      const detailedResults = results.map((r, idx) => {
-        const toolStatus = r.result?.success ? '✅ 成功' : '❌ 失败'
-        const output = r.result?.output 
-          ? `\n   📤 输出:\n   \`\`\`\n   ${r.result.output.substring(0, 300)}${r.result.output.length > 300 ? '...' : ''}\n   \`\`\`` 
-          : ''
-        const error = r.result?.error 
-          ? `\n   ⚠️ 错误: ${r.result.error.substring(0, 200)}` 
-          : ''
-        return `**${idx + 1}. ${r.tool}** - ${toolStatus}${output}${error}`
-      }).join('\n\n')
-      
-      // TRAE风格：更新消息内容（保留步骤信息）
-      if (assistantMessageIndex >= 0) {
-        const state = useStore.getState()
-        const msgs = [...state.messages]
-        if (msgs[assistantMessageIndex]) {
-          msgs[assistantMessageIndex] = { 
-            ...msgs[assistantMessageIndex], 
-            content: `**步骤 ${iterations}/${maxIterations}**\n\n` +
-              `${statusEmoji} **工具执行完成** (${successCount}/${results.length} 成功)\n\n` +
-              `${fileOpsSummary.length > 0 ? '📁 **文件操作:**\n' + fileOpsSummary.join('\n') + '\n\n' : ''}` +
-              `**详细结果:**\n${detailedResults}`
-          }
-          useStore.setState({ messages: msgs })
-        }
-      }
-      console.log('[ToolLoop] Tool execution cycle completed, continuing to next iteration...')
-      console.log('[ToolLoop] Current iteration:', iterations, 'of max', maxIterations)
-      }
-  
-      // 循环结束，检查是否因为达到最大迭代次数
-      const reachedMaxIterations = iterations >= maxIterations
-
-      if (!finalContent) {
-        // 如果循环因达到最大迭代次数而退出，使用最后一条assistant消息
-        const lastAssistantMsg = conversationHistory.slice().reverse().find(m => m.role === 'assistant')
-        if (lastAssistantMsg) {
-          finalContent = lastAssistantMsg.content
-          console.log('[ToolLoop] Using last assistant message as finalContent')
-        } else {
-          finalContent = '处理完成（无最终响应）'
-        }
-      }
-
-      // 如果达到最大迭代次数，返回需要继续执行的状态
-      if (reachedMaxIterations) {
-        console.log('[ToolLoop] Reached max iterations, returning needsContinuation=true')
-        
-        // 构建详细的达到最大迭代次数说明
-        const maxIterMessage = `⏹️ **已达到最大迭代次数 (${maxIterations} 次)**\n\n` +
-          `📊 **执行统计:**\n` +
-          `- 总迭代次数: ${iterations}\n` +
-          `- 已写入文件: ${writtenFiles.length > 0 ? writtenFiles.join(', ') : '无'}\n` +
-          `- 已读取文件: ${readFilesSet.size} 个\n\n` +
-          `🤔 **为什么任务没有完成?**\n` +
-          `AI 可能需要更多步骤来完成复杂的任务。任务可能需要:\n` +
-          `- 读取更多文件\n` +
-          `- 执行更多命令\n` +
-          `- 进行更多修改\n\n` +
-          `💡 **下一步:**\n` +
-          `点击 **"继续执行"** 按钮让 AI 继续处理，或直接发送新消息。`
-        
-        return {
-          content: maxIterMessage + '\n\n---\n\n**AI 最后响应:**\n' + finalContent,
-          writtenFiles,
-          needsContinuation: true
-        }
-      }
-
-      console.log('[ToolLoop] Exiting while loop, returning finalContent:', finalContent.substring(0, 100))
-      return { content: finalContent, writtenFiles, needsContinuation: false, error: null, conversationHistory }
-    } catch (error) {
-      // 确保任何异常都被捕获并返回错误信息
-      const errorMessage = error instanceof Error ? error.message : String(error)
-      console.error('[ToolLoop] processWithTools error:', errorMessage)
-      console.error('[ToolLoop] Stack:', error instanceof Error ? error.stack : 'no stack')
-      updateLastMessage(`执行出错: ${errorMessage}`)
-      return { content: `执行出错: ${errorMessage}`, writtenFiles, needsContinuation: false, error: errorMessage, conversationHistory: conversationHistory.length > 0 ? conversationHistory : apiMessages }
-    }
-    // 注意：这里不要在 finally 中设置 setIsLoading(false)，因为 handleSendMessage 会处理
-  }
   
   const handleSendMessage = async (content: string) => {
     if (!content.trim()) return
@@ -1829,7 +991,6 @@ ${contextSummary}
     )
     
     // Get API key and URL from the provider that has the selected model
-    // Note: providerForModel should always exist if a model is selected
     const providerApiKey = providerForModel?.apiKey
     const providerApiUrl = providerForModel?.apiUrl
     
@@ -1888,7 +1049,7 @@ ${contextSummary}
 
     // If command executed successfully, show result immediately
     if (commandResult && commandResult.success) {
-      const outputMsg = `**命令执行成功**\\n\\n\`\`\`\\n${commandResult.output}\\n\`\`\`\\n\\n*当前目录: ${commandResult.cwd}*`
+      const outputMsg = `**命令执行成功**\n\n\`\`\`\n${commandResult.output}\n\`\`\`\n\n*当前目录: ${commandResult.cwd}*`
       addMessage({ role: 'assistant', content: outputMsg })
       setIsLoading(false)
       return
@@ -1896,24 +1057,17 @@ ${contextSummary}
 
     // If command failed, show error
     if (commandResult && !commandResult.success) {
-      const errorMsg = `**命令执行失败**\\n\\n错误: ${commandResult.error || '未知错误'}\\n\\n*当前目录: ${commandResult.cwd}*`
+      const errorMsg = `**命令执行失败**\n\n错误: ${commandResult.error || '未知错误'}\n\n*当前目录: ${commandResult.cwd}*`
       addMessage({ role: 'assistant', content: errorMsg })
       setIsLoading(false)
       return
     }
 
     // Check chat mode: 'agent' uses tools, 'chat' uses simple Q&A
-    const isCodeRequest = chatMode === 'agent'
-
-    // For code requests, processWithTools will add the assistant message
-    // For regular chat, add empty assistant message for streaming
-    if (!isCodeRequest) {
-      addMessage({ role: 'assistant', content: '' })
-    }
+    const isAgentMode = chatMode === 'agent'
 
     try {
       // Get current working directory for system prompt
-      // 优先使用 projectPath（文件浏览器中选中的项目路径），如果没有则使用 API 返回的 cwd
       let currentCwd = projectPath || '/'
       if (!currentCwd || currentCwd === '/') {
         try {
@@ -1934,122 +1088,57 @@ ${contextSummary}
       }
 
       // Build system prompt based on chat mode
-      const systemPrompt = isCodeRequest
+      const systemPrompt = isAgentMode
         ? buildSystemPrompt(commands, tools, currentCwd, projectContextStr)
         : buildChatSystemPrompt(currentCwd, projectContextStr)
 
       // Prepare messages for API
-      const apiMessages: Message[] = []
+      const apiMessages: ApiMessage[] = []
 
-      // Add system prompt as first message
+      // Add system prompt as system message (not user/assistant pair)
       if (systemPrompt) {
-        apiMessages.push({ role: 'user', content: systemPrompt })
-        apiMessages.push({ role: 'assistant', content: isCodeRequest ? ' understood. I will use the available commands and tools when needed.' : ' understood. I will answer your questions clearly and concisely.' })
+        apiMessages.push({ role: 'system', content: systemPrompt })
       }
 
-      // Add existing messages
+      // Add existing messages (filter out system messages to avoid duplication)
       messages.forEach(m => {
-        apiMessages.push({ role: m.role, content: m.content })
+        if (m.role !== 'system') {
+          apiMessages.push({ role: m.role, content: m.content })
+        }
       })
 
       // Add the user message
       apiMessages.push({ role: 'user', content: content })
 
-      if (isCodeRequest) {
-        // Check if there's a pending continuation
-        if (pendingContinuation) {
-          // Continue from previous state
-          console.log('[handleSendMessage] Continuing from pending state...')
-          const result = await processWithTools(
-            apiMessages,
-            pendingContinuation.userOriginalRequest,
-            currentCwd,
-            providerApiKey,
-            providerApiUrl,
-            100, // maxIterations
-            true, // isContinuation
-            {
-              conversationHistory: pendingContinuation.conversationHistory,
-              iterations: pendingContinuation.iterations,
-              writtenFiles: pendingContinuation.writtenFiles
-            }
-          )
-          // Clear pending continuation
-          setPendingContinuation(null)
-          // Continue with result handling...
-          await handleProcessResult(result, content, currentSession)
-        } else {
-          // Normal execution
-          console.log('[handleSendMessage] Calling processWithTools...')
-          const result = await processWithTools(apiMessages, content, currentCwd, providerApiKey, providerApiUrl)
-          console.log('[handleSendMessage] processWithTools returned:', result.content?.substring(0, 100))
-          console.log('[handleSendMessage] writtenFiles:', result.writtenFiles)
+      if (isAgentMode) {
+        // Agent mode: Use useAgentMode hook
+        console.log('[handleSendMessage] Agent mode - using useAgentMode hook')
 
-          // Check if needs continuation (max iterations reached)
-          if (result.needsContinuation) {
-            console.log('[handleSendMessage] Tool execution needs continuation')
-            // Store state for potential continuation
-            setPendingContinuation({
-              conversationHistory: result.conversationHistory || [],
-              userOriginalRequest: content,
-              iterations: 100,
-              writtenFiles: result.writtenFiles,
-              lastContent: result.content
-            })
-            // Add continuation prompt message
-            addMessage({
-              role: 'assistant',
-              content: `${result.content}\n\n---\n\n⚠️ **已达到最大迭代次数（100次）**\n\n任务可能尚未完成。请选择：\n- 点击 **"继续执行"** 按钮继续处理\n- 或直接发送新消息以其他方式继续`,
-              needsAction: 'continue'
-            })
-            // Don't save to session yet, wait for user decision
-            setIsLoading(false)
-            return
-          }
-
-          // Check if there was an error - allow user to continue
-          if (result.error) {
-            console.log('[handleSendMessage] Tool execution encountered error')
-            // Store state for potential continuation
-            setPendingContinuation({
-              conversationHistory: result.conversationHistory || [],
-              userOriginalRequest: content,
-              iterations: 100, // Assume max reached or error occurred
-              writtenFiles: result.writtenFiles,
-              lastContent: result.content
-            })
-            // Add error message with continue option
-            addMessage({
-              role: 'assistant',
-              content: `${result.content}\n\n---\n\n⚠️ **执行过程中发生异常**\n\n任务可能尚未完成。请选择：\n- 点击 **"继续执行"** 按钮尝试继续处理\n- 或直接发送新消息以其他方式继续`,
-              needsAction: 'continue'
-            })
-            // Don't save to session yet, wait for user decision
-            setIsLoading(false)
-            return
-          }
-
-          await handleProcessResult(result, content, currentSession)
-        }
-        return
+        // Simply call processAgentMessage - same as chat mode but with more tools
+        await processAgentMessage(content, apiMessages as import('./store').Message[], {
+          providerApiKey,
+          providerApiUrl,
+          model,
+          currentCwd,
+          projectPath,
+          currentSession,
+          localSessions,
+          commands: commands.map(c => ({ name: c.name, description: c.responsibility })),
+          tools: tools.map(t => ({ name: t.name, description: t.responsibility }))
+        })
       } else {
-        // Chat mode: Use processWithTools with limited iterations for tool support
-        console.log('[handleSendMessage] Chat mode - using processWithTools with limited iterations')
-        addMessage({ role: 'assistant', content: '' })
-        const result = await processWithTools(apiMessages, content, currentCwd, providerApiKey, providerApiUrl, 5) // Max 5 iterations for chat mode
-        console.log('[handleSendMessage] Chat mode processWithTools returned:', result.content?.substring(0, 100))
-
-        // Update the assistant message with final content
-        updateLastMessage(result.content)
-
-        // Update tokens (estimate if not provided)
-        updateTokens(content.length / 4, result.content.length / 4)
-
-        // Save to session
-        if (currentSession) {
-          const updatedMessages = [...useStore.getState().messages]
-          window.api.saveConversation(currentSession.id, updatedMessages)
-        }
+        // Chat mode: Use useChatMode hook
+        console.log('[handleSendMessage] Chat mode - using useChatMode hook')
+        
+        await processChatMessage(content, apiMessages as import('./store').Message[], {
+          providerApiKey,
+          providerApiUrl,
+          model,
+          currentCwd,
+          projectPath,
+          currentSession,
+          localSessions
+        })
       }
 
     } catch (error) {

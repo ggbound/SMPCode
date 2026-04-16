@@ -148,6 +148,9 @@ interface AppState {
   // TRAE风格：流式消息控制
   startStreaming: (messageId: string) => void
   stopStreaming: () => void
+  
+  // 添加迭代消息（用于显示执行进度）
+  addIterationMessage: (content: string, needsAction?: boolean) => void
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -276,5 +279,23 @@ export const useStore = create<AppState>((set) => ({
   
   // TRAE风格：流式消息控制
   startStreaming: (streamingMessageId) => set({ streamingMessageId }),
-  stopStreaming: () => set({ streamingMessageId: null })
+  stopStreaming: () => set({ streamingMessageId: null }),
+  
+  // 添加迭代消息（用于显示执行进度）
+  addIterationMessage: (content, needsAction = false) => {
+    let newIndex = -1
+    set((state) => {
+      newIndex = state.messages.length
+      return {
+        messages: [...state.messages, { 
+          role: 'assistant', 
+          content, 
+          isBuilder: true,
+          timestamp: Date.now(),
+          needsAction: needsAction ? 'continue' : undefined
+        }]
+      }
+    })
+    return newIndex
+  }
 }))

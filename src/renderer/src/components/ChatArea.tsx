@@ -292,10 +292,73 @@ function ChatArea({
                           pre: ({ children, ...props }) => {
                             const codeElement = children as React.ReactElement<{ className?: string; children?: React.ReactNode }>
                             const className = codeElement?.props?.className || ''
-                            const language = className.replace('language-', '') || 'text'
+                            const languageMatch = /language-(\w+)/.exec(className || '')
+                            const language = languageMatch ? languageMatch[1] : 'text'
                             const codeContent = codeElement?.props?.children || ''
                             const codeId = `${language}-${String(codeContent).slice(0, 20)}`
                             const isCopied = copiedId === codeId
+
+                            // Don't render empty code blocks
+                            if (!codeContent || String(codeContent).trim().length === 0) {
+                              return null
+                            }
+
+                            // Check if content looks like a directory tree (contains tree-like characters)
+                            const contentStr = String(codeContent)
+                            const isDirectoryTree = /[├└│─]/.test(contentStr) || 
+                                                  (/^\s*├──|^\s*└──|^\s*│/.test(contentStr))
+
+                            // Check if content looks like Markdown (contains Markdown headings, lists, etc.)
+                            // This handles cases where AI wraps Markdown content in code blocks incorrectly
+                            const looksLikeMarkdown = /^\s*#{1,6}\s+/.test(contentStr) || // Headings
+                                                      /^\s*[-*+]\s+/.test(contentStr) || // Lists
+                                                      /^\s*\d+\.\s+/.test(contentStr) || // Numbered lists
+                                                      /^\s*\[.+\]\(.+\)/.test(contentStr) || // Links
+                                                      /^\s*\*\*.+\*\*/.test(contentStr) || // Bold
+                                                      /^\s*__.+__/.test(contentStr) // Bold alt
+
+                            // If content looks like Markdown, render it as Markdown instead of code block
+                            if (looksLikeMarkdown && language === 'text') {
+                              return (
+                                <div className="markdown-content-wrapper">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {contentStr}
+                                  </ReactMarkdown>
+                                </div>
+                              )
+                            }
+
+                            // If it's a directory tree, render as plain text without syntax highlighting
+                            if (isDirectoryTree) {
+                              return (
+                                <div className="code-block-wrapper">
+                                  <div className="code-block-header">
+                                    <span className="code-language">目录结构</span>
+                                    <button
+                                      onClick={() => copyToClipboard(contentStr, codeId)}
+                                      className={`copy-button ${isCopied ? 'copied' : ''}`}
+                                    >
+                                      {isCopied ? t('copied') : t('copy')}
+                                    </button>
+                                  </div>
+                                  <div className="code-block-content">
+                                    <pre style={{ 
+                                      margin: 0, 
+                                      padding: '16px', 
+                                      background: '#1e1e1e',
+                                      fontSize: '13px',
+                                      lineHeight: '1.6',
+                                      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                                      color: '#d4d4d4',
+                                      whiteSpace: 'pre',
+                                      overflow: 'auto'
+                                    }}>
+                                      {contentStr.replace(/\n$/, '')}
+                                    </pre>
+                                  </div>
+                                </div>
+                              )
+                            }
 
                             return (
                               <div className="code-block-wrapper">
@@ -341,7 +404,37 @@ function ChatArea({
                             ) : (
                               <code>{children}</code>
                             )
-                          }
+                          },
+                          // Handle paragraphs - detect directory tree content
+                          p: ({ children }) => {
+                            const text = String(children)
+                            // Check if content looks like a directory tree
+                            const hasTreeChars = /[├└│─]/.test(text)
+                            const hasTreeStructure = /^\s*[├└│]/.test(text) || text.includes('├──') || text.includes('└──')
+                            
+                            if (hasTreeChars || hasTreeStructure) {
+                              return (
+                                <p style={{ 
+                                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                                  whiteSpace: 'pre-wrap',
+                                  wordWrap: 'break-word',
+                                  lineHeight: '1.6',
+                                  margin: '8px 0'
+                                }}>
+                                  {children}
+                                </p>
+                              )
+                            }
+                            
+                            return <p>{children}</p>
+                          },
+                          // Support details/summary for collapsible sections
+                          details: ({ children }) => (
+                            <details className="markdown-details">{children}</details>
+                          ),
+                          summary: ({ children }) => (
+                            <summary className="markdown-summary">{children}</summary>
+                          )
                         }}
                       >
                         {msg.content}

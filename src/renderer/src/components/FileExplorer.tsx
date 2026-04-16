@@ -516,6 +516,58 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     }
   }, [rootPath, refreshProjectContext])
 
+  // Listen for file operation events from AI tools (separate useEffect to avoid circular deps)
+  useEffect(() => {
+    const handleFileOperationCompleted = () => {
+      console.log('[FileExplorer] File operation completed, refreshing...')
+      // Directly refresh without depending on external functions
+      if (rootPath) {
+        // Refresh file tree while preserving expansion state
+        const buildExpansionMap = (nodes: FileNode[], map: Map<string, boolean>) => {
+          for (const node of nodes) {
+            if (node.isDirectory) {
+              map.set(node.path, node.isOpen || false)
+              if (node.children) {
+                buildExpansionMap(node.children, map)
+              }
+            }
+          }
+        }
+
+        const expansionMap = new Map<string, boolean>()
+        buildExpansionMap(fileTreeRef.current, expansionMap)
+
+        fetch(`${API_BASE}/fs/list?path=${encodeURIComponent(rootPath)}`)
+          .then(res => res.json())
+          .then((items: FileNode[]) => {
+            const applyExpansion = (nodes: FileNode[]): FileNode[] => {
+              return nodes.map(node => {
+                if (node.isDirectory) {
+                  const wasOpen = expansionMap.get(node.path)
+                  return { ...node, isOpen: wasOpen || false }
+                }
+                return node
+              })
+            }
+            setFileTree(applyExpansion(items))
+          })
+          .catch(err => console.error('[FileExplorer] Refresh failed:', err))
+
+        // Refresh project context
+        fetch(`${API_BASE}/project-context/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: rootPath })
+        }).catch(err => console.error('[FileExplorer] Context refresh failed:', err))
+      }
+    }
+    window.addEventListener('file-operation-completed', handleFileOperationCompleted)
+
+    return () => {
+      window.removeEventListener('file-operation-completed', handleFileOperationCompleted)
+    }
+  }, [rootPath])
+
   // Load directory contents
   const loadDirectory = useCallback(async (path: string): Promise<FileNode[]> => {
     try {
