@@ -742,6 +742,52 @@ export const CODE_TOOLS: ToolDefinition[] = toolRegistry.toOpenAIDefinitions()
 // 导出便捷函数
 export { createSuccessResult, createErrorResult, toolRegistry }
 
+// 工具名称映射（支持大驼峰命名向后兼容）
+const TOOL_NAME_MAP: Record<string, string> = {
+  'FileWriteTool': 'write_file',
+  'FileReadTool': 'read_file',
+  'FileEditTool': 'edit_file',
+  'FileAppendTool': 'append_file',
+  'ListDirectoryTool': 'list_directory',
+  'DeleteFileTool': 'delete_file',
+  'BashTool': 'bash',
+  'SearchCodeTool': 'search_code',
+  'GetRunningProcessesTool': 'get_running_processes',
+  'StopProcessTool': 'stop_process',
+  'RestartProcessTool': 'restart_process'
+}
+
+// 参数名映射（支持大驼峰参数向后兼容）
+const PARAMETER_NAME_MAP: Record<string, string> = {
+  'file_path': 'path',
+  'old_string': 'old_string',
+  'new_string': 'new_string',
+  'content': 'content',
+  'command': 'command',
+  'timeout': 'timeout',
+  'pattern': 'pattern',
+  'path': 'path'
+}
+
+/**
+ * 转换工具名称（支持向后兼容）
+ */
+function normalizeToolName(name: string): string {
+  return TOOL_NAME_MAP[name] || name
+}
+
+/**
+ * 转换参数名（支持向后兼容）
+ */
+function normalizeParameters(args: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(args)) {
+    const normalizedKey = PARAMETER_NAME_MAP[key] || key
+    normalized[normalizedKey] = value
+  }
+  return normalized
+}
+
 // 导出工具执行函数（向后兼容）
 export async function executeTool(
   name: string,
@@ -750,5 +796,12 @@ export async function executeTool(
 ): Promise<ToolExecutionResult> {
   const { executeToolWithMiddleware, createExecutionContext } = await import('./tools-core')
   const context = createExecutionContext(cwd || getCurrentWorkingDirectory())
-  return executeToolWithMiddleware(name, args, context)
+
+  // 转换工具名称和参数
+  const normalizedName = normalizeToolName(name)
+  const normalizedArgs = normalizeParameters(args)
+
+  log.info(`[executeTool] Original name: ${name}, Normalized: ${normalizedName}`)
+
+  return executeToolWithMiddleware(normalizedName, normalizedArgs, context)
 }

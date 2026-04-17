@@ -1,7 +1,11 @@
 import { useRef, useCallback } from 'react'
 import { useStore, type Message } from '../store'
+import { CHAT_MODE_TOOLS } from '../prompts/shared'
 
 const API_BASE = 'http://localhost:3847/api'
+
+// 智能问答模式允许的工具列表（只读工具）
+const ALLOWED_CHAT_TOOLS = CHAT_MODE_TOOLS.map((t: { name: string }) => t.name)
 
 interface ToolCall {
   tool: string
@@ -33,22 +37,39 @@ export function useChatMode() {
 
   /**
    * 解析工具调用
+   * 支持在一次回复中解析多个工具调用（包括代码块中的多行 JSON）
    */
   const parseToolCalls = useCallback((text: string): ToolCall[] | null => {
     const toolCalls: ToolCall[] = []
+    // 使用 matchAll 来避免正则表达式状态问题
     const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
-    let match
+    const matches = Array.from(text.matchAll(codeBlockRegex))
 
-    while ((match = codeBlockRegex.exec(text)) !== null) {
+    for (const match of matches) {
       const blockContent = match[1].trim()
       if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
+        // 尝试解析整个代码块内容为单个 JSON
         try {
           const parsed = JSON.parse(blockContent)
-          if (parsed.tool && parsed.arguments) {
+          if (parsed.tool && typeof parsed.arguments === 'object') {
             toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
+            continue
           }
         } catch (e) {
-          // Not valid JSON or not a tool call block
+          // 不是单个 JSON，尝试按行解析多个 JSON
+        }
+
+        // 尝试按行解析多个 JSON 对象
+        const lines = blockContent.split('\n').filter(line => line.trim())
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line.trim())
+            if (parsed.tool && typeof parsed.arguments === 'object') {
+              toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
+            }
+          } catch (e) {
+            // 这一行不是有效的工具调用 JSON
+          }
         }
       }
     }
@@ -234,15 +255,15 @@ export function useChatMode() {
         // Remove tool call JSON blocks from display
         let cleanedIterationContent = iterationContent
         const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
-        let match
+        const matches = Array.from(iterationContent.matchAll(codeBlockRegex))
         const blocksToRemove: string[] = []
 
-        while ((match = codeBlockRegex.exec(iterationContent)) !== null) {
+        for (const match of matches) {
           const blockContent = match[1].trim()
           if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
             try {
               const parsed = JSON.parse(blockContent)
-              if (parsed.tool && parsed.arguments) {
+              if (parsed.tool && typeof parsed.arguments === 'object') {
                 blocksToRemove.push(match[0])
               }
             } catch (e) {
@@ -268,12 +289,24 @@ export function useChatMode() {
           updateLastMessage(fullContent)
         }
 
-        // Execute tools
+        // Execute tools - 智能问答模式只允许只读工具
         const toolResults: Array<{ tool: string; result: string; success: boolean }> = []
         let shouldRefreshFileExplorer = false
 
         for (const toolCall of toolCalls) {
           console.log(`[useChatMode] Executing tool:`, toolCall.tool)
+
+          // 检查工具是否在允许列表中
+          if (!ALLOWED_CHAT_TOOLS.includes(toolCall.tool)) {
+            console.warn(`[useChatMode] Tool ${toolCall.tool} is not allowed in chat mode`)
+            toolResults.push({
+              tool: toolCall.tool,
+              result: `工具 "${toolCall.tool}" 在智能问答模式中不可用。智能问答模式仅支持只读操作（read_file, list_directory, search_code, execute_bash）。如需文件修改操作，请切换到智能体模式。`,
+              success: false
+            })
+            continue
+          }
+
           const { success, result } = await executeTool(toolCall, currentCwd)
           toolResults.push({ tool: toolCall.tool, result, success })
           // Mark for refresh if file operation was successful

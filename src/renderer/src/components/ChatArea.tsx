@@ -1,12 +1,8 @@
-import { useState, useRef, useEffect, useCallback, type RefObject } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type RefObject } from 'react'
 import type { Message, Command, ProviderConfig, ModelConfig } from '../store'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { t } from '../i18n'
-import BuilderMessage from './BuilderMessage'
 import { TimeoutPrompt } from './TimeoutPrompt'
+import { MessageItem } from './MessageItem'
 
 interface ChatAreaProps {
   messages: Message[]
@@ -73,6 +69,11 @@ function ChatArea({
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const modelSelectorRef = useRef<HTMLDivElement>(null)
   const chatModeSelectorRef = useRef<HTMLDivElement>(null)
+
+  // 使用 useMemo 缓存消息渲染，避免输入时重复计算
+  const messageList = useMemo(() => {
+    return messages
+  }, [messages])
 
   // Get all enabled models from providers
   const getEnabledModels = useCallback(() => {
@@ -227,21 +228,6 @@ function ChatArea({
     textareaRef.current?.focus()
   }
 
-  // Copy code to clipboard
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  const copyToClipboard = async (text: string, id?: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      if (id) {
-        setCopiedId(id)
-        setTimeout(() => setCopiedId(null), 2000)
-      }
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }
-
   return (
     <div className="chat-area">
       <div
@@ -249,7 +235,7 @@ function ChatArea({
         className="messages-container"
         onScroll={handleScroll}
       >
-        {messages.length === 0 ? (
+        {messageList.length === 0 ? (
           <div style={{
             height: '100%',
             display: 'flex',
@@ -265,214 +251,45 @@ function ChatArea({
             </p>
           </div>
         ) : (
-          messages.map((msg, idx) => (
+          messageList.map((msg, idx) => (
             <div key={idx} className={`message ${msg.role}`}>
-              {msg.role === 'user' ? (
-                // User message - right aligned with bubble
-                <div className="user-message-wrapper">
-                  <div className="user-message-bubble">
-                    {msg.content}
-                  </div>
+              <MessageItem
+                msg={msg}
+                index={idx}
+                onContinueTimeout={onContinueTimeout}
+                onStopTimeout={onStopTimeout}
+                isTimeoutMessage={idx === timeoutMessageIndex}
+              />
+              {/* Show continue button for messages that need action */}
+              {msg.role === 'assistant' && msg.needsAction === 'continue' && onContinueExecution && (
+                <div className="continue-action-container">
+                  <button
+                    className="continue-button"
+                    onClick={onContinueExecution}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <span className="spinner-small" />
+                        继续执行中...
+                      </>
+                    ) : (
+                      <>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                        继续执行
+                      </>
+                    )}
+                  </button>
                 </div>
-              ) : (
-                // Assistant message - left aligned with thinking tags
-                <div className="assistant-message-wrapper">
-                  {msg.isBuilder ? (
-                    // TRAE Builder模式消息
-                    <BuilderMessage 
-                      message={msg}
-                      onContinue={idx === timeoutMessageIndex ? onContinueTimeout : undefined}
-                      onStop={idx === timeoutMessageIndex ? onStopTimeout : undefined}
-                    />
-                  ) : (
-                    <div className="assistant-message-content">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm]}
-                        components={{
-                          pre: ({ children, ...props }) => {
-                            const codeElement = children as React.ReactElement<{ className?: string; children?: React.ReactNode }>
-                            const className = codeElement?.props?.className || ''
-                            const languageMatch = /language-(\w+)/.exec(className || '')
-                            const language = languageMatch ? languageMatch[1] : 'text'
-                            const codeContent = codeElement?.props?.children || ''
-                            const codeId = `${language}-${String(codeContent).slice(0, 20)}`
-                            const isCopied = copiedId === codeId
-
-                            // Don't render empty code blocks
-                            if (!codeContent || String(codeContent).trim().length === 0) {
-                              return null
-                            }
-
-                            // Check if content looks like a directory tree (contains tree-like characters)
-                            const contentStr = String(codeContent)
-                            const isDirectoryTree = /[├└│─]/.test(contentStr) || 
-                                                  (/^\s*├──|^\s*└──|^\s*│/.test(contentStr))
-
-                            // Check if content looks like Markdown (contains Markdown headings, lists, etc.)
-                            // This handles cases where AI wraps Markdown content in code blocks incorrectly
-                            const looksLikeMarkdown = /^\s*#{1,6}\s+/.test(contentStr) || // Headings
-                                                      /^\s*[-*+]\s+/.test(contentStr) || // Lists
-                                                      /^\s*\d+\.\s+/.test(contentStr) || // Numbered lists
-                                                      /^\s*\[.+\]\(.+\)/.test(contentStr) || // Links
-                                                      /^\s*\*\*.+\*\*/.test(contentStr) || // Bold
-                                                      /^\s*__.+__/.test(contentStr) // Bold alt
-
-                            // If content looks like Markdown, render it as Markdown instead of code block
-                            if (looksLikeMarkdown && language === 'text') {
-                              return (
-                                <div className="markdown-content-wrapper">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                    {contentStr}
-                                  </ReactMarkdown>
-                                </div>
-                              )
-                            }
-
-                            // If it's a directory tree, render as plain text without syntax highlighting
-                            if (isDirectoryTree) {
-                              return (
-                                <div className="code-block-wrapper">
-                                  <div className="code-block-header">
-                                    <span className="code-language">目录结构</span>
-                                    <button
-                                      onClick={() => copyToClipboard(contentStr, codeId)}
-                                      className={`copy-button ${isCopied ? 'copied' : ''}`}
-                                    >
-                                      {isCopied ? t('copied') : t('copy')}
-                                    </button>
-                                  </div>
-                                  <div className="code-block-content">
-                                    <pre style={{ 
-                                      margin: 0, 
-                                      padding: '16px', 
-                                      background: '#1e1e1e',
-                                      fontSize: '13px',
-                                      lineHeight: '1.6',
-                                      fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-                                      color: '#d4d4d4',
-                                      whiteSpace: 'pre',
-                                      overflow: 'auto'
-                                    }}>
-                                      {contentStr.replace(/\n$/, '')}
-                                    </pre>
-                                  </div>
-                                </div>
-                              )
-                            }
-
-                            return (
-                              <div className="code-block-wrapper">
-                                <div className="code-block-header">
-                                  <span className="code-language">{language}</span>
-                                  <button
-                                    onClick={() => copyToClipboard(String(codeContent), codeId)}
-                                    className={`copy-button ${isCopied ? 'copied' : ''}`}
-                                  >
-                                    {isCopied ? t('copied') : t('copy')}
-                                  </button>
-                                </div>
-                                <div className="code-block-content">
-                                  <SyntaxHighlighter
-                                    language={language}
-                                    style={vscDarkPlus}
-                                    customStyle={{
-                                      margin: 0,
-                                      padding: '16px',
-                                      background: '#1e1e1e',
-                                      fontSize: '13px',
-                                      lineHeight: '1.6',
-                                      minWidth: 'fit-content',
-                                      borderRadius: '0'
-                                    }}
-                                    showLineNumbers={true}
-                                    lineNumberStyle={{
-                                      color: '#6e7681',
-                                      fontSize: '12px',
-                                      minWidth: '2.5em'
-                                    }}
-                                  >
-                                    {String(codeContent).replace(/\n$/, '')}
-                                  </SyntaxHighlighter>
-                                </div>
-                              </div>
-                            )
-                          },
-                          code: ({ children, className }) => {
-                            const isInline = !className
-                            return isInline ? (
-                              <code className="inline-code">{children}</code>
-                            ) : (
-                              <code>{children}</code>
-                            )
-                          },
-                          // Handle paragraphs - detect directory tree content
-                          p: ({ children }) => {
-                            const text = String(children)
-                            // Check if content looks like a directory tree
-                            const hasTreeChars = /[├└│─]/.test(text)
-                            const hasTreeStructure = /^\s*[├└│]/.test(text) || text.includes('├──') || text.includes('└──')
-                            
-                            if (hasTreeChars || hasTreeStructure) {
-                              return (
-                                <p style={{ 
-                                  fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
-                                  whiteSpace: 'pre-wrap',
-                                  wordWrap: 'break-word',
-                                  lineHeight: '1.6',
-                                  margin: '8px 0'
-                                }}>
-                                  {children}
-                                </p>
-                              )
-                            }
-                            
-                            return <p>{children}</p>
-                          },
-                          // Support details/summary for collapsible sections
-                          details: ({ children }) => (
-                            <details className="markdown-details">{children}</details>
-                          ),
-                          summary: ({ children }) => (
-                            <summary className="markdown-summary">{children}</summary>
-                          )
-                        }}
-                      >
-                        {msg.content}
-                      </ReactMarkdown>
-                      {/* Show continue button for messages that need action */}
-                      {msg.needsAction === 'continue' && onContinueExecution && (
-                        <div className="continue-action-container">
-                          <button
-                            className="continue-button"
-                            onClick={onContinueExecution}
-                            disabled={isLoading}
-                          >
-                            {isLoading ? (
-                              <>
-                                <span className="spinner-small" />
-                                继续执行中...
-                              </>
-                            ) : (
-                              <>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M5 12h14M12 5l7 7-7 7"/>
-                                </svg>
-                                继续执行
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                      {/* Timeout prompt for non-builder messages */}
-                      {isTimeout && idx === timeoutMessageIndex && (
-                        <TimeoutPrompt 
-                          onContinue={onContinueTimeout}
-                          onStop={onStopTimeout}
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
+              )}
+              {/* Timeout prompt for non-builder messages */}
+              {msg.role === 'assistant' && isTimeout && idx === timeoutMessageIndex && (
+                <TimeoutPrompt
+                  onContinue={onContinueTimeout}
+                  onStop={onStopTimeout}
+                />
               )}
             </div>
           ))

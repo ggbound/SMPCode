@@ -20,6 +20,11 @@
     "icon": "resources/icon.png",
     "identity": null
   },
-  "asar": false,
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "**/node-pty/**/*",
+    "**/node_modules/node-pty/**/*"
+  ],
   "afterPack": "scripts/afterPack.js"
 }

@@ -62,10 +62,21 @@ export interface Command {
   source_hint: string
 }
 
+export interface ToolParameter {
+  type: string
+  description: string
+  required?: boolean
+  enum?: string[]
+  default?: unknown
+}
+
 export interface Tool {
   name: string
   responsibility: string
   source_hint: string
+  // OpenAI format parameters for building system prompts
+  parameters?: Record<string, ToolParameter>
+  required?: string[]
 }
 
 export interface RouteMatch {

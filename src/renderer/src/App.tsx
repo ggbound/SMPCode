@@ -11,6 +11,12 @@ import Terminal, { type TerminalRef } from './components/Terminal'
 import SessionSidebar from './components/SessionSidebar'
 import { t } from './i18n'
 import { useChatMode, useAgentMode } from './hooks'
+import {
+  buildChatModePrompt,
+  buildAgentModePrompt,
+  getSystemInfo,
+  type PromptCommand
+} from './prompts'
 
 const API_BASE = 'http://localhost:3847/api'
 
@@ -18,230 +24,37 @@ const API_BASE = 'http://localhost:3847/api'
 let cachedProjectContext: string = ''
 let cachedProjectPath: string = ''
 
-// Build chat mode system prompt (with tools but only use when needed)
+/**
+ * 构建 Chat Mode 系统提示词（使用新的提示词模块）
+ * @deprecated 直接使用 buildChatModePrompt 从 './prompts' 导入
+ */
 function buildChatSystemPrompt(cwd: string, projectContext: string = ''): string {
-  const platform = navigator.platform.toLowerCase().includes('win') ? 'Windows' :
-                   navigator.platform.toLowerCase().includes('mac') ? 'macOS' : 'Linux'
-
-  let prompt = `You are a helpful AI assistant. Answer the user's questions clearly and concisely.
-
-=== SYSTEM INFORMATION ===
-Platform: ${platform}
-Working Directory: ${cwd}
-Current Time: ${new Date().toISOString()}
-`
-
-  // Add project context if available
-  if (projectContext) {
-    prompt += `\n${projectContext}\n`
-  }
-
-  prompt += `
-=== AVAILABLE TOOLS ===
-You have access to the following tools. ONLY use them when the user explicitly asks you to analyze, read, or explore files/projects:
-
-read_file: Read file contents. Use when user asks to analyze or view specific files.
-list_directory: List directory contents. Use when user asks to explore project structure.
-search_code: Search for code patterns. Use when user asks to find specific code.
-execute_bash: Execute shell commands. Use only when user explicitly requests command execution.
-
-=== TOOL INVOCATION FORMAT ===
-When you need to use a tool, output ONLY the JSON code block:
-
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
-
-=== IMPORTANT RULES ===
-1. For general questions and conversations, respond naturally WITHOUT using tools
-2. ONLY use tools when the user explicitly asks you to analyze, read, explore, or work with files
-3. Examples of when to use tools:
-   - "帮我分析下这个项目" → Use list_directory, read_file to explore
-   - "查看一下这个文件" → Use read_file
-   - "搜索一下这段代码" → Use search_code
-4. For greetings, general coding questions, or explanations, do NOT use tools
-5. **CRITICAL - READ-ONLY MODE**: You are in CHAT MODE which is READ-ONLY. You CANNOT create, write, edit, append, delete, or modify files in any way. This includes:
-   - NO write_file, edit_file, append_file operations
-   - NO delete_file or file removal operations
-   - NO using execute_bash to write/create/modify/delete files (e.g., NO 'cat >', NO 'echo >', NO 'rm', NO 'mkdir' for creating files)
-   - If the user asks you to write, create, edit, or delete files (e.g., "写入文件", "创建文件", "修改文件", "删除文件"), you MUST:
-     * Explain that file modification is not supported in chat mode
-     * Suggest switching to "智能体模式" (Agent Mode) for file operations
-     * Do NOT attempt to use any tool to modify files
-6. **execute_bash usage**: ONLY use execute_bash when user explicitly asks to run commands like npm, git, etc. NEVER use it for file operations.
-
-Please provide helpful, accurate, and concise responses to the user's questions.
-`
-
-  return prompt
+  return buildChatModePrompt({
+    systemInfo: getSystemInfo(cwd),
+    projectContext
+  })
 }
 
-// Build system prompt with available commands, tools, and project context
+/**
+ * 构建 Agent Mode 系统提示词（使用新的提示词模块）
+ * @deprecated 直接使用 buildAgentModePrompt 从 './prompts' 导入
+ */
 function buildSystemPrompt(
   commands: { name: string; responsibility: string }[],
-  tools: { name: string; responsibility: string }[],
+  tools: { name: string; responsibility: string; parameters?: Record<string, { type: string; description: string; required?: boolean }>; required?: string[] }[],
   cwd: string,
   projectContext: string = ''
 ): string {
-  const platform = navigator.platform.toLowerCase().includes('win') ? 'Windows' :
-                   navigator.platform.toLowerCase().includes('mac') ? 'macOS' : 'Linux'
+  const promptCommands: PromptCommand[] = commands.map(c => ({
+    name: c.name,
+    description: c.responsibility
+  }))
 
-  let prompt = `You are Claude Code, an expert AI coding assistant with direct access to the user's file system and command line. Your goal is to help users write, modify, and understand code effectively.\n\n`
-
-  prompt += `=== SYSTEM INFORMATION ===\n`
-  prompt += `Platform: ${platform}\n`
-  prompt += `Working Directory: ${cwd}\n`
-  prompt += `Current Time: ${new Date().toISOString()}\n`
-
-  // Add project context if available
-  if (projectContext) {
-    prompt += `\n${projectContext}\n`
-  }
-
-  prompt += `\n`
-
-  prompt += `=== CORE PRINCIPLES ===\n`
-  prompt += `1. ALWAYS USE TOOLS: When the user asks you to create, edit, or modify files, you MUST use the available tools. Never describe what you would do - actually do it.\n`
-  prompt += `2. BE PROACTIVE: Take initiative to complete tasks. If you see issues or improvements, suggest and implement them.\n`
-  prompt += `3. EXPLAIN YOUR ACTIONS: After using tools, briefly summarize what you did and why.\n`
-  prompt += `4. THINK STEP BY STEP: For complex tasks, break them down into steps and execute them sequentially.\n`
-  prompt += `5. VERIFY BEFORE PROCEEDING: After making changes, verify they work as expected before declaring completion.\n`
-  prompt += `6. IGNORE PREVIOUS MODE LIMITATIONS: You are now in AGENT MODE with FULL tool access. Ignore any previous messages about "cannot delete files" or "not supported in chat mode". You CAN and SHOULD directly execute file operations including delete, write, edit when requested.\n\n`
-
-  prompt += `=== AVAILABLE TOOLS ===\n`
-  prompt += `You have access to the following tools. Use them by outputting JSON code blocks:\n\n`
-  prompt += `read_file: Read file contents. Use offset/limit for large files. Always read before editing.\n`
-  prompt += `write_file: Create or overwrite files. Use for new files or complete rewrites.\n`
-  prompt += `edit_file: Replace specific text in a file. old_string must match EXACTLY (including whitespace).\n`
-  prompt += `append_file: Append content to existing file. Use for adding to the end of files.\n`
-  prompt += `delete_file: Delete a file or directory. Use with caution.\n`
-  prompt += `list_directory: List directory contents. Use to explore project structure.\n`
-  prompt += `execute_bash: Execute shell commands. Can run npm, git, node, etc. Commands run in integrated terminal.\n`
-  prompt += `search_code: Search for code patterns using regex. Use to find references, definitions, etc.\n`
-  prompt += `get_running_processes: Get list of running processes. Check before starting duplicate services.\n`
-  prompt += `stop_process: Stop a running process by its ID.\n`
-  prompt += `restart_process: Restart a running process by its ID.\n\n`
-
-  prompt += `=== TOOL INVOCATION FORMAT ===\n`
-  prompt += `When you need to use a tool, output ONLY the JSON code block:\n\n`
-  prompt += `\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
-
-`
-  prompt += `For multiple tool calls, output them sequentially:\n\n`
-  prompt += `\`\`\`json
-{"tool": "read_file", "arguments": {"path": "/path/to/file"}}
-\`\`\`
-\`\`\`json
-{"tool": "list_directory", "arguments": {"path": "/path/to/dir"}}
-\`\`\`
-
-`
-  prompt += `CRITICAL RULES:\n`
-  prompt += `1. ONLY output the JSON code block, no explanatory text before or between tool calls\n`
-  prompt += `2. Wait for tool results before proceeding to the next step\n`
-  prompt += `3. If a tool fails, analyze the error and retry with corrections\n`
-  prompt += `4. When task is complete, provide a clear summary of what was accomplished\n\n`
-
-  prompt += `=== BEST PRACTICES ===\n`
-  prompt += `FILE OPERATIONS:\n`
-  prompt += `- Always read a file before modifying it\n`
-  prompt += `- For files > 100 lines, use offset and limit to read specific sections\n`
-  prompt += `- When editing, ensure old_string matches EXACTLY (whitespace, indentation, line breaks)\n`
-  prompt += `- For multi-file changes, plan the order: read all first, then write/edit\n\n`
-  prompt += `CODE ANALYSIS:\n`
-  prompt += `- Use search_code to find references, imports, and dependencies\n`
-  prompt += `- Use list_directory to understand project structure\n`
-  prompt += `- Read configuration files (package.json, tsconfig.json, etc.) to understand tech stack\n\n`
-  prompt += `COMMAND EXECUTION:\n`
-  prompt += `- npm/node commands run in the integrated terminal and can be monitored\n`
-  prompt += `- Use 'npm install' before running projects\n`
-  prompt += `- Check if processes are already running before starting new ones\n\n`
-
-  prompt += `=== ERROR HANDLING ===\n`
-  prompt += `If a tool execution fails:\n`
-  prompt += `1. Read the error message carefully\n`
-  prompt += `2. Check if the file/path exists\n`
-  prompt += `3. Verify you have the correct parameters\n`
-  prompt += `4. Retry with corrections\n`
-  prompt += `5. If still failing, explain the issue to the user and ask for guidance\n\n`
-
-  prompt += `=== WORKFLOW ===\n`
-  prompt += `For each user request:\n`
-  prompt += `1. ANALYZE: Understand what the user wants\n`
-  prompt += `2. EXPLORE: Use list_directory, search_code, read_file to gather context\n`
-  prompt += `3. PLAN: Determine the steps needed to complete the task\n`
-  prompt += `4. EXECUTE: Use tools to make changes\n`
-  prompt += `5. VERIFY: Check that changes work correctly\n`
-  prompt += `6. SUMMARIZE: Explain what was done\n\n`
-
-  prompt += `=== TASK PLANNING PROTOCOL ===\n`
-  prompt += `CRITICAL: Before executing any tools, you MUST create a clear task plan:\n\n`
-  prompt += `Step 1 - ANALYZE THE REQUEST:\n`
-  prompt += `- What is the user asking for?\n`
-  prompt += `- What files/components are likely involved?\n`
-  prompt += `- What is the scope of changes needed?\n\n`
-  prompt += `Step 2 - CREATE EXECUTION PLAN:\n`
-  prompt += `- List ALL files you need to read\n`
-  prompt += `- Identify dependencies between files\n`
-  prompt += `- Plan the order of modifications\n`
-  prompt += `- Estimate number of steps needed\n\n`
-  prompt += `Step 3 - EXECUTE WITH TRACKING:\n`
-  prompt += `- Read all necessary files FIRST before making changes\n`
-  prompt += `- After reading, analyze what you learned\n`
-  prompt += `- Make changes based on your analysis\n`
-  prompt += `- DO NOT read the same file twice unless necessary\n\n`
-  prompt += `Step 4 - AVOID INFINITE LOOPS:\n`
-  prompt += `- If you find yourself reading files repeatedly, STOP and reassess\n`
-  prompt += `- Ask yourself: "What am I trying to find?"\n`
-  prompt += `- If stuck, summarize findings and ask user for clarification\n\n`
-  prompt += `Step 5 - MEMORY MANAGEMENT:\n`
-  prompt += `When context is compressed, maintain task memory by explicitly stating:\n`
-  prompt += `- 【问题分析】: What is the problem you're solving\n`
-  prompt += `- 【根本原因】: Root cause of the issue\n`
-  prompt += `- 【修复策略】: Your plan to fix it\n`
-  prompt += `- 【待修复文件】: List of files that need modification\n`
-  prompt += `- 【已完成】: Files already fixed\n`
-  prompt += `Example: "【问题分析】API接口404错误 【根本原因】路由配置错误 【修复策略】修改server.js中的路由 【待修复文件】server.js, api.js 【已完成】无"\n\n`
-  prompt += `=== CONTEXT RETENTION ===\n`
-  prompt += `The conversation history includes:\n`
-  prompt += `- Previous tool calls and their results\n`
-  prompt += `- Files you've read and their contents\n`
-  prompt += `- Commands you've executed and their output\n`
-  prompt += `Use this information to maintain context across the conversation.\n\n`
-
-  if (projectContext) {
-    prompt += `=== PROJECT STRUCTURE USAGE ===\n`
-    prompt += `The PROJECT STRUCTURE above shows the current project layout. Use this to:\n`
-    prompt += `- Understand project organization without listing directories\n`
-    prompt += `- Find relevant files quickly\n`
-    prompt += `- Know which files exist before trying to read them\n`
-    prompt += `- Identify the tech stack and framework being used\n\n`
-  }
-
-  prompt += `=== RESPONSE FORMAT ===\n`
-  prompt += `ALWAYS structure your response in the following format:\n\n`
-  prompt += `## 🤔 思考过程\n`
-  prompt += `Explain your analysis and reasoning. What did you find? What are you planning to do?\n\n`
-  prompt += `## 📋 执行任务\n`
-  prompt += `List the specific tasks you're performing:\n`
-  prompt += `- ✅ 已完成: [task description]\n`
-  prompt += `- ⏳ 进行中: [task description]\n`
-  prompt += `- 📌 待处理: [task description]\n\n`
-  prompt += `## 📁 文件操作\n`
-  prompt += `Document all file operations:\n`
-  prompt += `- 📖 已读取: file1.js, file2.js\n`
-  prompt += `- ✏️ 已修改: file3.js (what changed)\n`
-  prompt += `- 📝 已创建: file4.js\n\n`
-  prompt += `## 💡 总结\n`
-  prompt += `Provide a clear summary of what was accomplished and any next steps.\n\n`
-  prompt += `IMPORTANT: Use this format consistently so the user can track your progress.\n\n`
-
-  prompt += `=== RESPONSE LANGUAGE ===\n`
-  prompt += `Respond in the same language as the user's query. Be concise but thorough.\n`
-
-  return prompt
+  return buildAgentModePrompt({
+    systemInfo: getSystemInfo(cwd),
+    projectContext,
+    commands: promptCommands
+  })
 }
 
 // Extended Message interface for API calls (includes 'tool' role)
@@ -357,23 +170,42 @@ function App() {
           }
         }
         
+        // Try to load tools with definitions (OpenAI format with parameters)
         if (tools.length === 0) {
           console.log('Loading tools via HTTP API...')
-          // Try new Port Architecture API first
           try {
-            const portToolsRes = await fetch(`${API_BASE}/port/tools`)
-            if (portToolsRes.ok) {
-              const toolsData = await portToolsRes.json()
-              tools = toolsData.tools || []
-              console.log('Loaded tools via Port API:', tools.length)
+            // Use /api/tools/definitions for OpenAI format with parameters
+            const definitionsRes = await fetch(`${API_BASE}/tools/definitions`)
+            if (definitionsRes.ok) {
+              const definitionsData = await definitionsRes.json()
+              // Convert OpenAI format to internal format
+              tools = (definitionsData.tools || []).map((tool: { type: string; function: { name: string; description: string; parameters: { properties: Record<string, unknown>; required: string[] } } }) => ({
+                name: tool.function.name,
+                responsibility: tool.function.description,
+                source_hint: `tools/${tool.function.name}`,
+                parameters: tool.function.parameters?.properties || {},
+                required: tool.function.parameters?.required || []
+              }))
+              console.log('Loaded tools via definitions API:', tools.length)
             }
-          } catch (portError) {
-            console.log('Port API not available, falling back to legacy API')
-            const toolsRes = await fetch(`${API_BASE}/tools`)
-            if (toolsRes.ok) {
-              const toolsData = await toolsRes.json()
-              tools = toolsData.tools || []
-              console.log('Loaded tools via HTTP:', tools.length)
+          } catch (defError) {
+            console.log('Definitions API not available, falling back to legacy API')
+            // Fallback to legacy API
+            try {
+              const portToolsRes = await fetch(`${API_BASE}/port/tools`)
+              if (portToolsRes.ok) {
+                const toolsData = await portToolsRes.json()
+                tools = toolsData.tools || []
+                console.log('Loaded tools via Port API:', tools.length)
+              }
+            } catch (portError) {
+              console.log('Port API not available, falling back to basic API')
+              const toolsRes = await fetch(`${API_BASE}/tools`)
+              if (toolsRes.ok) {
+                const toolsData = await toolsRes.json()
+                tools = toolsData.tools || []
+                console.log('Loaded tools via HTTP:', tools.length)
+              }
             }
           }
         }
@@ -620,6 +452,23 @@ function App() {
     if (!newPath) {
       setLocalSessions([])
       return
+    }
+
+    // Sync working directory with backend
+    try {
+      const res = await fetch(`${API_BASE}/cwd`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cwd: newPath })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        console.log('[handleProjectPathChange] Working directory synced:', data.cwd)
+      } else {
+        console.error('[handleProjectPathChange] Failed to sync working directory')
+      }
+    } catch (error) {
+      console.error('[handleProjectPathChange] Error syncing working directory:', error)
     }
 
     try {
@@ -1124,7 +973,12 @@ function App() {
           currentSession,
           localSessions,
           commands: commands.map(c => ({ name: c.name, description: c.responsibility })),
-          tools: tools.map(t => ({ name: t.name, description: t.responsibility }))
+          tools: tools.map(t => ({
+            name: t.name,
+            description: t.responsibility,
+            parameters: t.parameters,
+            required: t.required
+          }))
         })
       } else {
         // Chat mode: Use useChatMode hook

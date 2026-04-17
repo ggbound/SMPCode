@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, dialog, nativeTheme } from 'electron'
-import { join } from 'path'
+import { join, dirname } from 'path'
 import { readFileSync, existsSync, readFile, writeFileSync, mkdirSync, readdir, unlink } from 'fs'
 import { promisify } from 'util'
 
@@ -23,6 +23,29 @@ import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
 log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
 log.info('Application starting...')
+
+// Fix node-pty path in asar environment
+// node-pty needs to find its spawn-helper binary which is unpacked from asar
+if (app.isPackaged) {
+  const possiblePaths = [
+    // asar unpacked path
+    join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'node-pty', 'prebuilds', process.platform + '-' + process.arch),
+    // legacy non-asar path (fallback)
+    join(process.resourcesPath, 'app', 'node_modules', 'node-pty', 'prebuilds', process.platform + '-' + process.arch)
+  ]
+  
+  for (const ptyPath of possiblePaths) {
+    if (existsSync(ptyPath)) {
+      process.env.PTY_HELPER_PATH = ptyPath
+      log.info(`Set PTY_HELPER_PATH to: ${ptyPath}`)
+      break
+    }
+  }
+  
+  if (!process.env.PTY_HELPER_PATH) {
+    log.warn('Could not find node-pty prebuilds directory')
+  }
+}
 
 // Global exception handler - 改进：不再直接退出进程，而是记录错误并尝试恢复
 process.on('uncaughtException', (error) => {
