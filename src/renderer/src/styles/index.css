@@ -2998,6 +2998,33 @@ code ::selection {
 
 .send-btn:disabled {
   background: var(--secondary-color);
+}
+
+/* 图片按钮有选中图片时的样式 */
+.toolbar-btn.has-images {
+  position: relative;
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.toolbar-btn.has-images:hover {
+  background: var(--accent-color);
+  color: white;
+}
+
+/* 模型视觉支持徽章样式 */
+.model-vision-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+
+.model-vision-badge:hover {
+  opacity: 0.8;
+}
+
+.send-btn:disabled {
   border-color: var(--secondary-color);
   cursor: not-allowed;
 }
@@ -6817,4 +6844,44 @@ code ::selection {
 .trae-step-args-detail pre {
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Image Preview Container Styles */
+.image-preview-container {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.image-preview-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.image-preview-container::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0 4px;
+}
+
+.image-preview-container::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.image-preview-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+.image-preview-item {
+  transition: transform 0.15s ease;
+}
+
+.image-preview-item:hover {
+  transform: translateY(-2px);
+}
+
+.image-preview-item img {
+  transition: box-shadow 0.15s ease;
+}
+
+.image-preview-item:hover img {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, type RefObject } from 'react'
-import type { Message, Command, ProviderConfig, ModelConfig } from '../store'
+import type { Message, Command, ProviderConfig, ModelConfig, ImageContent } from '../store'
 import { t } from '../i18n'
 import { TimeoutPrompt } from './TimeoutPrompt'
 import { MessageItem } from './MessageItem'
@@ -7,7 +7,7 @@ import { MessageItem } from './MessageItem'
 interface ChatAreaProps {
   messages: Message[]
   isLoading: boolean
-  onSendMessage: (content: string) => void
+  onSendMessage: (content: string, images?: ImageContent[]) => void
   onStopGeneration?: () => void
   messagesEndRef?: RefObject<HTMLDivElement | null>
   commands?: Command[]
@@ -50,6 +50,8 @@ function ChatArea({
   onChatModeChange
 }: ChatAreaProps) {
   const [input, setInput] = useState('')
+  const [selectedImages, setSelectedImages] = useState<ImageContent[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Map permission mode to translation
   const getPermissionLabel = (mode: string): string => {
@@ -182,9 +184,10 @@ function ChatArea({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (input.trim() && !isLoading) {
-      onSendMessage(input)
+    if ((input.trim() || selectedImages.length > 0) && !isLoading) {
+      onSendMessage(input, selectedImages.length > 0 ? selectedImages : undefined)
       setInput('')
+      setSelectedImages([])
       setShowCommandPalette(false)
     }
   }
@@ -227,6 +230,165 @@ function ChatArea({
     setShowCommandPalette(false)
     textareaRef.current?.focus()
   }
+
+  // 已知支持视觉的模型 ID 模式（自动检测）
+  const VISION_MODEL_PATTERNS = [
+    /gpt-4.*vision/i,
+    /gpt-4o/i,
+    /claude-3/i,
+    /qwen.*vl/i,
+    /kimi/i,
+    /glm-4v/i,
+    /gemini.*pro.*vision/i,
+    /llava/i,
+    /vision/i,
+    /multimodal/i
+  ]
+
+  // 检查模型 ID 是否匹配已知的视觉模型模式
+  const isKnownVisionModel = useCallback((modelId: string): boolean => {
+    return VISION_MODEL_PATTERNS.some(pattern => pattern.test(modelId))
+  }, [])
+
+  // 检查当前模型是否支持图片
+  const currentModelSupportsVision = useCallback(() => {
+    if (!model) return false
+
+    // 首先检查是否是已知的视觉模型
+    if (isKnownVisionModel(model)) {
+      return true
+    }
+
+    // 否则检查配置中的 supportsVision 标志
+    if (!providers) return false
+    for (const provider of providers) {
+      if (!provider.enabled) continue
+      const foundModel = provider.models.find(m => m.id === model)
+      if (foundModel) {
+        return foundModel.supportsVision === true
+      }
+    }
+    return false
+  }, [model, providers, isKnownVisionModel])
+
+  // 处理图片选择
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    // 检查模型是否支持图片
+    if (!currentModelSupportsVision()) {
+      alert(t('modelNotSupportVision') || '当前模型不支持图片，请在设置中选择一个支持视觉的模型（如 GPT-4V、Claude 3、Qwen-VL 等）')
+      e.target.value = ''
+      return
+    }
+
+    Array.from(files).forEach(file => {
+      // 检查文件类型
+      if (!file.type.startsWith('image/')) {
+        console.warn('Non-image file skipped:', file.name)
+        return
+      }
+
+      // 检查文件大小（限制 10MB）
+      if (file.size > 10 * 1024 * 1024) {
+        alert(t('imageTooLarge') || '图片大小不能超过 10MB')
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const result = event.target?.result as string
+        if (result) {
+          // 提取 base64 数据（去掉 data:image/xxx;base64, 前缀）
+          const base64Data = result.split(',')[1]
+          const mimeType = file.type
+
+          const newImage: ImageContent = {
+            type: 'image',
+            data: base64Data,
+            mimeType,
+            name: file.name
+          }
+
+          setSelectedImages(prev => [...prev, newImage])
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+
+    // 清空 input 以便可以再次选择相同文件
+    e.target.value = ''
+  }, [currentModelSupportsVision])
+
+  // 移除已选择的图片
+  const removeImage = useCallback((index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index))
+  }, [])
+
+  // 触发文件选择
+  const triggerImageUpload = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  // 处理粘贴事件（支持截图粘贴）
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    let hasImage = false
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+
+      // 检查是否是图片类型
+      if (item.type.startsWith('image/')) {
+        hasImage = true
+
+        // 检查模型是否支持图片
+        if (!currentModelSupportsVision()) {
+          alert(t('modelNotSupportVision') || '当前模型不支持图片，请在设置中选择一个支持视觉的模型（如 GPT-4V、Claude 3、Qwen-VL 等）')
+          e.preventDefault()
+          return
+        }
+
+        const file = item.getAsFile()
+        if (!file) continue
+
+        // 检查文件大小（限制 10MB）
+        if (file.size > 10 * 1024 * 1024) {
+          alert(t('imageTooLarge') || '图片大小不能超过 10MB')
+          e.preventDefault()
+          return
+        }
+
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          const result = event.target?.result as string
+          if (result) {
+            // 提取 base64 数据
+            const base64Data = result.split(',')[1]
+            const mimeType = file.type
+
+            const newImage: ImageContent = {
+              type: 'image',
+              data: base64Data,
+              mimeType,
+              name: `截图_${new Date().toLocaleTimeString()}.png`
+            }
+
+            setSelectedImages(prev => [...prev, newImage])
+          }
+        }
+        reader.readAsDataURL(file)
+
+        // 阻止默认粘贴行为（防止图片内容被粘贴到 textarea）
+        e.preventDefault()
+      }
+    }
+
+    // 如果没有图片，允许正常粘贴文本
+  }, [currentModelSupportsVision])
 
   return (
     <div className="chat-area">
@@ -313,6 +475,95 @@ function ChatArea({
 
       {/* Input Area with Toolbar */}
       <form className="input-area" onSubmit={handleSubmit}>
+        {/* 图片预览区域 - 独立一行在输入框上方 */}
+        {selectedImages.length > 0 && (
+          <div className="image-preview-container" style={{
+            display: 'flex',
+            gap: '6px',
+            padding: '6px 12px',
+            borderBottom: '1px solid var(--border-color)',
+            background: 'var(--bg-tertiary)',
+            borderRadius: '8px 8px 0 0',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            flexWrap: 'nowrap',
+            alignItems: 'center',
+            minHeight: '44px',
+            maxHeight: '52px',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'var(--border-color) transparent'
+          }}>
+            {selectedImages.map((img, index) => (
+              <div key={index} className="image-preview-item" style={{
+                position: 'relative',
+                display: 'flex',
+                flexShrink: 0,
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <div style={{ position: 'relative' }}>
+                  <img
+                    src={`data:${img.mimeType};base64,${img.data}`}
+                    alt={img.name || `Image ${index + 1}`}
+                    title={img.name || `图片 ${index + 1}`}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      objectFit: 'cover',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      display: 'block',
+                      border: '1px solid var(--border-color)'
+                    }}
+                    onClick={() => {
+                      // 点击可查看大图
+                      const newWindow = window.open()
+                      if (newWindow) {
+                        newWindow.document.write(`<img src="data:${img.mimeType};base64,${img.data}" style="max-width:100%;height:auto;" />`)
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => removeImage(index)}
+                    style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      width: '14px',
+                      height: '14px',
+                      borderRadius: '50%',
+                      background: 'var(--error-color, #ef4444)',
+                      color: 'white',
+                      border: '1.5px solid var(--bg-tertiary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '10px',
+                      fontWeight: 'bold',
+                      lineHeight: '1',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.3)',
+                      zIndex: 10,
+                      transition: 'all 0.15s ease',
+                      padding: 0
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.15)'
+                      e.currentTarget.style.background = '#dc2626'
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)'
+                      e.currentTarget.style.background = 'var(--error-color, #ef4444)'
+                    }}
+                    title={t('removeImage') || '移除图片'}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="input-container" style={{ position: 'relative' }}>
           {showCommandPalette && filteredCommands.length > 0 && (
             <div className="command-palette-dropdown" style={{
@@ -355,10 +606,11 @@ function ChatArea({
           <textarea
             ref={textareaRef}
             className="message-input"
-            placeholder={t('inputPlaceholder') || '规划与编程，@添加上下文，/使用命令'}
+            placeholder={t('inputPlaceholder') || '规划与编程，@添加上下文，/使用命令，粘贴图片'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             disabled={isLoading}
             rows={3}
           />
@@ -595,15 +847,41 @@ function ChatArea({
             {/* Image Button */}
             <button
               type="button"
-              className="toolbar-btn"
+              className={`toolbar-btn ${selectedImages.length > 0 ? 'has-images' : ''}`}
+              onClick={triggerImageUpload}
               title={t('addImage') || '添加图片'}
+              style={selectedImages.length > 0 ? { color: 'var(--accent-color)' } : undefined}
             >
               <svg className="toolbar-icon-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                 <circle cx="8.5" cy="8.5" r="1.5"></circle>
                 <polyline points="21 15 16 10 5 21"></polyline>
               </svg>
+              {selectedImages.length > 0 && (
+                <span style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  background: 'var(--accent-color)',
+                  color: 'white',
+                  fontSize: '10px',
+                  padding: '2px 5px',
+                  borderRadius: '10px',
+                  minWidth: '16px',
+                  textAlign: 'center'
+                }}>
+                  {selectedImages.length}
+                </span>
+              )}
             </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImageSelect}
+              style={{ display: 'none' }}
+            />
           </div>
 
           <div className="toolbar-right">

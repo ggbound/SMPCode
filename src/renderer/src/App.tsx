@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useStore, type ProviderConfig, type Session, type Step } from './store'
+import { useStore, type ProviderConfig, type Session, type Step, type ImageContent } from './store'
 import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import SettingsModal from './components/SettingsModal'
@@ -59,11 +59,37 @@ function buildSystemPrompt(
 
 // Extended Message interface for API calls (includes 'tool' role)
 interface ApiMessage {
-  role: 'user' | 'assistant' | 'tool'
-  content: string
+  role: 'user' | 'assistant' | 'tool' | 'system'
+  content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
   tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>
   tool_call_id?: string
   name?: string
+}
+
+// 转换消息内容为多模态格式
+function buildMultimodalContent(content: string, images?: ImageContent[]): string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> {
+  if (!images || images.length === 0) {
+    return content
+  }
+
+  const contentParts: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = []
+
+  // 添加文本内容
+  if (content.trim()) {
+    contentParts.push({ type: 'text', text: content })
+  }
+
+  // 添加图片
+  images.forEach(img => {
+    contentParts.push({
+      type: 'image_url',
+      image_url: {
+        url: `data:${img.mimeType};base64,${img.data}`
+      }
+    })
+  })
+
+  return contentParts
 }
 
 function App() {
@@ -833,8 +859,8 @@ function App() {
 
 
   
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim()) return
+  const handleSendMessage = async (content: string, images?: ImageContent[]) => {
+    if (!content.trim() && (!images || images.length === 0)) return
 
     // Find provider by selected model
     const providerForModel = providers.find(p => 
@@ -894,8 +920,8 @@ function App() {
       }
     }
 
-    // Add user message
-    addMessage({ role: 'user', content })
+    // Add user message (with images if provided)
+    addMessage({ role: 'user', content, images })
     setIsLoading(true)
 
     // If command executed successfully, show result immediately
@@ -959,12 +985,16 @@ function App() {
       // Add existing messages (filter out system messages to avoid duplication)
       messages.forEach(m => {
         if (m.role !== 'system') {
-          apiMessages.push({ role: m.role, content: m.content })
+          // 如果有图片，转换为多模态格式
+          const messageContent = m.images && m.images.length > 0
+            ? buildMultimodalContent(m.content, m.images)
+            : m.content
+          apiMessages.push({ role: m.role, content: messageContent })
         }
       })
 
-      // Add the user message
-      apiMessages.push({ role: 'user', content: content })
+      // Add the user message (with images if provided)
+      apiMessages.push({ role: 'user', content: buildMultimodalContent(content, images) })
 
       if (isAgentMode) {
         // Agent mode: Use useAgentMode hook

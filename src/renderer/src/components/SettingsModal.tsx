@@ -112,20 +112,33 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
     setEditingProviderName('')
   }
 
-  const addModel = (providerId: string, modelId: string, modelName: string, group?: string) => {
+  const addModel = (providerId: string, modelId: string, modelName: string, group?: string, supportsVision?: boolean) => {
     const provider = localProviders.find(p => p.id === providerId)
     if (!provider) return
 
     const newModel: ModelConfig = {
       id: modelId,
       name: modelName,
-      group
+      group,
+      supportsVision
     }
-    
-    updateProvider(providerId, { 
+
+    updateProvider(providerId, {
       models: [...provider.models, newModel]
     })
     setShowAddModelModal(false)
+  }
+
+  // 切换模型的视觉支持
+  const toggleModelVisionSupport = (providerId: string, modelId: string) => {
+    const provider = localProviders.find(p => p.id === providerId)
+    if (!provider) return
+
+    updateProvider(providerId, {
+      models: provider.models.map(m =>
+        m.id === modelId ? { ...m, supportsVision: !m.supportsVision } : m
+      )
+    })
   }
 
   const removeModel = (providerId: string, modelId: string) => {
@@ -337,7 +350,23 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
                                       <div key={model.id} className="model-item">
                                         <span className="model-id">{model.id}</span>
                                         <span className="model-name">{model.name}</span>
-                                        <button 
+                                        <span
+                                          className={`model-vision-badge ${model.supportsVision ? 'active' : ''}`}
+                                          onClick={() => toggleModelVisionSupport(selectedProvider.id, model.id)}
+                                          title={model.supportsVision ? '支持视觉' : '点击启用视觉支持'}
+                                          style={{
+                                            marginRight: '8px',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            background: model.supportsVision ? 'var(--accent-color)' : 'var(--bg-tertiary)',
+                                            color: model.supportsVision ? 'white' : 'var(--text-secondary)'
+                                          }}
+                                        >
+                                          {model.supportsVision ? '👁 视觉' : '👁'}
+                                        </span>
+                                        <button
                                           className="btn btn-icon btn-remove"
                                           onClick={() => removeModel(selectedProvider.id, model.id)}
                                         >
@@ -351,7 +380,23 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
                                   <div key={model.id} className="model-item">
                                     <span className="model-id">{model.id}</span>
                                     <span className="model-name">{model.name}</span>
-                                    <button 
+                                    <span
+                                      className={`model-vision-badge ${model.supportsVision ? 'active' : ''}`}
+                                      onClick={() => toggleModelVisionSupport(selectedProvider.id, model.id)}
+                                      title={model.supportsVision ? '支持视觉' : '点击启用视觉支持'}
+                                      style={{
+                                        marginRight: '8px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        background: model.supportsVision ? 'var(--accent-color)' : 'var(--bg-tertiary)',
+                                        color: model.supportsVision ? 'white' : 'var(--text-secondary)'
+                                      }}
+                                    >
+                                      {model.supportsVision ? '👁 视觉' : '👁'}
+                                    </span>
+                                    <button
                                       className="btn btn-icon btn-remove"
                                       onClick={() => removeModel(selectedProvider.id, model.id)}
                                     >
@@ -453,7 +498,7 @@ function AddProviderModal({ onAdd, onClose }: AddProviderModalProps) {
 }
 
 interface AddModelModalProps {
-  onAdd: (modelId: string, modelName: string, group?: string) => void
+  onAdd: (modelId: string, modelName: string, group?: string, supportsVision?: boolean) => void
   onClose: () => void
 }
 
@@ -461,10 +506,11 @@ function AddModelModal({ onAdd, onClose }: AddModelModalProps) {
   const [modelIdValue, setModelIdValue] = useState('')
   const [modelNameValue, setModelNameValue] = useState('')
   const [group, setGroup] = useState('')
+  const [supportsVision, setSupportsVision] = useState(false)
 
   const handleSubmit = () => {
     if (modelIdValue.trim() && modelNameValue.trim()) {
-      onAdd(modelIdValue.trim(), modelNameValue.trim(), group.trim() || undefined)
+      onAdd(modelIdValue.trim(), modelNameValue.trim(), group.trim() || undefined, supportsVision)
     }
   }
 
@@ -505,6 +551,17 @@ function AddModelModal({ onAdd, onClose }: AddModelModalProps) {
               onChange={(e) => setGroup(e.target.value)}
               placeholder={t('groupNamePlaceholder')}
             />
+          </div>
+          <div className="form-group">
+            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={supportsVision}
+                onChange={(e) => setSupportsVision(e.target.checked)}
+              />
+              <span>支持视觉/图片 (Vision)</span>
+            </label>
+            <span className="form-hint">启用后该模型可以处理图片输入</span>
           </div>
         </div>
         <div className="modal-footer">

@@ -4,7 +4,7 @@
  */
 
 import { memo, useState, useCallback } from 'react'
-import type { Message } from '../store'
+import type { Message, ImageContent } from '../store'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -12,6 +12,71 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { t } from '../i18n'
 import BuilderMessage from './BuilderMessage'
+
+// 图片画廊组件
+const ImageGallery = memo(function ImageGallery({ images }: { images: ImageContent[] }) {
+  if (!images || images.length === 0) return null
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: '8px',
+      marginTop: '8px',
+      marginBottom: '8px'
+    }}>
+      {images.map((img, index) => (
+        <div
+          key={index}
+          style={{
+            position: 'relative',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            border: '1px solid var(--border-color)',
+            cursor: 'pointer',
+            maxWidth: images.length === 1 ? '300px' : '150px'
+          }}
+          onClick={() => {
+            // 点击可查看大图
+            const newWindow = window.open()
+            if (newWindow) {
+              newWindow.document.write(`<img src="data:${img.mimeType};base64,${img.data}" style="max-width:100%;height:auto;" />`)
+            }
+          }}
+        >
+          <img
+            src={`data:${img.mimeType};base64,${img.data}`}
+            alt={img.name || `Image ${index + 1}`}
+            style={{
+              width: '100%',
+              height: 'auto',
+              maxHeight: images.length === 1 ? '300px' : '150px',
+              objectFit: 'cover',
+              display: 'block'
+            }}
+          />
+          {img.name && (
+            <div style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'rgba(0, 0, 0, 0.6)',
+              color: 'white',
+              fontSize: '10px',
+              padding: '4px 8px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}>
+              {img.name}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+})
 
 interface MessageItemProps {
   msg: Message
@@ -47,7 +112,10 @@ export const MessageItem = memo(function MessageItem({
   if (msg.role === 'user') {
     return (
       <div className="user-message-wrapper">
-        <div className="user-message-bubble">{msg.content}</div>
+        <div className="user-message-bubble">
+          {msg.content}
+          <ImageGallery images={msg.images || []} />
+        </div>
       </div>
     )
   }

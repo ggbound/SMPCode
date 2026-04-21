@@ -37,6 +37,14 @@ export interface ToolCall {
   duration?: number
 }
 
+// 图片内容项
+export interface ImageContent {
+  type: 'image'
+  data: string // base64 编码的图片数据
+  mimeType: string // 图片类型，如 image/png, image/jpeg
+  name?: string // 文件名
+}
+
 export interface Message {
   role: 'user' | 'assistant'
   content: string
@@ -54,6 +62,7 @@ export interface Message {
     language?: string
     status?: 'pending' | 'running' | 'completed' | 'failed'
   }>
+  images?: ImageContent[]  // 图片内容数组
 }
 
 export interface Command {
@@ -90,6 +99,7 @@ export interface ModelConfig {
   id: string
   name: string
   group?: string
+  supportsVision?: boolean // 是否支持图片/多模态
 }
 
 export interface ProviderConfig {
