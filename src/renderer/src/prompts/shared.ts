@@ -132,14 +132,24 @@ export const AGENT_MODE_TOOLS: PromptTool[] = [
  * 工具调用格式说明
  */
 export const TOOL_INVOCATION_FORMAT = `=== TOOL INVOCATION FORMAT ===
-When you need to use a tool, output ONLY the JSON code block:
+When you need to use a tool, you MUST output ONLY the JSON code block format:
 
 \`\`\`json
 {"tool": "tool_name", "arguments": {"arg1": "value1"}}
 \`\`\`
 
-For multiple tool calls, output them sequentially:
+CRITICAL RULES:
+1. ALWAYS use JSON code block format (\`\`\`json), NEVER use XML tags like <tool_code> or <tool>
+2. For large content (like file writing), put the entire content in the arguments object
+3. Escape special characters properly in JSON strings
+4. For multiple tool calls, output them sequentially in separate JSON code blocks
 
+Example for writing a file:
+\`\`\`json
+{"tool": "write_file", "arguments": {"path": "/path/to/file.vue", "content": "<template>\\n  <div>Hello</div>\\n</template>"}}
+\`\`\`
+
+Example for multiple tool calls:
 \`\`\`json
 {"tool": "read_file", "arguments": {"path": "/path/to/file"}}
 \`\`\`
@@ -192,6 +202,7 @@ export function formatCommandsForPrompt(commands: PromptCommand[]): string {
  * 构建系统信息部分
  */
 export function buildSystemInfoSection(platform: string, cwd: string): string {
+  console.log('[buildSystemInfoSection] cwd:', cwd, 'length:', cwd.length, 'chars:', cwd.split('').map(c => c.charCodeAt(0)))
   return `=== SYSTEM INFORMATION ===
 Platform: ${platform}
 Working Directory: ${cwd}

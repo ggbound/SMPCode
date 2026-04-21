@@ -18,13 +18,57 @@ import {
 
 import * as fs from 'fs'
 import * as path from 'path'
-import { exec } from 'child_process'
+import { exec, spawn } from 'child_process'
 import { promisify } from 'util'
 import log from 'electron-log'
 import { getCurrentWorkingDirectory } from './command-executor'
 import { processBridge } from './process-terminal-bridge'
 
 const execPromise = promisify(exec)
+
+/**
+ * 使用 spawn 执行命令（更可靠，支持大输出和更好的错误处理）
+ */
+function spawnPromise(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve, reject) => {
+    // 使用 shell 执行命令，确保管道和重定向正常工作
+    const child = spawn(command, [], {
+      cwd,
+      env,
+      shell: true,  // 使用 shell 执行，支持管道、重定向等
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.on('data', (data) => {
+      stdout += data.toString()
+    })
+
+    child.stderr?.on('data', (data) => {
+      stderr += data.toString()
+    })
+
+    child.on('close', (exitCode) => {
+      resolve({ stdout, stderr, exitCode: exitCode || 0 })
+    })
+
+    child.on('error', (error) => {
+      reject(error)
+    })
+
+    // 设置超时
+    const timeout = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(new Error(`Command timed out after 60s: ${command}`))
+    }, 60000)
+
+    child.on('close', () => {
+      clearTimeout(timeout)
+    })
+  })
+}
 
 // ============ 参数定义 ============
 
@@ -430,10 +474,11 @@ const executeBashTool: ToolExecutor = {
     command: commandParam
   },
   required: ['command'],
-  execute: async (args): Promise<ToolExecutionResult> => {
+  execute: async (args, context): Promise<ToolExecutionResult> => {
     try {
       const command = args.command as string
-      const baseCwd = getCurrentWorkingDirectory()
+      // 使用传入的 context.cwd 而不是全局的 getCurrentWorkingDirectory()
+      const baseCwd = context?.cwd || getCurrentWorkingDirectory()
       const cwd = extractCwdFromCommand(command, baseCwd)
       const commandKey = `${cwd}:${command}`
       const now = Date.now()
@@ -541,20 +586,33 @@ const executeBashTool: ToolExecutor = {
         PATH: pathDirs.join(':')
       }
 
+      log.info(`[execute_bash] Direct execution: command="${command}", cwd="${cwd}"`)
       log.info(`[execute_bash] Direct execution PATH: ${env.PATH}`)
 
-      const { stdout, stderr } = await execPromise(command, {
-        cwd,
-        timeout: 60000,
-        maxBuffer: 10 * 1024 * 1024,
-        env
-      })
+      try {
+        // 使用 spawnPromise 替代 execPromise，更可靠
+        const { stdout, stderr, exitCode } = await spawnPromise(command, cwd, env)
+        log.info(`[execute_bash] Direct execution completed: exitCode=${exitCode}, stdout="${stdout?.substring(0, 200)}", stderr="${stderr?.substring(0, 200)}"`)
 
-      return createSuccessResult(stdout || '(no output)', { stderr: stderr || undefined })
+        if (exitCode !== 0) {
+          return createErrorResult(
+            `Command failed with exit code ${exitCode}: ${stderr || stdout || 'Unknown error'}`,
+            stdout
+          )
+        }
+
+        return createSuccessResult(stdout || '(no output)', { stderr: stderr || undefined, exitCode })
+      } catch (execError: any) {
+        log.error(`[execute_bash] Direct execution failed:`, execError)
+        return createErrorResult(
+          execError.message || String(execError),
+          ''
+        )
+      }
     } catch (error: any) {
       return createErrorResult(
-        error.stderr || error.message || String(error),
-        error.stdout || ''
+        error.message || String(error),
+        ''
       )
     }
   }
@@ -750,7 +808,7 @@ const TOOL_NAME_MAP: Record<string, string> = {
   'FileAppendTool': 'append_file',
   'ListDirectoryTool': 'list_directory',
   'DeleteFileTool': 'delete_file',
-  'BashTool': 'bash',
+  'BashTool': 'execute_bash',
   'SearchCodeTool': 'search_code',
   'GetRunningProcessesTool': 'get_running_processes',
   'StopProcessTool': 'stop_process',

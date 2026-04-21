@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import type { Message, ToolCall } from '../store'
 import { CodeBlock } from './CodeBlock'
 import { ThinkingPanel } from './ThinkingPanel'
@@ -298,6 +299,7 @@ function StreamingContent({ content, isStreaming }: { content: string; isStreami
     <div className={`streaming-content ${isStreaming ? 'streaming' : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeRaw]}
         components={{
           p: ({ children }) => <p>{children}</p>,
           pre: ({ children }) => <>{children}</>,
@@ -451,6 +453,7 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
           <div className="builder-text-content markdown-body">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
               components={{
                 p: ({ children }) => {
                   // 高亮文件路径

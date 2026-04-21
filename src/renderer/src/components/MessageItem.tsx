@@ -7,6 +7,7 @@ import { memo, useState, useCallback } from 'react'
 import type { Message } from '../store'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { t } from '../i18n'
@@ -70,6 +71,7 @@ export const MessageItem = memo(function MessageItem({
       <div className="assistant-message-content">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
           components={{
             pre: ({ children }) => {
               const codeElement = children as React.ReactElement<{
@@ -106,7 +108,7 @@ export const MessageItem = memo(function MessageItem({
               if (looksLikeMarkdown && language === 'text') {
                 return (
                   <div className="markdown-content-wrapper">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
                       {contentStr}
                     </ReactMarkdown>
                   </div>

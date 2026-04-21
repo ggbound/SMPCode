@@ -446,6 +446,8 @@ function App() {
   // Handle project path change - auto load associated session from local storage
   const handleProjectPathChange = useCallback(async (newPath: string) => {
     console.log('[handleProjectPathChange] New project path:', newPath)
+    console.log('[handleProjectPathChange] Path length:', newPath.length)
+    console.log('[handleProjectPathChange] Path chars:', newPath.split('').map(c => c.charCodeAt(0)))
     setProjectPath(newPath)
     setCurrentProjectPath(newPath)
 
@@ -918,17 +920,22 @@ function App() {
     try {
       // Get current working directory for system prompt
       let currentCwd = projectPath || '/'
+      console.log('[handleSendMessage] Initial currentCwd from projectPath:', currentCwd)
+
       if (!currentCwd || currentCwd === '/') {
         try {
           const cwdRes = await fetch(`${API_BASE}/cwd`)
           if (cwdRes.ok) {
             const cwdData = await cwdRes.json()
             currentCwd = cwdData.cwd || '/'
+            console.log('[handleSendMessage] currentCwd from API:', currentCwd)
           }
         } catch (e) {
           console.error('Failed to get cwd:', e)
         }
       }
+
+      console.log('[handleSendMessage] Final currentCwd:', currentCwd)
 
       // Fetch project context if available
       let projectContextStr = ''

@@ -111,7 +111,7 @@ async function sendOpenAIMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 8192,
+    max_tokens: 16384,  // Increased for large file operations
     stream
   }
 
@@ -190,7 +190,7 @@ async function sendAnthropicMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 8192,
+    max_tokens: 16384,  // Increased for large file operations
     stream
   }
 
@@ -272,7 +272,7 @@ async function* streamOpenAIMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 8192,
+    max_tokens: 16384,  // Increased for large file operations
     stream: true
   }
 
@@ -353,7 +353,7 @@ async function* streamAnthropicMessage(
   const requestBody: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: 8192,
+    max_tokens: 16384,  // Increased for large file operations
     stream: true
   }
 

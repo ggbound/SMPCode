@@ -9,8 +9,26 @@ import { spawn, ChildProcess } from 'child_process'
 
 // Import services
 import { sendChatMessage, streamChatMessage } from './services/llm-service'
-import { getCommandsService } from './services/commands-service'
-import { getToolsService } from './services/tools-service'
+import {
+  getCommandsService,
+  executeCommand as executeMirroredCommand,
+  findCommands,
+  getCommandNames,
+  renderCommandIndex
+} from './services/commands-service'
+import {
+  getToolsService,
+  executeTool as executeMirroredTool,
+  findTools,
+  getToolNames,
+  renderToolIndex
+} from './services/tools-service'
+import {
+  getExecutionRegistry,
+  buildExecutionRegistry,
+  MirroredCommand,
+  MirroredTool
+} from './services/execution-registry'
 import { executeCommand, setCurrentWorkingDirectory, getCurrentWorkingDirectory } from './services/command-executor'
 import { listDirectory, readFile, writeFile } from './services/files-service'
 import {
@@ -41,19 +59,13 @@ import {
 import { PortRuntime, RuntimeSessionImpl } from './core/runtime'
 import { QueryEnginePort } from './core/query-engine'
 import {
-  getCommand,
-  getCommands,
-  findCommands,
-  executeCommand as executePortCommand,
-  renderCommandIndex,
+  getCommand as getCoreCommand,
+  getCommands as getCoreCommands,
   PORTED_COMMANDS
 } from './core/commands'
 import {
-  getTool,
-  getTools,
-  findTools,
-  executeTool as executePortTool,
-  renderToolIndex,
+  getTool as getCoreTool,
+  getTools as getCoreTools,
   PORTED_TOOLS
 } from './core/tools'
 import { buildPortManifest } from './core/port-manifest'
@@ -421,7 +433,7 @@ export async function startApiServer(): Promise<void> {
     if (query) {
       res.json({ commands: findCommands(query, limit) })
     } else {
-      const commands = getCommands(undefined, !noPluginCommands, !noSkillCommands)
+      const commands = getCoreCommands(undefined, !noPluginCommands, !noSkillCommands)
       res.json({
         count: commands.length,
         commands: commands.slice(0, limit)
@@ -443,7 +455,7 @@ export async function startApiServer(): Promise<void> {
     if (query) {
       res.json({ tools: findTools(query, limit) })
     } else {
-      const tools = getTools(simpleMode, !noMcp, permissionContext)
+      const tools = getCoreTools(simpleMode, !noMcp, permissionContext)
       res.json({
         count: tools.length,
         tools: tools.slice(0, limit)
@@ -557,7 +569,7 @@ export async function startApiServer(): Promise<void> {
       return
     }
 
-    const result = executePortCommand(name, prompt)
+    const result = executeMirroredCommand(name, prompt)
     res.json({ result })
   })
 
@@ -570,7 +582,7 @@ export async function startApiServer(): Promise<void> {
       return
     }
 
-    const result = executePortTool(name, payload)
+    const result = executeMirroredTool(name, payload)
     res.json({ result })
   })
 

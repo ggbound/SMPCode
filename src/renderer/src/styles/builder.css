@@ -1009,8 +1009,8 @@
   font-size: 12px;
 }
 
-.builder-message-content hr {
-  margin: 12px 0;
-  border: none;
-  border-top: 1px solid var(--border-color);
+/* 隐藏所有工具调用相关的分隔线 */
+.builder-message-content hr,
+.markdown-body hr {
+  display: none !important;
 }
