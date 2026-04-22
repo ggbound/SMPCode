@@ -18,6 +18,20 @@ import {
 import { initTerminalService, cleanupTerminals } from './services/terminal-service'
 import { processBridge } from './services/process-terminal-bridge'
 import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
+import { 
+  getGitStatus,
+  isGitRepository,
+  findGitRoot,
+  getFileStatus,
+  getRecentCommits,
+  getBranches
+} from './services/git-service'
+import {
+  watchDirectory,
+  unwatchDirectory,
+  stopAllWatchers,
+  getGitIgnorePatterns
+} from './services/files-service'
 
 // Configure logging
 log.transports.file.level = 'info'
@@ -145,6 +159,18 @@ function createWindow(): void {
       submenu: [
         { label: 'New Session', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('new-session') },
         { label: 'New Session (Global)', accelerator: 'CmdOrCtrl+Shift+N', click: () => mainWindow?.webContents.send('new-session') }
+      ]
+    },
+    {
+      label: 'Copilot',
+      submenu: [
+        { label: 'Trigger Inline Edit', accelerator: 'CmdOrCtrl+I', click: () => mainWindow?.webContents.send('copilot-inline-edit') },
+        { label: 'Explain Selected Code', accelerator: 'CmdOrCtrl+Shift+E', click: () => mainWindow?.webContents.send('copilot-explain') },
+        { label: 'Refactor Selected Code', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow?.webContents.send('copilot-refactor') },
+        { type: 'separator' },
+        { label: 'Toggle Copilot', accelerator: 'CmdOrCtrl+Shift+C', click: () => mainWindow?.webContents.send('copilot-toggle') },
+        { label: 'Accept Completion', accelerator: 'Tab', click: () => mainWindow?.webContents.send('copilot-accept') },
+        { label: 'Dismiss Completion', accelerator: 'Esc', click: () => mainWindow?.webContents.send('copilot-dismiss') }
       ]
     },
     {
@@ -429,6 +455,48 @@ function setupIpcHandlers(): void {
     mainWindow?.close()
   })
 
+  // Git service handlers
+  ipcMain.handle('git:status', async (_event, repoPath: string) => {
+    return await getGitStatus(repoPath)
+  })
+
+  ipcMain.handle('git:is-repo', (_event, dirPath: string) => {
+    return isGitRepository(dirPath)
+  })
+
+  ipcMain.handle('git:find-root', (_event, startPath: string) => {
+    return findGitRoot(startPath)
+  })
+
+  ipcMain.handle('git:file-status', (_event, { repoPath, filePath }: { repoPath: string; filePath: string }) => {
+    return getFileStatus(repoPath, filePath)
+  })
+
+  ipcMain.handle('git:commits', async (_event, { repoPath, count }: { repoPath: string; count?: number }) => {
+    return await getRecentCommits(repoPath, count || 10)
+  })
+
+  ipcMain.handle('git:branches', async (_event, repoPath: string) => {
+    return await getBranches(repoPath)
+  })
+
+  // File watching handlers
+  ipcMain.handle('fs:watch', (_event, dirPath: string) => {
+    return watchDirectory(dirPath, (eventType, filename) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('fs:change', { eventType, filename, dirPath })
+      }
+    })
+  })
+
+  ipcMain.handle('fs:unwatch', (_event, dirPath: string) => {
+    return unwatchDirectory(dirPath)
+  })
+
+  ipcMain.handle('fs:get-gitignore', (_event, dirPath: string) => {
+    return getGitIgnorePatterns(dirPath)
+  })
+
   // File dialog handlers
   ipcMain.handle('show-open-dialog', async (_event, options) => {
     if (!mainWindow) return { canceled: true, filePaths: [] }
@@ -520,7 +588,9 @@ function setupProcessBridgeHandlers(): void {
   // 获取项目AI历史
   ipcMain.handle('process:get-ai-history', async (_event, { cwd }: { cwd: string }) => {
     try {
-      return processBridge.getProjectAIHistory(cwd)
+      // Return empty array as this method doesn't exist on processBridge
+      // This is a placeholder for future AI history tracking
+      return []
     } catch (error) {
       log.error('Failed to get AI history:', error)
       return []
@@ -1061,6 +1131,7 @@ app.on('before-quit', () => {
   cleanupTerminals()
   processBridge.cleanupAll()
   stopApiServer()
+  stopAllWatchers()
   log.info('Application quitting')
 })
 

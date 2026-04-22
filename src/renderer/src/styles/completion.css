@@ -1,0 +1,399 @@
+/* Copilot-style Code Completion Styles */
+
+/* Ghost text for inline completions */
+.copilot-ghost-text {
+  pointer-events: none;
+  color: var(--text-secondary, #888);
+  opacity: 0.6;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: pre;
+  z-index: 10;
+}
+
+/* Completion widget */
+.copilot-completion-widget {
+  background-color: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 200px;
+  max-width: 400px;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+/* Completion item */
+.copilot-completion-item {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.15s ease;
+}
+
+.copilot-completion-item:hover {
+  background-color: var(--bg-tertiary, #3d3d3d);
+}
+
+.copilot-completion-item.active {
+  background-color: var(--accent-color, #007acc);
+  color: white;
+}
+
+/* Completion hint */
+.copilot-completion-hint {
+  background-color: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  z-index: 1000;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Inline edit overlay */
+.inline-edit-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.inline-edit-modal {
+  background-color: var(--bg-primary, #1e1e1e);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 900px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Diff view styles */
+.diff-line {
+  display: flex;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.diff-line-number {
+  width: 40px;
+  padding: 2px 8px;
+  text-align: right;
+  color: var(--text-secondary, #888);
+  border-right: 1px solid var(--border-color, #444);
+  user-select: none;
+}
+
+.diff-line-content {
+  flex: 1;
+  padding: 2px 12px;
+  white-space: pre;
+}
+
+.diff-line.added {
+  background-color: rgba(34, 197, 94, 0.1);
+  border-left: 3px solid #22c55e;
+}
+
+.diff-line.added .diff-line-content {
+  color: #22c55e;
+}
+
+.diff-line.removed {
+  background-color: rgba(239, 68, 68, 0.1);
+  border-left: 3px solid #ef4444;
+}
+
+.diff-line.removed .diff-line-content {
+  color: #ef4444;
+}
+
+.diff-line.unchanged {
+  background-color: transparent;
+  border-left: 3px solid transparent;
+}
+
+.diff-line.unchanged .diff-line-content {
+  color: var(--text-primary, #ccc);
+}
+
+/* Context menu for code actions */
+.copilot-context-menu {
+  background-color: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  min-width: 180px;
+  z-index: 1000;
+}
+
+.copilot-context-menu-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary, #ccc);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.copilot-context-menu-item:hover {
+  background-color: var(--bg-tertiary, #3d3d3d);
+}
+
+.copilot-context-menu-item-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-color, #007acc);
+}
+
+.copilot-context-menu-separator {
+  height: 1px;
+  background-color: var(--border-color, #444);
+  margin: 4px 0;
+}
+
+/* Code intelligence panel */
+.code-intelligence-panel {
+  background-color: var(--bg-secondary, #2d2d2d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+
+.code-intelligence-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-color, #007acc);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.code-intelligence-panel-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary, #ccc);
+}
+
+/* Loading spinner for completions */
+.copilot-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--text-secondary, #888);
+  font-size: 13px;
+}
+
+.copilot-loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color, #444);
+  border-top-color: var(--accent-color, #007acc);
+  border-radius: 50%;
+  animation: copilot-spin 0.8s linear infinite;
+}
+
+@keyframes copilot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Keyboard shortcut hints */
+.copilot-keyboard-hint {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-secondary, #888);
+  padding: 4px 12px;
+  border-top: 1px solid var(--border-color, #444);
+}
+
+.copilot-keyboard-hint kbd {
+  background-color: var(--bg-tertiary, #3d3d3d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-family: inherit;
+  font-size: 10px;
+}
+
+/* Copilot status indicator */
+.copilot-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
+.copilot-status.active {
+  color: var(--accent-color, #007acc);
+}
+
+.copilot-status-icon {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: currentColor;
+  opacity: 0.6;
+}
+
+.copilot-status.active .copilot-status-icon {
+  opacity: 1;
+  animation: copilot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes copilot-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* Explanation panel */
+.copilot-explanation {
+  background-color: var(--bg-secondary, #2d2d2d);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 8px 0;
+}
+
+.copilot-explanation-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-color, #007acc);
+  margin-bottom: 8px;
+}
+
+.copilot-explanation-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary, #ccc);
+}
+
+.copilot-explanation-key-points {
+  margin-top: 12px;
+}
+
+.copilot-explanation-key-points-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #888);
+  margin-bottom: 6px;
+}
+
+.copilot-explanation-key-points-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.copilot-explanation-key-points-list li {
+  font-size: 13px;
+  color: var(--text-primary, #ccc);
+  padding: 4px 0;
+  padding-left: 16px;
+  position: relative;
+}
+
+.copilot-explanation-key-points-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: var(--accent-color, #007acc);
+}
+
+/* Refactoring suggestions */
+.copilot-refactoring {
+  background-color: var(--bg-secondary, #2d2d2d);
+  border-radius: 6px;
+  padding: 16px;
+  margin: 8px 0;
+}
+
+.copilot-refactoring-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-color, #007acc);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.copilot-refactoring-code {
+  background-color: var(--bg-primary, #1e1e1e);
+  border-radius: 4px;
+  padding: 12px;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.copilot-refactoring-code pre {
+  margin: 0;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.copilot-refactoring-explanation {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary, #ccc);
+  margin-top: 12px;
+}
+
+.copilot-refactoring-changes {
+  margin-top: 12px;
+}
+
+.copilot-refactoring-change {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.copilot-refactoring-change-icon {
+  color: var(--accent-color, #007acc);
+  flex-shrink: 0;
+}
+
+.copilot-refactoring-change-text {
+  color: var(--text-primary, #ccc);
+}

@@ -137,6 +137,28 @@ interface AppState {
   
   // Chat mode: 'agent' for tool-enabled chat, 'chat' for simple Q&A
   chatMode: 'agent' | 'chat'
+
+  // VS Code Copilot integration state
+  codeCompletions: Array<{
+    id: string
+    text: string
+    confidence: number
+    range: { start: number; end: number }
+  }>
+  inlineEditSuggestions: Array<{
+    id: string
+    originalCode: string
+    editedCode: string
+    explanation: string
+    diff: string
+  }>
+  codeContext: {
+    filePath: string | null
+    language: string | null
+    cursorPosition: { line: number; character: number } | null
+    selectedCode: string | null
+  } | null
+  copilotEnabled: boolean
   
   setApiKey: (apiKey: string) => void
   setModel: (model: string) => void
@@ -159,6 +181,17 @@ interface AppState {
   setRouteMatches: (matches: RouteMatch[]) => void
   setCurrentProjectPath: (path: string | null) => void
   setChatMode: (mode: 'agent' | 'chat') => void
+
+  // VS Code Copilot state actions
+  setCodeCompletions: (completions: AppState['codeCompletions']) => void
+  addCodeCompletion: (completion: AppState['codeCompletions'][0]) => void
+  clearCodeCompletions: () => void
+  setInlineEditSuggestions: (suggestions: AppState['inlineEditSuggestions']) => void
+  addInlineEditSuggestion: (suggestion: AppState['inlineEditSuggestions'][0]) => void
+  clearInlineEditSuggestions: () => void
+  setCodeContext: (context: AppState['codeContext']) => void
+  updateCodeContext: (context: Partial<NonNullable<AppState['codeContext']>>) => void
+  setCopilotEnabled: (enabled: boolean) => void
   
   // TRAE风格：步骤和工具调用管理
   addStepToMessage: (messageIndex: number, step: Step) => void
@@ -199,6 +232,12 @@ export const useStore = create<AppState>((set) => ({
   
   // Chat mode: default to 'chat' for simple Q&A
   chatMode: 'chat',
+
+  // VS Code Copilot integration state
+  codeCompletions: [],
+  inlineEditSuggestions: [],
+  codeContext: null,
+  copilotEnabled: true,
 
   setApiKey: (apiKey) => set({ apiKey }),
   setModel: (model) => set({ model }),
@@ -254,7 +293,24 @@ export const useStore = create<AppState>((set) => ({
   
   setCurrentProjectPath: (currentProjectPath) => set({ currentProjectPath }),
   setChatMode: (chatMode) => set({ chatMode }),
-  
+
+  // VS Code Copilot state actions
+  setCodeCompletions: (codeCompletions) => set({ codeCompletions }),
+  addCodeCompletion: (completion) => set((state) => ({
+    codeCompletions: [...state.codeCompletions, completion]
+  })),
+  clearCodeCompletions: () => set({ codeCompletions: [] }),
+  setInlineEditSuggestions: (inlineEditSuggestions) => set({ inlineEditSuggestions }),
+  addInlineEditSuggestion: (suggestion) => set((state) => ({
+    inlineEditSuggestions: [...state.inlineEditSuggestions, suggestion]
+  })),
+  clearInlineEditSuggestions: () => set({ inlineEditSuggestions: [] }),
+  setCodeContext: (codeContext) => set({ codeContext }),
+  updateCodeContext: (context) => set((state) => ({
+    codeContext: state.codeContext ? { ...state.codeContext, ...context } : context as AppState['codeContext']
+  })),
+  setCopilotEnabled: (copilotEnabled) => set({ copilotEnabled }),
+
   // TRAE风格：步骤和工具调用管理
   addStepToMessage: (messageIndex, step) => set((state) => ({
     messages: state.messages.map((msg, i) => 

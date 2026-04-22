@@ -913,47 +913,7 @@ function ChatArea({
         </div>
       </form>
 
-      {/* Status Bar */}
-      <div className="chat-status-bar">
-        <div className="status-left">
-          <span className="status-item" title={`${t('permission')}: ${permissionMode}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-            </svg>
-            <span className="status-value">{getPermissionLabel(permissionMode)}</span>
-          </span>
-        </div>
-        <div className="status-right">
-          <span className="status-item" title={`${t('in')}: ${inputTokens}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-              <polyline points="17 6 23 6 23 12"></polyline>
-            </svg>
-            <span className="status-value">{inputTokens}</span>
-          </span>
-          <span className="status-item" title={`${t('out')}: ${outputTokens}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
-              <polyline points="17 18 23 18 23 12"></polyline>
-            </svg>
-            <span className="status-value">{outputTokens}</span>
-          </span>
-          <span className="status-item" title={`${t('total')}: ${inputTokens + outputTokens}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            <span className="status-value">{inputTokens + outputTokens}</span>
-          </span>
-          <span className="status-item" title={`${t('estCost')}: $${((inputTokens + outputTokens) * 0.003).toFixed(4)}`}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="1" x2="12" y2="23"></line>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-            </svg>
-            <span className="status-value">${((inputTokens + outputTokens) * 0.003).toFixed(4)}</span>
-          </span>
-        </div>
-      </div>
+
     </div>
   )
 }

@@ -3,8 +3,10 @@ import log from 'electron-log'
 
 // Types for API calls
 export interface Message {
-  role: 'user' | 'assistant'
-  content: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
+  name?: string
+  tool_call_id?: string
 }
 
 export interface ChatRequest {
@@ -49,7 +51,21 @@ const DEFAULT_ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 // Models that use Anthropic protocol
 const ANTHROPIC_MODELS = [
   'claude-3-5-sonnet',
-  'claude-3-7-sonnet'
+  'claude-3-7-sonnet',
+  'claude-3-opus',
+  'claude-3-haiku'
+]
+
+// Models optimized for code completion
+const COMPLETION_OPTIMIZED_MODELS = [
+  'gpt-4o',
+  'gpt-4o-mini',
+  'gpt-4-turbo',
+  'claude-3-5-sonnet',
+  'claude-3-7-sonnet',
+  'deepseek-coder',
+  'codestral',
+  'qwen-coder'
 ]
 
 /**
@@ -463,8 +479,161 @@ export async function validateApiKey(apiKey: string, model: string, apiUrl?: str
   }
 }
 
+// Completion cache for performance
+const completionCache = new Map<string, { result: string; timestamp: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+/**
+ * Build FIM (Fill-In-the-Middle) prompt for code completion
+ */
+function buildFIMPrompt(prefix: string, suffix: string): string {
+  return `<|fim_prefix|>${prefix}<|fim_suffix|>${suffix}<|fim_middle|>`
+}
+
+/**
+ * Get cached completion or null
+ */
+function getCachedCompletion(key: string): string | null {
+  const cached = completionCache.get(key)
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.result
+  }
+  completionCache.delete(key)
+  return null
+}
+
+/**
+ * Cache completion result
+ */
+function cacheCompletion(key: string, result: string): void {
+  completionCache.set(key, { result, timestamp: Date.now() })
+
+  // Clean old entries if cache is too large
+  if (completionCache.size > 100) {
+    const oldestKey = completionCache.keys().next().value
+    if (oldestKey !== undefined) {
+      completionCache.delete(oldestKey)
+    }
+  }
+}
+
+/**
+ * Request code completion from LLM
+ */
+export async function requestCodeCompletion(
+  apiKey: string,
+  model: string,
+  prefix: string,
+  suffix: string,
+  apiUrl?: string
+): Promise<string> {
+  const cacheKey = `${model}:${prefix.slice(-100)}:${suffix.slice(0, 100)}`
+  const cached = getCachedCompletion(cacheKey)
+  if (cached) {
+    log.info('[LLM] Using cached completion')
+    return cached
+  }
+
+  const isAnthropic = isAnthropicModel(model)
+  const url = getApiUrl(apiUrl, isAnthropic)
+
+  const prompt = buildFIMPrompt(prefix, suffix)
+
+  try {
+    let response: Response
+
+    if (isAnthropic) {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: `Complete the code at the cursor position. Only provide the completion, no explanations.\n\n${prompt}`
+            }
+          ],
+          max_tokens: 256,
+          temperature: 0.2
+        })
+      })
+    } else {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a code completion assistant. Complete the code at the cursor position marked by <|fim_middle|>. Provide only the completion text, no explanations.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          max_tokens: 256,
+          temperature: 0.2,
+          stop: ['<|fim_suffix|>', '\n\n', '\n\t\n']
+        })
+      })
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`API error: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    const completionText = isAnthropic
+      ? data.content?.[0]?.text || ''
+      : data.choices?.[0]?.message?.content?.trim() || ''
+
+    // Clean up the completion
+    const cleanedCompletion = completionText
+      .replace(/^<\|fim_middle\|>/, '')
+      .replace(/<\|fim_suffix\|>.*$/, '')
+      .trim()
+
+    cacheCompletion(cacheKey, cleanedCompletion)
+    return cleanedCompletion
+  } catch (error) {
+    log.error('[LLM] Code completion error:', error)
+    throw error
+  }
+}
+
+/**
+ * Check if model is optimized for code completion
+ */
+export function isCompletionOptimizedModel(model: string): boolean {
+  return COMPLETION_OPTIMIZED_MODELS.some(m =>
+    model.toLowerCase().includes(m.toLowerCase())
+  )
+}
+
+/**
+ * Clear completion cache
+ */
+export function clearCompletionCache(): void {
+  completionCache.clear()
+  log.info('[LLM] Completion cache cleared')
+}
+
 export default {
   sendChatMessage,
   streamChatMessage,
-  validateApiKey
+  validateApiKey,
+  requestCodeCompletion,
+  isCompletionOptimizedModel,
+  clearCompletionCache
 }

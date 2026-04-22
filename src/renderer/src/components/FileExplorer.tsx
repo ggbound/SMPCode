@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2 } from 'lucide-react'
 import { t } from '../i18n'
+import { gitIPC } from './GitStatusBar'
 
 interface FileNode {
   name: string
@@ -8,6 +10,7 @@ interface FileNode {
   children?: FileNode[]
   isOpen?: boolean
   isLoading?: boolean
+  gitStatus?: 'modified' | 'staged' | 'untracked' | 'conflicted' | null
 }
 
 interface FileExplorerProps {
@@ -420,11 +423,41 @@ const FileIcon = ({ filename, isDirectory, isOpen }: { filename: string; isDirec
 }
 
 // Legacy function for backward compatibility
-const getFileIcon = (filename: string, isDirectory: boolean, isOpen?: boolean): string => {
+const getFileIcon = (filename: string, isDirectory: boolean, isOpen?: boolean) => {
   if (isDirectory) {
-    return isOpen ? '📂' : '📁'
+    return isOpen ? <FolderOpen size={16} /> : <Folder size={16} />
   }
-  return '📄'
+  return <File size={16} />
+}
+
+// Git status badge component
+const GitStatusBadge = ({ status }: { status?: string | null }) => {
+  if (!status) return null
+  
+  const getBadgeStyle = () => {
+    switch (status) {
+      case 'modified':
+        return { color: '#d29922', title: 'Modified' }
+      case 'staged':
+        return { color: '#3fb950', title: 'Staged' }
+      case 'untracked':
+        return { color: '#8b949e', title: 'Untracked' }
+      case 'conflicted':
+        return { color: '#f85149', title: 'Conflicted' }
+      default:
+        return { color: 'transparent', title: '' }
+    }
+  }
+  
+  const style = getBadgeStyle()
+  
+  return (
+    <span 
+      className="git-status-badge" 
+      style={{ backgroundColor: style.color }}
+      title={style.title}
+    />
+  )
 }
 
 function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, onFileRenamed, onFileDeleted }: FileExplorerProps) {
@@ -438,8 +471,13 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
   const [newItemName, setNewItemName] = useState('')
   const [renameDialog, setRenameDialog] = useState<{ isOpen: boolean; node: FileNode | null } | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [editingNode, setEditingNode] = useState<{ path: string; name: string } | null>(null)
+  const [draggedNode, setDraggedNode] = useState<FileNode | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ path: string; position: 'before' | 'after' | 'inside' } | null>(null)
+  const [clipboard, setClipboard] = useState<{ path: string; type: 'copy' | 'cut'; node: FileNode } | null>(null)
   const fileTreeRef = useRef<FileNode[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const isWatchingRef = useRef(false)
 
   const API_BASE = 'http://localhost:3847/api'
 
@@ -469,10 +507,66 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
         setIsSearching(false)
         setSearchQuery('')
       }
+      // F2 to rename selected file
+      if (e.key === 'F2' && selectedPath) {
+        e.preventDefault()
+        const findNodeByPath = (nodes: FileNode[], path: string): FileNode | null => {
+          for (const node of nodes) {
+            if (node.path === path) return node
+            if (node.children) {
+              const found = findNodeByPath(node.children, path)
+              if (found) return found
+            }
+          }
+          return null
+        }
+        const node = findNodeByPath(fileTree, selectedPath)
+        if (node) {
+          setEditingNode({ path: node.path, name: node.name })
+        }
+      }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isSearching])
+  }, [isSearching, selectedPath, fileTree])
+
+  // File watching - auto refresh on file changes
+  useEffect(() => {
+    if (!rootPath || isWatchingRef.current) return
+
+    const startWatching = async () => {
+      try {
+        await (window as any).api.fsWatch(rootPath)
+        isWatchingRef.current = true
+        console.log('[FileExplorer] Started watching:', rootPath)
+      } catch (err) {
+        console.error('[FileExplorer] Failed to start watching:', err)
+      }
+    }
+
+    startWatching()
+
+    // Listen for file change events
+    const handleFileChange = (_event: any, data: { eventType: string; filename: string; dirPath: string }) => {
+      console.log('[FileExplorer] File changed:', data.eventType, data.filename)
+      // Debounce refresh
+      setTimeout(() => {
+        handleRefreshPreserveExpansion()
+      }, 500)
+    }
+
+    const { api } = window as any
+    if (api && api.onFileChange) {
+      api.onFileChange(handleFileChange)
+    }
+
+    return () => {
+      if (isWatchingRef.current && rootPath) {
+        api?.fsUnwatch(rootPath)
+        isWatchingRef.current = false
+      }
+    }
+  }, [rootPath])
 
   // Refresh project context when files change
   const refreshProjectContext = useCallback(async () => {
@@ -539,7 +633,14 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
 
         fetch(`${API_BASE}/fs/list?path=${encodeURIComponent(rootPath)}`)
           .then(res => res.json())
-          .then((items: FileNode[]) => {
+          .then(async (items: FileNode[]) => {
+            // Get Git status for files
+            const gitRoot = await gitIPC.findRoot(rootPath)
+            let processedItems = items
+            if (gitRoot) {
+              processedItems = await getGitStatusForFiles(items, gitRoot)
+            }
+            
             const applyExpansion = (nodes: FileNode[]): FileNode[] => {
               return nodes.map(node => {
                 if (node.isDirectory) {
@@ -549,7 +650,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                 return node
               })
             }
-            setFileTree(applyExpansion(items))
+            setFileTree(applyExpansion(processedItems))
           })
           .catch(err => console.error('[FileExplorer] Refresh failed:', err))
 
@@ -582,6 +683,27 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     return []
   }, [])
 
+  // Get Git status for files in a directory
+  const getGitStatusForFiles = useCallback(async (nodes: FileNode[], repoPath: string): Promise<FileNode[]> => {
+    if (!repoPath) return nodes
+    
+    const updatedNodes = await Promise.all(
+      nodes.map(async (node) => {
+        if (!node.isDirectory) {
+          try {
+            const status = await gitIPC.getFileStatus(repoPath, node.path)
+            return { ...node, gitStatus: status as any }
+          } catch (err) {
+            return node
+          }
+        }
+        return node
+      })
+    )
+    
+    return updatedNodes
+  }, [])
+
   // Toggle directory open/close
   const toggleDirectory = useCallback(async (node: FileNode, tree: FileNode[], path: string[]) => {
     const newTree = [...tree]
@@ -599,7 +721,14 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           current[index] = { ...current[index], isLoading: true }
           setFileTree(newTree)
           
-          const children = await loadDirectory(current[index].path)
+          let children = await loadDirectory(current[index].path)
+          
+          // Get Git status for files
+          const gitRoot = await gitIPC.findRoot(rootPath)
+          if (gitRoot) {
+            children = await getGitStatusForFiles(children, gitRoot)
+          }
+          
           const updateTree = (nodes: FileNode[]): FileNode[] => {
             return nodes.map(n => {
               if (n.path === node.path) {
@@ -736,6 +865,110 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
       }
     } catch (error) {
       console.error('Failed to delete item:', error)
+    }
+    setContextMenu(null)
+  }
+
+  // Handle inline rename
+  const handleInlineRename = async () => {
+    if (!editingNode || !editingNode.name.trim()) {
+      setEditingNode(null)
+      return
+    }
+    
+    const oldPath = editingNode.path
+    const parentPath = oldPath.substring(0, oldPath.lastIndexOf('/'))
+    const newPath = `${parentPath}/${editingNode.name.trim()}`
+    const newName = editingNode.name.trim()
+    
+    try {
+      const res = await fetch(`${API_BASE}/fs/rename`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldPath, newPath })
+      })
+      if (res.ok) {
+        handleRefreshPreserveExpansion()
+        onFileRenamed?.(oldPath, newPath, newName)
+      }
+    } catch (error) {
+      console.error('Failed to rename item:', error)
+    }
+    
+    setEditingNode(null)
+  }
+
+  // Copy file/folder
+  const handleCopy = (node: FileNode) => {
+    setClipboard({ path: node.path, type: 'copy', node })
+    setContextMenu(null)
+  }
+
+  // Cut file/folder
+  const handleCut = (node: FileNode) => {
+    setClipboard({ path: node.path, type: 'cut', node })
+    setContextMenu(null)
+  }
+
+  // Paste file/folder
+  const handlePaste = async (targetDir: string) => {
+    if (!clipboard) return
+    
+    const fileName = clipboard.node.name
+    const targetPath = `${targetDir}/${fileName}`
+    
+    try {
+      if (clipboard.type === 'copy') {
+        // For copy, we need to read and write
+        const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(clipboard.path)}`)
+        if (readRes.ok) {
+          const data = await readRes.json()
+          const writeRes = await fetch(`${API_BASE}/fs/write`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: targetPath, content: data.content || '' })
+          })
+          if (writeRes.ok) {
+            handleRefreshPreserveExpansion()
+          }
+        }
+      } else {
+        // For cut, use rename
+        const res = await fetch(`${API_BASE}/fs/rename`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ oldPath: clipboard.path, newPath: targetPath })
+        })
+        if (res.ok) {
+          handleRefreshPreserveExpansion()
+          setClipboard(null)
+        }
+      }
+    } catch (error) {
+      console.error('Failed to paste item:', error)
+    }
+    setContextMenu(null)
+  }
+
+  // Reveal in Finder/Explorer
+  const handleRevealInFinder = async (node: FileNode) => {
+    try {
+      const api = window.api as unknown as { revealInFinder: (path: string) => Promise<void> }
+      if (api?.revealInFinder) {
+        await api.revealInFinder(node.path)
+      }
+    } catch (error) {
+      console.error('Failed to reveal in finder:', error)
+    }
+    setContextMenu(null)
+  }
+
+  // Copy path to clipboard
+  const handleCopyPath = async (node: FileNode) => {
+    try {
+      await navigator.clipboard.writeText(node.path)
+    } catch (error) {
+      console.error('Failed to copy path:', error)
     }
     setContextMenu(null)
   }
@@ -918,15 +1151,67 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     const currentPath = [...path, node.name]
     const hasChildren = node.isDirectory && (node.children?.length ?? 0) > 0
     const isEmptyFolder = node.isDirectory && !hasChildren && !node.isLoading
+    const isEditing = editingNode?.path === node.path
+    const isDropTarget = dropTarget?.path === node.path
 
     return (
       <div key={node.path} className="file-tree-node">
         <div
-          className={`file-node ${isSelected ? 'selected' : ''} ${node.isDirectory ? 'directory' : 'file'}`}
+          className={`file-node ${isSelected ? 'selected' : ''} ${node.isDirectory ? 'directory' : 'file'} ${isDropTarget ? `drop-target-${dropTarget.position}` : ''}`}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
           onClick={(e) => handleNodeClick(node, tree, currentPath, e)}
           onContextMenu={(e) => handleContextMenu(e, node)}
           title={node.path}
+          draggable={!node.isDirectory}
+          onDragStart={(e) => {
+            if (!node.isDirectory) {
+              e.dataTransfer.setData('text/plain', node.path)
+              setDraggedNode(node)
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            if (node.isDirectory) {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const y = e.clientY - rect.top
+              const height = rect.height
+              
+              if (y < height * 0.25) {
+                setDropTarget({ path: node.path, position: 'before' })
+              } else if (y > height * 0.75) {
+                setDropTarget({ path: node.path, position: 'after' })
+              } else {
+                setDropTarget({ path: node.path, position: 'inside' })
+              }
+            }
+          }}
+          onDragLeave={() => setDropTarget(null)}
+          onDrop={async (e) => {
+            e.preventDefault()
+            setDropTarget(null)
+            
+            const sourcePath = e.dataTransfer.getData('text/plain')
+            if (!sourcePath || !node.isDirectory) return
+            
+            const fileName = sourcePath.split('/').pop()
+            if (!fileName) return
+            
+            const targetPath = `${node.path}/${fileName}`
+            
+            try {
+              const res = await fetch(`${API_BASE}/fs/rename`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ oldPath: sourcePath, newPath: targetPath })
+              })
+              if (res.ok) {
+                handleRefreshPreserveExpansion()
+              }
+            } catch (error) {
+              console.error('Failed to move file:', error)
+            }
+            setDraggedNode(null)
+          }}
         >
           {/* Expand/Collapse arrow for directories */}
           {node.isDirectory && (
@@ -947,8 +1232,32 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           {/* File/Folder icon */}
           <FileIcon filename={node.name} isDirectory={node.isDirectory} isOpen={node.isOpen} />
           
-          {/* File name */}
-          <span className="file-name">{node.name}</span>
+          {/* Git status badge */}
+          <GitStatusBadge status={node.gitStatus} />
+          
+          {/* File name or inline edit input */}
+          {isEditing ? (
+            <input
+              className="file-name-input"
+              value={editingNode.name}
+              onChange={(e) => setEditingNode({ ...editingNode, name: e.target.value })}
+              onBlur={handleInlineRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.stopPropagation()
+                  handleInlineRename()
+                }
+                if (e.key === 'Escape') {
+                  e.stopPropagation()
+                  setEditingNode(null)
+                }
+              }}
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="file-name">{node.name}</span>
+          )}
           
           {/* Loading indicator */}
           {node.isLoading && <span className="file-loading">⟳</span>}
@@ -1001,7 +1310,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
             disabled={!rootPath || isLoading}
             title={t('collapseAll')}
           >
-            ⬆️
+            <ArrowUp size={16} />
           </button>
         </div>
       </div>
@@ -1074,6 +1383,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
         >
           {contextMenu.node && (
             <>
+              {/* Open file/folder */}
               {!contextMenu.node.isDirectory && (
                 <button 
                   className="context-menu-item"
@@ -1086,6 +1396,8 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                   {t('open')}
                 </button>
               )}
+              
+              {/* New file/folder (for directories) */}
               {contextMenu.node.isDirectory && (
                 <>
                   <button 
@@ -1110,24 +1422,71 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                   </button>
                 </>
               )}
+              
               <div className="context-menu-divider" />
+              
+              {/* Copy/Cut/Paste */}
+              <button 
+                className="context-menu-item"
+                onClick={() => handleCopy(contextMenu.node!)}
+              >
+                <span className="context-icon">📋</span>
+                {t('copy') || 'Copy'}
+              </button>
+              <button 
+                className="context-menu-item"
+                onClick={() => handleCut(contextMenu.node!)}
+              >
+                <span className="context-icon"><Scissors size={14} /></span>
+                {t('cut') || 'Cut'}
+              </button>
+              {clipboard && contextMenu.node?.isDirectory && (
+                <button 
+                  className="context-menu-item"
+                  onClick={() => handlePaste(contextMenu.node!.path)}
+                >
+                  <span className="context-icon">📌</span>
+                  {t('paste') || 'Paste'}
+                </button>
+              )}
+              
+              <div className="context-menu-divider" />
+              
+              {/* Rename/Delete */}
               <button 
                 className="context-menu-item"
                 onClick={() => {
-                  setRenameDialog({ isOpen: true, node: contextMenu.node })
-                  setRenameValue(contextMenu.node!.name)
+                  setEditingNode({ path: contextMenu.node!.path, name: contextMenu.node!.name })
                   setContextMenu(null)
                 }}
               >
-                <span className="context-icon">✏️</span>
+                <span className="context-icon"><Edit size={14} /></span>
                 {t('rename')}
               </button>
               <button 
                 className="context-menu-item context-menu-danger"
                 onClick={() => handleDelete(contextMenu.node!)}
               >
-                <span className="context-icon">🗑️</span>
+                <span className="context-icon"><Trash2 size={14} /></span>
                 {t('delete') || 'Delete'}
+              </button>
+              
+              <div className="context-menu-divider" />
+              
+              {/* System actions */}
+              <button 
+                className="context-menu-item"
+                onClick={() => handleRevealInFinder(contextMenu.node!)}
+              >
+                <span className="context-icon">📂</span>
+                {t('revealInFinder') || 'Reveal in Finder'}
+              </button>
+              <button 
+                className="context-menu-item"
+                onClick={() => handleCopyPath(contextMenu.node!)}
+              >
+                <span className="context-icon">📎</span>
+                {t('copyPath') || 'Copy Path'}
               </button>
             </>
           )}

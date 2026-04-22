@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, ChevronDown, CheckCircle, XCircle, Loader2, FileText, Edit3, PlusCircle, FolderOpen, FileSearch, Terminal, Trash2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, CheckCircle, XCircle, Loader2, FileText, Edit3, PlusCircle, FolderOpen, FileSearch, Terminal, Trash2, Check, X } from 'lucide-react'
 
 interface ToolResult {
   tool: string
@@ -198,7 +198,7 @@ export function IterationMessage({
                 >
                   <div className="tool-detail-header">
                     <span className="tool-status-icon">
-                      {tr.result.success ? '✓' : '✗'}
+                      {tr.result.success ? <Check size={14} /> : <X size={14} />}
                     </span>
                     <span className="tool-icon">{getToolIcon(tr.tool)}</span>
                     <div className="tool-info">

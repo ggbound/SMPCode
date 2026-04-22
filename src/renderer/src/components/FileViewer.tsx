@@ -1,65 +1,61 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import CodeMirror from '@uiw/react-codemirror'
-import { vscodeDark } from '@uiw/codemirror-theme-vscode'
-import { javascript } from '@codemirror/lang-javascript'
-import { html } from '@codemirror/lang-html'
-import { css } from '@codemirror/lang-css'
-import { json } from '@codemirror/lang-json'
-import { markdown } from '@codemirror/lang-markdown'
-import { python } from '@codemirror/lang-python'
-import { vue } from '@codemirror/lang-vue'
 import type { Tab } from './FileTabs'
 import { t } from '../i18n'
+import { useCodeCompletion } from '../hooks/useCodeCompletion'
+import { useCodeIntelligence } from '../hooks/useCodeIntelligence'
+import { CodeCompletion } from './CodeCompletion'
+import { InlineEdit } from './InlineEdit'
+import MonacoEditor from './MonacoEditor'
+import Breadcrumbs from './Breadcrumbs'
+import { File } from 'lucide-react'
 
 interface FileViewerProps {
   tab: Tab | null
   onContentChange?: (tabId: string, content: string) => void
   onSave?: (tabId: string, content: string) => Promise<boolean>
+  onExplainCode?: (code: string, language: string) => void
+  rootPath?: string
+  onCursorPositionChange?: (position: { line: number; column: number }) => void
 }
 
 // Auto-save delay in milliseconds
 const AUTO_SAVE_DELAY = 1000
 
-// Get language extension based on file path
-function getLanguageExtension(path: string | null) {
-  if (!path) return null
-  const ext = path.split('.').pop()?.toLowerCase()
-  
-  switch (ext) {
-    case 'js':
-    case 'ts':
-    case 'tsx':
-    case 'jsx':
-      return javascript({ jsx: ext === 'jsx' || ext === 'tsx', typescript: ext === 'ts' || ext === 'tsx' })
-    case 'html':
-    case 'htm':
-      return html()
-    case 'css':
-    case 'scss':
-    case 'sass':
-    case 'less':
-      return css()
-    case 'json':
-      return json()
-    case 'md':
-    case 'markdown':
-      return markdown()
-    case 'py':
-    case 'python':
-      return python()
-    case 'vue':
-      return vue()
-    default:
-      return null
-  }
-}
-
-function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
+function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onCursorPositionChange }: FileViewerProps) {
   const [editedContent, setEditedContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContentRef = useRef('')
+  const editorRef = useRef<HTMLDivElement>(null)
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 })
+  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null)
+  const [showInlineEdit, setShowInlineEdit] = useState(false)
+  const [inlineEditCode, setInlineEditCode] = useState('')
+
+  // VS Code Copilot integration hooks
+  const {
+    isLoading: completionLoading,
+    completions,
+    activeIndex,
+    visible: completionVisible,
+    triggerCompletion,
+    acceptCompletion,
+    rejectCompletion,
+    nextCompletion,
+    prevCompletion,
+    getActiveCompletion
+  } = useCodeCompletion()
+
+  const {
+    explanation,
+    refactoring,
+    inlineEdit,
+    explainCode,
+    refactorCode,
+    getInlineEdit,
+    clearResults
+  } = useCodeIntelligence()
 
   // Reset content when tab changes
   useEffect(() => {
@@ -166,17 +162,95 @@ function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
     }
   }
 
-  // Get language extension
-  const extensions = useMemo(() => {
-    const ext = getLanguageExtension(tab?.path || null)
-    return ext ? [ext] : []
+  // Language is now handled by MonacoEditor internally
+
+  const language = useMemo(() => {
+    if (!tab?.path) return 'text'
+    const ext = tab.path.split('.').pop()?.toLowerCase() || ''
+    const langMap: Record<string, string> = {
+      'js': 'javascript', 'ts': 'typescript', 'tsx': 'tsx', 'jsx': 'jsx',
+      'py': 'python', 'json': 'json', 'md': 'markdown', 'css': 'css',
+      'scss': 'scss', 'html': 'html', 'xml': 'xml', 'yaml': 'yaml',
+      'yml': 'yaml', 'sh': 'bash', 'bash': 'bash', 'rs': 'rust',
+      'go': 'go', 'java': 'java', 'c': 'c', 'cpp': 'cpp', 'h': 'c',
+      'hpp': 'cpp', 'rb': 'ruby', 'php': 'php', 'sql': 'sql'
+    }
+    return langMap[ext] || 'text'
   }, [tab?.path])
+
+  // Handle editor selection change for Monaco
+  const handleEditorSelectionChange = useCallback((selection: any) => {
+    if (selection && selection.startLineNumber && selection.endLineNumber) {
+      setSelectionRange({
+        start: selection.startLineNumber,
+        end: selection.endLineNumber
+      })
+      // Get selected text
+      if (selection.startLineNumber !== selection.endLineNumber || 
+          selection.startColumn !== selection.endColumn) {
+        // Calculate selected text - would need editor instance
+        setInlineEditCode('')
+      }
+    } else {
+      setSelectionRange(null)
+    }
+  }, [])
+
+  // Handle editor cursor activity for completions
+  const handleEditorCursorChange = useCallback((position: any) => {
+    // Update cursor position for UI
+    setCursorPosition({ x: position.column, y: position.lineNumber })
+  }, [])
+
+  // Handle code explanation
+  const handleExplainCode = useCallback(async () => {
+    if (!tab || !selectionRange) return
+    const code = inlineEditCode
+    await explainCode(code, language, tab.path, selectionRange)
+  }, [tab, language, selectionRange, inlineEditCode, explainCode])
+
+  // Handle inline edit trigger
+  const handleInlineEdit = useCallback(async (instruction: string) => {
+    if (!tab || !selectionRange) return
+    await getInlineEdit(inlineEditCode, instruction, language, tab.path, selectionRange)
+    setShowInlineEdit(true)
+  }, [tab, language, selectionRange, inlineEditCode, getInlineEdit])
+
+  // Handle inline edit accept
+  const handleInlineEditAccept = useCallback(() => {
+    if (inlineEdit?.editedCode) {
+      handleContentChange(inlineEdit.editedCode)
+    }
+    setShowInlineEdit(false)
+    clearResults()
+  }, [inlineEdit, handleContentChange, clearResults])
+
+  // Handle inline edit reject
+  const handleInlineEditReject = useCallback(() => {
+    setShowInlineEdit(false)
+    clearResults()
+  }, [clearResults])
+
+  // Handle completion accept
+  const handleCompletionAccept = useCallback((index?: number) => {
+    const completion = acceptCompletion(index)
+    if (completion) {
+      // Insert completion at cursor position
+      // This would need to be integrated with the editor instance
+      console.log('Accepted completion:', completion)
+    }
+  }, [acceptCompletion])
+
+  // Handle completion reject
+  const handleCompletionReject = useCallback(() => {
+    rejectCompletion()
+  }, [rejectCompletion])
 
   if (!tab) {
     return (
       <div className="file-viewer file-viewer-empty">
         <div className="file-viewer-placeholder">
-          <div className="placeholder-icon">📄</div>
+          <div className="placeholder-icon"><File size={48} /></div>
           <p>{t('selectFileToView')}</p>
         </div>
       </div>
@@ -200,74 +274,67 @@ function FileViewer({ tab, onContentChange, onSave }: FileViewerProps) {
 
   return (
     <div className="file-viewer">
-      <div className="file-viewer-header">
-        <div className="file-viewer-info">
-          <span className="file-viewer-name">
-            {fileName}
-            {saveStatus === 'unsaved' && <span className="file-dirty-indicator">●</span>}
-          </span>
-          <span className="file-viewer-path">
-            {tab.path}
-            <span className="save-status-separator">•</span>
-            {getSaveStatusDisplay()}
-          </span>
-        </div>
-        <div className="file-viewer-actions">
-          {!isImage && (
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={handleManualSave}
-              disabled={isSaving || saveStatus === 'saved'}
-            >
-              {isSaving ? t('savingStatus') : t('save')}
-            </button>
-          )}
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={copyToClipboard}
-            title={t('copy')}
-          >
-            {t('copy')}
-          </button>
-        </div>
-      </div>
-
+      {/* Breadcrumbs navigation */}
+      {tab && rootPath && (
+        <Breadcrumbs
+          filePath={tab.path}
+          rootPath={rootPath}
+          onPathClick={(path) => {
+            // Dispatch event to highlight path in file tree
+            window.dispatchEvent(new CustomEvent('highlight-path', { detail: { path } }))
+          }}
+        />
+      )}
+      
       <div className="file-viewer-content">
         {isImage ? (
           <div className="file-viewer-image">
             <img src={`file://${tab.path}`} alt={fileName} />
           </div>
         ) : (
-          <div className="code-editor-container">
-            <CodeMirror
+          <div className="code-editor-container" ref={editorRef} style={{ position: 'relative' }}>
+            <MonacoEditor
               value={editedContent}
-              height="100%"
-              theme={vscodeDark}
-              extensions={extensions}
+              language={language}
               onChange={(value) => handleContentChange(value)}
-              basicSetup={{
-                lineNumbers: true,
-                highlightActiveLineGutter: true,
-                highlightActiveLine: true,
-                foldGutter: false,
-                dropCursor: true,
-                allowMultipleSelections: true,
-                indentOnInput: true,
-                bracketMatching: true,
-                closeBrackets: true,
-                autocompletion: true,
-                highlightSelectionMatches: true,
-                tabSize: 2,
-              }}
-              style={{
-                height: '100%',
-                fontSize: '13px',
-                fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace",
-              }}
+              onSave={handleManualSave}
+              onCursorPositionChange={onCursorPositionChange}
+            />
+
+            {/* Copilot Code Completion Overlay */}
+            <CodeCompletion
+              visible={completionVisible}
+              completions={completions}
+              activeIndex={activeIndex}
+              cursorPosition={cursorPosition}
+              ghostText={getActiveCompletion()}
+              onAccept={handleCompletionAccept}
+              onReject={handleCompletionReject}
+              onNext={nextCompletion}
+              onPrev={prevCompletion}
             />
           </div>
         )}
       </div>
+
+      {/* Inline Edit Modal */}
+      <InlineEdit
+        visible={showInlineEdit}
+        originalCode={inlineEditCode}
+        editedCode={inlineEdit?.editedCode || ''}
+        explanation={inlineEdit?.explanation || ''}
+        diff={inlineEdit?.diff || ''}
+        loading={inlineEdit?.loading || false}
+        error={inlineEdit?.error}
+        onAccept={handleInlineEditAccept}
+        onReject={handleInlineEditReject}
+        onModify={(newCode) => {
+          handleContentChange(newCode)
+          setShowInlineEdit(false)
+          clearResults()
+        }}
+        language={language}
+      />
     </div>
   )
 }

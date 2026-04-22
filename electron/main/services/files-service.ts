@@ -9,6 +9,9 @@ export interface FileNode {
   children?: FileNode[]
 }
 
+// File watchers map
+const fileWatchers = new Map<string, fs.FSWatcher>()
+
 // List directory contents
 export function listDirectory(dirPath: string): FileNode[] {
   try {
@@ -129,4 +132,80 @@ export function isBinaryFile(filePath: string): boolean {
   ]
   const ext = getFileExtension(filePath)
   return binaryExtensions.includes(ext)
+}
+
+// Watch directory for changes
+export function watchDirectory(dirPath: string, callback: (eventType: string, filename: string) => void): boolean {
+  try {
+    // Close existing watcher if any
+    if (fileWatchers.has(dirPath)) {
+      fileWatchers.get(dirPath)?.close()
+    }
+
+    const watcher = fs.watch(dirPath, { recursive: false }, (eventType, filename) => {
+      if (filename) {
+        callback(eventType, filename)
+      }
+    })
+
+    fileWatchers.set(dirPath, watcher)
+    log.info(`Started watching directory: ${dirPath}`)
+    return true
+  } catch (error) {
+    log.error('Failed to watch directory:', error)
+    return false
+  }
+}
+
+// Stop watching directory
+export function unwatchDirectory(dirPath: string): boolean {
+  const watcher = fileWatchers.get(dirPath)
+  if (watcher) {
+    watcher.close()
+    fileWatchers.delete(dirPath)
+    log.info(`Stopped watching directory: ${dirPath}`)
+    return true
+  }
+  return false
+}
+
+// Stop all watchers
+export function stopAllWatchers(): void {
+  fileWatchers.forEach((watcher, dirPath) => {
+    watcher.close()
+    log.info(`Stopped watching: ${dirPath}`)
+  })
+  fileWatchers.clear()
+}
+
+// Check if .gitignore exists and parse it
+export function getGitIgnorePatterns(dirPath: string): string[] {
+  const gitignorePath = path.join(dirPath, '.gitignore')
+  
+  if (!fs.existsSync(gitignorePath)) {
+    return []
+  }
+  
+  try {
+    const content = fs.readFileSync(gitignorePath, 'utf-8')
+    return content
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line && !line.startsWith('#'))
+  } catch (error) {
+    log.error('Failed to read .gitignore:', error)
+    return []
+  }
+}
+
+// Check if file should be ignored based on .gitignore patterns
+export function shouldIgnoreFile(filename: string, patterns: string[]): boolean {
+  for (const pattern of patterns) {
+    // Simple glob matching
+    if (pattern === filename) return true
+    if (pattern.endsWith('/') && filename.startsWith(pattern)) return true
+    if (pattern.startsWith('*') && filename.endsWith(pattern.slice(1))) return true
+    if (pattern.endsWith('*') && filename.startsWith(pattern.slice(0, -1))) return true
+  }
+  return false
 }

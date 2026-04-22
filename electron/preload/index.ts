@@ -120,6 +120,25 @@ const api = {
   onProcessError: (callback: (event: unknown, data: { terminalId: string; processId: string; error: string }) => void) => {
     ipcRenderer.on('terminal:process-error', callback)
     return () => ipcRenderer.removeListener('terminal:process-error', callback)
+  },
+
+  // Git operations
+  gitStatus: (repoPath: string) => ipcRenderer.invoke('git:status', repoPath),
+  gitIsRepo: (dirPath: string) => ipcRenderer.invoke('git:is-repo', dirPath),
+  gitFindRoot: (startPath: string) => ipcRenderer.invoke('git:find-root', startPath),
+  gitFileStatus: (repoPath: string, filePath: string) => ipcRenderer.invoke('git:file-status', { repoPath, filePath }),
+  gitCommits: (repoPath: string, count?: number) => ipcRenderer.invoke('git:commits', { repoPath, count }),
+  gitBranches: (repoPath: string) => ipcRenderer.invoke('git:branches', repoPath),
+
+  // File watching
+  fsWatch: (dirPath: string) => ipcRenderer.invoke('fs:watch', dirPath),
+  fsUnwatch: (dirPath: string) => ipcRenderer.invoke('fs:unwatch', dirPath),
+  fsGetGitignore: (dirPath: string) => ipcRenderer.invoke('fs:get-gitignore', dirPath),
+
+  // Event listeners for file watching
+  onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => {
+    ipcRenderer.on('fs:change', callback)
+    return () => ipcRenderer.removeListener('fs:change', callback)
   }
 }
 

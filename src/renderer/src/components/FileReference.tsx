@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { File, FileCode, Settings, Database, Globe } from 'lucide-react'
 
 interface FileReferenceProps {
   filePath: string
@@ -13,46 +14,46 @@ export function FileReference({ filePath, onClick, onPreview }: FileReferencePro
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get file icon based on extension
-  const getFileIcon = (path: string) => {
+  const getFileIconComponent = (path: string) => {
     const ext = path.split('.').pop()?.toLowerCase()
     switch (ext) {
       case 'ts':
       case 'tsx':
-        return '📘'
+        return <FileCode size={14} />
       case 'js':
       case 'jsx':
-        return '📒'
+        return <FileCode size={14} />
       case 'json':
-        return '📋'
+        return <FileCode size={14} />
       case 'css':
       case 'scss':
       case 'less':
-        return '🎨'
+        return <FileCode size={14} />
       case 'html':
-        return '🌐'
+        return <Globe size={14} />
       case 'md':
-        return '📝'
+        return <FileCode size={14} />
       case 'py':
-        return '🐍'
+        return <FileCode size={14} />
       case 'java':
-        return '☕'
+        return <FileCode size={14} />
       case 'go':
-        return '🔵'
+        return <FileCode size={14} />
       case 'rs':
-        return '⚙️'
+        return <Settings size={14} />
       case 'c':
       case 'cpp':
       case 'h':
-        return '🔧'
+        return <FileCode size={14} />
       case 'sql':
-        return '🗄️'
+        return <Database size={14} />
       case 'yml':
       case 'yaml':
-        return '⚙️'
+        return <Settings size={14} />
       case 'dockerfile':
-        return '🐳'
+        return <FileCode size={14} />
       default:
-        return '📄'
+        return <File size={14} />
     }
   }
 
@@ -144,7 +145,7 @@ export function FileReference({ filePath, onClick, onPreview }: FileReferencePro
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
-        <span className="file-reference-icon">{getFileIcon(filePath)}</span>
+        <span className="file-reference-icon">{getFileIconComponent(filePath)}</span>
         <span className="file-reference-text">@{filePath}</span>
       </span>
       
@@ -158,7 +159,7 @@ export function FileReference({ filePath, onClick, onPreview }: FileReferencePro
           onMouseLeave={handleMouseLeave}
         >
           <div className="file-preview-header">
-            <span className="file-preview-icon">{getFileIcon(filePath)}</span>
+            <span className="file-preview-icon">{getFileIconComponent(filePath)}</span>
             <span className="file-preview-path">{filePath}</span>
             <span className="file-preview-lang">{getFileLanguage(filePath)}</span>
           </div>

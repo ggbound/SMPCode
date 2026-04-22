@@ -143,19 +143,46 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
       }
 
       // On macOS, try without args first to avoid posix_spawnp issues
-      let ptyProcess: pty.IPty
-      try {
-        if (process.platform === 'darwin' && shellConfig.args.length === 0) {
-          // Try spawning without args first
-          ptyProcess = pty.spawn(shellConfig.command, [], spawnOptions)
-        } else {
-          ptyProcess = pty.spawn(shellConfig.command, shellConfig.args, spawnOptions)
+      let ptyProcess: pty.IPty | undefined
+      let lastError: Error | null = null
+      
+      // Try multiple strategies in order of preference
+      const spawnStrategies = [
+        // Strategy 1: Use /usr/bin/env with bash (most compatible)
+        () => {
+          log.info('Strategy 1: Using /usr/bin/env bash')
+          return pty.spawn('/usr/bin/env', ['bash'], { ...spawnOptions })
+        },
+        // Strategy 2: Use detected shell without args
+        () => {
+          log.info(`Strategy 2: Spawning ${shellConfig.command} without args`)
+          return pty.spawn(shellConfig.command, [], spawnOptions)
+        },
+        // Strategy 3: Use /bin/bash as fallback
+        () => {
+          log.info('Strategy 3: Falling back to /bin/bash')
+          return pty.spawn('/bin/bash', [], spawnOptions)
+        },
+        // Strategy 4: Use /bin/sh as last resort
+        () => {
+          log.info('Strategy 4: Falling back to /bin/sh')
+          return pty.spawn('/bin/sh', [], spawnOptions)
         }
-      } catch (spawnError) {
-        log.warn(`Failed to spawn with default options, trying fallback: ${spawnError}`)
-        // Fallback: try with explicit shell
-        const fallbackShell = process.env.SHELL || '/bin/bash'
-        ptyProcess = pty.spawn(fallbackShell, [], spawnOptions)
+      ]
+      
+      for (const strategy of spawnStrategies) {
+        try {
+          ptyProcess = strategy()
+          log.info('Terminal spawned successfully')
+          break
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error))
+          log.warn(`Spawn strategy failed: ${lastError.message}`)
+        }
+      }
+      
+      if (!ptyProcess) {
+        throw new Error(`Failed to spawn terminal after trying all strategies. Last error: ${lastError?.message}`)
       }
 
       const session: TerminalSession = {

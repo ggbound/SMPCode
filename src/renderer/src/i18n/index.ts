@@ -58,6 +58,10 @@ export const translations = {
     filenamePlaceholder: '文件名.扩展名',
     foldernamePlaceholder: '文件夹名',
     confirmDelete: '确定要删除"{name}"吗？',
+    cut: '剪切',
+    paste: '粘贴',
+    revealInFinder: '在 Finder 中显示',
+    copyPath: '复制路径',
 
     // Terminal
     newTerminal: '新建终端',
@@ -223,6 +227,10 @@ export const translations = {
     filenamePlaceholder: 'filename.ext',
     foldernamePlaceholder: 'foldername',
     confirmDelete: 'Are you sure you want to delete "{name}"?',
+    cut: 'Cut',
+    paste: 'Paste',
+    revealInFinder: 'Reveal in Finder',
+    copyPath: 'Copy Path',
 
     // Terminal
     newTerminal: 'New Terminal',

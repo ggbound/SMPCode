@@ -1,14 +1,18 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore, type ProviderConfig, type Session, type Step, type ImageContent } from './store'
-import Sidebar from './components/Sidebar'
 import ChatArea from './components/ChatArea'
 import SettingsModal from './components/SettingsModal'
 import StatusBar from './components/StatusBar'
+import TitleBar from './components/TitleBar'
+import ActivityBar, { type ActivityBarItem } from './components/ActivityBar'
 import FileExplorer from './components/FileExplorer'
+import SearchPanel from './components/SearchPanel'
 import FileViewer from './components/FileViewer'
 import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
 import SessionSidebar from './components/SessionSidebar'
+import SessionBar from './components/SessionBar'
+import CommandPalette, { type Command } from './components/CommandPalette'
 import { t } from './i18n'
 import { useChatMode, useAgentMode } from './hooks'
 import {
@@ -17,6 +21,9 @@ import {
   getSystemInfo,
   type PromptCommand
 } from './prompts'
+import { useCodeCompletion } from './hooks/useCodeCompletion'
+import { useCodeIntelligence } from './hooks/useCodeIntelligence'
+import './styles/completion.css'
 
 const API_BASE = 'http://localhost:3847/api'
 
@@ -108,13 +115,41 @@ function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   
-  // Session sidebar state - 默认关闭，显示文件浏览器
-  const [sessionSidebarOpen, setSessionSidebarOpen] = useState(false)
+  // Session sidebar state - 已移动到顶部，不再需要侧边栏
   const [localSessions, setLocalSessions] = useState<Session[]>([])
+  
+  // Activity Bar state - 默认为 'explorer' 以确保文件浏览器始终可见
+  const [activeActivity, setActiveActivity] = useState<ActivityBarItem>('explorer')
+  const [previousActivity, setPreviousActivity] = useState<ActivityBarItem>('explorer')
+  
+  // Activity Bar click handler
+  const handleActivityClick = useCallback((item: ActivityBarItem) => {
+    // Settings 按钮打开设置模态框
+    if (item === 'settings') {
+      setShowSettings(true)
+      return
+    }
+    
+    // 切换其他 Activity
+    if (item !== activeActivity) {
+      setPreviousActivity(activeActivity)
+      setActiveActivity(item)
+    }
+  }, [activeActivity])
+  
+  // Command Palette state
+  const [showCommandPalette, setShowCommandPalette] = useState(false)
+  
+  // Monaco Editor cursor position
+  const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 })
 
   // Initialize mode-specific hooks
   const { processChatMessage, stopGeneration: stopChatGeneration } = useChatMode()
   const { processAgentMessage, stopGeneration: stopAgentGeneration, buildSystemPrompt: buildAgentSystemPrompt } = useAgentMode()
+
+  // VS Code Copilot integration hooks
+  const codeCompletion = useCodeCompletion()
+  const codeIntelligence = useCodeIntelligence()
 
   const {
     apiKey,
@@ -138,6 +173,8 @@ function App() {
     setCommands,
     setTools,
     setChatMode,
+    copilotEnabled,
+    setCopilotEnabled,
     addSession,
     selectSession,
     updateSessionTitle,
@@ -1337,101 +1374,271 @@ function App() {
     })
   }, [activeTabId])
 
+  // Register commands for Command Palette
+  const paletteCommands: Command[] = [
+    {
+      id: 'file.new',
+      label: 'New File',
+      description: 'Create a new file',
+      shortcut: 'Ctrl+N',
+      category: 'File',
+      execute: () => console.log('New file')
+    },
+    {
+      id: 'file.open',
+      label: 'Open File',
+      description: 'Open an existing file',
+      shortcut: 'Ctrl+O',
+      category: 'File',
+      execute: () => console.log('Open file')
+    },
+    {
+      id: 'file.save',
+      label: 'Save',
+      description: 'Save current file',
+      shortcut: 'Ctrl+S',
+      category: 'File',
+      execute: async () => {
+        if (activeTab && activeTab.isDirty) {
+          await handleTabSave(activeTab.id, activeTab.content || '')
+        }
+      }
+    },
+    {
+      id: 'view.toggleTerminal',
+      label: 'Toggle Terminal',
+      description: 'Show/hide terminal panel',
+      shortcut: 'Ctrl+`',
+      category: 'View',
+      execute: () => setShowTerminal(prev => !prev)
+    },
+    {
+      id: 'view.toggleSearch',
+      label: 'Toggle Search Panel',
+      description: 'Show/hide search panel',
+      shortcut: 'Ctrl+Shift+F',
+      category: 'View',
+      execute: () => setActiveActivity('search')
+    },
+    {
+      id: 'view.toggleExplorer',
+      label: 'Toggle Explorer',
+      description: 'Show/hide file explorer',
+      shortcut: 'Ctrl+Shift+E',
+      category: 'View',
+      execute: () => setActiveActivity('explorer')
+    },
+    {
+      id: 'settings.open',
+      label: 'Open Settings',
+      description: 'Open settings modal',
+      shortcut: 'Ctrl+,',
+      category: 'Preferences',
+      execute: () => setShowSettings(true)
+    },
+    {
+      id: 'editor.splitRight',
+      label: 'Split Editor Right',
+      description: 'Split editor vertically',
+      shortcut: 'Ctrl+\\',
+      category: 'Editor',
+      execute: () => console.log('Split right')
+    },
+    {
+      id: 'editor.splitDown',
+      label: 'Split Editor Down',
+      description: 'Split editor horizontally',
+      shortcut: 'Ctrl+K Ctrl+\\',
+      category: 'Editor',
+      execute: () => console.log('Split down')
+    }
+  ]
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+Shift+P or Cmd+Shift+P: Command Palette
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+        e.preventDefault()
+        setShowCommandPalette(prev => !prev)
+        return
+      }
+
+      // Escape: Close command palette
+      if (e.key === 'Escape' && showCommandPalette) {
+        e.preventDefault()
+        setShowCommandPalette(false)
+        return
+      }
+
+      // Ctrl+,: Settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault()
+        setShowSettings(true)
+        return
+      }
+
+      // Ctrl+`: Toggle terminal
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault()
+        setShowTerminal(prev => !prev)
+        return
+      }
+
+      // Ctrl+Shift+E: Explorer
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'E') {
+        e.preventDefault()
+        setActiveActivity('explorer')
+        return
+      }
+
+      // Ctrl+Shift+F: Search
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault()
+        setActiveActivity('search')
+        return
+      }
+
+      // Ctrl+S: Save
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault()
+        if (activeTab && activeTab.isDirty) {
+          handleTabSave(activeTab.id, activeTab.content || '')
+        }
+        return
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [showCommandPalette, activeTab, handleTabSave])
+
   return (
-    <div className={`app-container ${sessionSidebarOpen ? 'with-session-sidebar' : ''}`}>
-      {/* Session Sidebar - TRAE风格会话管理 */}
-      <SessionSidebar
-        sessions={localSessions}
-        currentSession={currentSession}
-        projectPath={projectPath}
-        onSelectSession={handleSelectSessionFromSidebar}
-        onCreateSession={handleCreateSessionFromSidebar}
-        onDeleteSession={handleDeleteSessionFromSidebar}
-        onRenameSession={handleRenameSessionFromSidebar}
-        isOpen={sessionSidebarOpen}
-        onToggle={() => setSessionSidebarOpen(!sessionSidebarOpen)}
-      />
-
+    <div className="app-container">
       <div className="app-main-wrapper">
-      <header className="header">
-        <h1 className="header-title">{t('appName')}</h1>
-        <div className="header-actions">
-          <button className="btn btn-ghost" onClick={() => setShowSettings(true)}>
-            {t('settings')}
-          </button>
-        </div>
-      </header>
-
-      <main className="main-content three-column-layout">
-        {/* Left: File Explorer */}
-        <FileExplorer
-          onFileSelect={handleFileSelect}
-          selectedPath={selectedFilePath}
-          onRootPathChange={handleProjectPathChange}
-          openFile={openFile}
-          onFileRenamed={handleFileRenamed}
-          onFileDeleted={handleFileDeleted}
-        />
-
-        {/* Center: File Tabs + File Viewer + Terminal */}
-        <div className="center-column">
-          {/* File Tabs */}
-          <FileTabs
-            tabs={tabs}
-            activeTabId={activeTabId}
-            onTabSelect={handleTabSelect}
-            onTabClose={handleTabClose}
-            onTabCloseOthers={handleTabCloseOthers}
-            onTabCloseAll={handleTabCloseAll}
-            onTabCloseToRight={handleTabCloseToRight}
-            onTabCloseToLeft={handleTabCloseToLeft}
+        {/* Custom Title Bar - draggable area for window management */}
+        <TitleBar />
+        
+        {/* Top area: ActivityBar + Main Content */}
+        <div className="app-top-area">
+          {/* Activity Bar - VSCode style left icon navigation */}
+          <ActivityBar
+            activeItem={activeActivity}
+            onItemClick={handleActivityClick}
           />
-          
-          {/* File Viewer */}
-          <div className="file-viewer-container">
-            <FileViewer
-              tab={activeTab}
-              onContentChange={handleTabContentChange}
-              onSave={handleTabSave}
-            />
-          </div>
-          <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />
+
+          {/* Main Content Area */}
+          <main className="main-content three-column-layout">
+            {/* Left: Sidebar (File Explorer or Search) */}
+            <div style={{ display: activeActivity === 'explorer' ? 'flex' : 'none', flex: '0 0 auto' }}>
+              <FileExplorer
+                onFileSelect={handleFileSelect}
+                selectedPath={selectedFilePath}
+                onRootPathChange={handleProjectPathChange}
+                openFile={openFile}
+                onFileRenamed={handleFileRenamed}
+                onFileDeleted={handleFileDeleted}
+              />
+            </div>
+            
+            <div style={{ display: activeActivity === 'search' ? 'flex' : 'none', flex: '0 0 auto' }}>
+              <SearchPanel projectPath={projectPath} />
+            </div>
+
+            {/* Center: File Tabs + File Viewer + Terminal */}
+            <div className="center-column">
+              {/* File Tabs */}
+              <FileTabs
+                tabs={tabs}
+                activeTabId={activeTabId}
+                onTabSelect={handleTabSelect}
+                onTabClose={handleTabClose}
+                onTabCloseOthers={handleTabCloseOthers}
+                onTabCloseAll={handleTabCloseAll}
+                onTabCloseToRight={handleTabCloseToRight}
+                onTabCloseToLeft={handleTabCloseToLeft}
+              />
+              
+              {/* File Viewer */}
+              <div className="file-viewer-container">
+                <FileViewer
+                  tab={activeTab}
+                  onContentChange={handleTabContentChange}
+                  onSave={handleTabSave}
+                  rootPath={projectPath}
+                  onCursorPositionChange={setCursorPosition}
+                />
+              </div>
+              <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />
+            </div>
+
+            {/* Right: Chat Area with Session Bar */}
+            <div className="right-column">
+              {/* Session Bar - 顶部横向会话管理 */}
+              <SessionBar
+                sessions={localSessions}
+                currentSession={currentSession}
+                projectPath={projectPath}
+                onSelectSession={handleSelectSessionFromSidebar}
+                onCreateSession={handleCreateSessionFromSidebar}
+                onDeleteSession={handleDeleteSessionFromSidebar}
+                onRenameSession={handleRenameSessionFromSidebar}
+              />
+              
+              {/* Chat Area */}
+              <ChatArea
+                messages={messages}
+                isLoading={isLoading}
+                onSendMessage={handleSendMessage}
+                onStopGeneration={handleStopGeneration}
+                messagesEndRef={messagesEndRef}
+                commands={commands}
+                permissionMode={permissionMode}
+                inputTokens={inputTokens}
+                outputTokens={outputTokens}
+                providers={providers}
+                model={model}
+                onModelChange={setModel}
+                onContinueExecution={handleContinueExecution}
+                showContinueButton={!!pendingContinuation}
+                chatMode={chatMode}
+                onChatModeChange={setChatMode}
+              />
+            </div>
+          </main>
         </div>
 
-        {/* Right: Chat Area */}
-        <ChatArea
-          messages={messages}
-          isLoading={isLoading}
-          onSendMessage={handleSendMessage}
-          onStopGeneration={handleStopGeneration}
-          messagesEndRef={messagesEndRef}
-          commands={commands}
+        {/* Status Bar - VSCode style bottom status bar */}
+        <StatusBar
           permissionMode={permissionMode}
           inputTokens={inputTokens}
           outputTokens={outputTokens}
-          providers={providers}
-          model={model}
-          onModelChange={setModel}
-          onContinueExecution={handleContinueExecution}
-          showContinueButton={!!pendingContinuation}
-          chatMode={chatMode}
-          onChatModeChange={setChatMode}
+          activeTabPath={activeTab?.path}
+          activeTabLanguage={activeTab?.language}
+          cursorLine={cursorPosition.line}
+          cursorColumn={cursorPosition.column}
+          projectPath={projectPath}
+          onOpenSettings={() => setShowSettings(true)}
         />
 
+        {showSettings && (
+          <SettingsModal
+            apiKey={apiKey}
+            model={model}
+            defaultModel={defaultModel}
+            permissionMode={permissionMode}
+            providers={providers}
+            onSave={handleSettingsSave}
+            onClose={handleSettingsClose}
+          />
+        )}
 
-      </main>
-
-      {showSettings && (
-        <SettingsModal
-          apiKey={apiKey}
-          model={model}
-          defaultModel={defaultModel}
-          permissionMode={permissionMode}
-          providers={providers}
-          onSave={handleSettingsSave}
-          onClose={handleSettingsClose}
+        {/* Command Palette */}
+        <CommandPalette
+          isOpen={showCommandPalette}
+          onClose={() => setShowCommandPalette(false)}
+          commands={paletteCommands}
         />
-      )}
       </div>
     </div>
   )

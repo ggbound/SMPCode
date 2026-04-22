@@ -8,7 +8,22 @@ import * as path from 'path'
 import { spawn, ChildProcess } from 'child_process'
 
 // Import services
-import { sendChatMessage, streamChatMessage } from './services/llm-service'
+import {
+  sendChatMessage,
+  streamChatMessage,
+  requestCodeCompletion
+} from './services/llm-service'
+import {
+  getCodeCompletions,
+  explainCode,
+  refactorCode,
+  getInlineEdit
+} from './services/vscode-copilot-service'
+import {
+  buildCodeContext,
+  analyzeSemantics,
+  detectLanguage
+} from './services/code-intelligence-service'
 import {
   getCommandsService,
   executeCommand as executeMirroredCommand,
@@ -54,6 +69,7 @@ import {
   refreshProjectContext,
   clearProjectContext
 } from './services/project-context-service'
+import { initGit } from './services/git-service'
 
 // Import new Port Architecture
 import { PortRuntime, RuntimeSessionImpl } from './core/runtime'
@@ -317,6 +333,32 @@ export async function startApiServer(): Promise<void> {
       commands: commandsService.getCount(),
       tools: toolsService.getCount()
     })
+  })
+
+  // ========== Git Endpoints ==========
+  
+  // Get current git branch
+  expressApp.get('/api/git/branch', async (req: Request, res: Response) => {
+    try {
+      const repoPath = req.query.repoPath as string
+      if (!repoPath) {
+        return res.status(400).json({ error: 'repoPath parameter is required' })
+      }
+
+      const git = initGit(repoPath)
+      if (!git) {
+        return res.json({ branch: '', isRepo: false })
+      }
+
+      const status = await git.status()
+      res.json({ 
+        branch: status.current || '',
+        isRepo: true
+      })
+    } catch (error) {
+      log.error('Failed to get git branch:', error)
+      res.json({ branch: '', error: String(error) })
+    }
   })
 
   // ========== Commands Endpoints ==========
@@ -1355,6 +1397,171 @@ export async function startApiServer(): Promise<void> {
 
     managedProcesses.delete(id)
     res.json({ message: 'Process deleted' })
+  })
+
+  // ============================================
+  // VS Code Copilot Integration Routes
+  // ============================================
+
+  // Code completion endpoint
+  expressApp.post('/api/copilot/completions', async (req: Request, res: Response) => {
+    try {
+      const { prefix, suffix, language, filePath, apiKey, model, apiUrl } = req.body
+
+      if (!apiKey || !model) {
+        res.status(400).json({ error: 'Missing API key or model' })
+        return
+      }
+
+      const completions = await getCodeCompletions({
+        prefix,
+        suffix,
+        language,
+        filePath,
+        cursorPosition: { line: 0, character: prefix.length },
+        apiKey,
+        model,
+        apiUrl
+      })
+
+      res.json(completions)
+    } catch (error) {
+      log.error('Code completion error:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Code explanation endpoint
+  expressApp.post('/api/copilot/explain', async (req: Request, res: Response) => {
+    try {
+      const { code, language, filePath, selectionRange, apiKey, model, apiUrl } = req.body
+
+      if (!apiKey || !model) {
+        res.status(400).json({ error: 'Missing API key or model' })
+        return
+      }
+
+      const explanation = await explainCode({
+        code,
+        language,
+        filePath,
+        selectionRange,
+        apiKey,
+        model,
+        apiUrl
+      })
+
+      res.json(explanation)
+    } catch (error) {
+      log.error('Code explanation error:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Code refactoring endpoint
+  expressApp.post('/api/copilot/refactor', async (req: Request, res: Response) => {
+    try {
+      const { code, language, filePath, refactoringType, apiKey, model, apiUrl } = req.body
+
+      if (!apiKey || !model) {
+        res.status(400).json({ error: 'Missing API key or model' })
+        return
+      }
+
+      const refactoring = await refactorCode({
+        code,
+        language,
+        filePath,
+        refactoringType: refactoringType || 'improve',
+        apiKey,
+        model,
+        apiUrl
+      })
+
+      res.json(refactoring)
+    } catch (error) {
+      log.error('Code refactoring error:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Inline edit endpoint
+  expressApp.post('/api/copilot/inline-edit', async (req: Request, res: Response) => {
+    try {
+      const { code, instruction, language, filePath, selectionRange, apiKey, model, apiUrl } = req.body
+
+      if (!apiKey || !model) {
+        res.status(400).json({ error: 'Missing API key or model' })
+        return
+      }
+
+      const inlineEdit = await getInlineEdit({
+        code,
+        instruction,
+        language,
+        filePath,
+        selectionRange,
+        apiKey,
+        model,
+        apiUrl
+      })
+
+      res.json(inlineEdit)
+    } catch (error) {
+      log.error('Inline edit error:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Code analysis endpoint
+  expressApp.post('/api/copilot/analyze', async (req: Request, res: Response) => {
+    try {
+      const { code, language, filePath } = req.body
+
+      const lang = language || detectLanguage(filePath || '')
+      const analysis = analyzeSemantics(code, lang)
+
+      res.json(analysis)
+    } catch (error) {
+      log.error('Code analysis error:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Code context endpoint
+  expressApp.post('/api/copilot/context', async (req: Request, res: Response) => {
+    try {
+      const { code, filePath, cursorPosition } = req.body
+
+      const context = buildCodeContext(filePath || '', code, cursorPosition)
+
+      res.json(context)
+    } catch (error) {
+      log.error('Code context error:', error)
+      res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // Legacy code completion endpoint (for backward compatibility)
+  expressApp.post('/api/completion', async (req: Request, res: Response) => {
+    try {
+      const { apiKey, model, prefix, suffix, apiUrl } = req.body
+
+      if (!apiKey || !model) {
+        res.status(400).json({ error: 'Missing API key or model' })
+        return
+      }
+
+      const completion = await requestCodeCompletion(apiKey, model, prefix, suffix, apiUrl)
+
+      res.json({
+        completion,
+        model
+      })
+    } catch (error) {
+      log.error('Completion error:', error)
+      res.status(500).json({ error: String(error) })
+    }
   })
 
   // Start server
