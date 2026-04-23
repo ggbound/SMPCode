@@ -7,13 +7,17 @@ export interface FileNode {
   path: string
   isDirectory: boolean
   children?: FileNode[]
+  // VSCode-style properties
+  hasChildren?: boolean  // Whether the node has children (for lazy loading)
+  mtime?: number         // Modification time for change detection
+  size?: number          // File size
 }
 
 // File watchers map
 const fileWatchers = new Map<string, fs.FSWatcher>()
 
-// List directory contents
-export function listDirectory(dirPath: string): FileNode[] {
+// List directory contents with VSCode-style optimizations
+export function listDirectory(dirPath: string, options?: { includeHidden?: boolean; maxDepth?: number }): FileNode[] {
   try {
     if (!fs.existsSync(dirPath)) {
       throw new Error(`Directory does not exist: ${dirPath}`)
@@ -24,29 +28,52 @@ export function listDirectory(dirPath: string): FileNode[] {
       throw new Error(`Not a directory: ${dirPath}`)
     }
 
-    const items = fs.readdirSync(dirPath)
+    const items = fs.readdirSync(dirPath, { withFileTypes: true })
     const nodes: FileNode[] = []
+    const includeHidden = options?.includeHidden ?? false
 
     for (const item of items) {
-      // Skip hidden files and node_modules
-      if (item.startsWith('.') || item === 'node_modules') {
+      // Skip hidden files unless explicitly included
+      if (!includeHidden && item.name.startsWith('.')) {
         continue
       }
 
-      const itemPath = path.join(dirPath, item)
+      // Skip node_modules and other common exclusions
+      if (item.name === 'node_modules' || item.name === '.git') {
+        continue
+      }
+
+      const itemPath = path.join(dirPath, item.name)
       try {
         const itemStats = fs.statSync(itemPath)
-        nodes.push({
-          name: item,
+        const isDir = item.isDirectory()
+        
+        const node: FileNode = {
+          name: item.name,
           path: itemPath,
-          isDirectory: itemStats.isDirectory()
-        })
+          isDirectory: isDir,
+          hasChildren: isDir ? undefined : false,
+          mtime: itemStats.mtimeMs,
+          size: itemStats.size
+        }
+        
+        // For directories, check if they have children without loading them all
+        if (isDir) {
+          try {
+            const childItems = fs.readdirSync(itemPath)
+            node.hasChildren = childItems.length > 0
+          } catch (e) {
+            node.hasChildren = false
+          }
+        }
+        
+        nodes.push(node)
       } catch (e) {
         log.warn(`Failed to stat ${itemPath}:`, e)
       }
     }
 
-    // Sort: directories first, then files, both alphabetically
+    // Sort: directories first, then files, both alphabetically (VSCode-style)
     nodes.sort((a, b) => {
       if (a.isDirectory && !b.isDirectory) return -1
       if (!a.isDirectory && b.isDirectory) return 1

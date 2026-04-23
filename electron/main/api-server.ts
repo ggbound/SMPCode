@@ -1067,7 +1067,7 @@ export async function startApiServer(): Promise<void> {
 
   // ========== File System Endpoints ==========
 
-  // List directory contents
+  // List directory contents with VSCode-style optimizations
   expressApp.get('/api/fs/list', (req: Request, res: Response) => {
     const dirPath = req.query.path as string
     if (!dirPath) {
@@ -1076,7 +1076,9 @@ export async function startApiServer(): Promise<void> {
     }
 
     try {
-      const items = listDirectory(dirPath)
+      // Support optional parameters for VSCode-style features
+      const includeHidden = req.query.includeHidden === 'true'
+      const items = listDirectory(dirPath, { includeHidden })
       res.json({ items })
     } catch (error) {
       log.error('Failed to list directory:', error)

@@ -8,8 +8,7 @@ import type { Message, ImageContent } from '../store'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import MonacoCodeHighlight from './CodeBlock'
 import { t } from '../i18n'
 import BuilderMessage from './BuilderMessage'
 
@@ -148,6 +147,7 @@ export const MessageItem = memo(function MessageItem({
               }>
               const className = codeElement?.props?.className || ''
               const languageMatch = /language-(\w+)/.exec(className || '')
+              // MonacoCodeHighlight 内部会处理语言标准化
               const language = languageMatch ? languageMatch[1] : 'text'
               const codeContent = codeElement?.props?.children || ''
               const codeId = `${index}-${language}-${String(codeContent).slice(0, 20)}`
@@ -227,18 +227,12 @@ export const MessageItem = memo(function MessageItem({
                     </button>
                   </div>
                   <div className="code-block-content">
-                    <SyntaxHighlighter
+                    <MonacoCodeHighlight
+                      code={contentStr}
                       language={language}
-                      style={vscDarkPlus}
-                      customStyle={{
-                        margin: 0,
-                        padding: '16px',
-                        fontSize: '13px',
-                        lineHeight: '1.6'
-                      }}
-                    >
-                      {contentStr}
-                    </SyntaxHighlighter>
+                      showLineNumbers={true}
+                      maxHeight={500}
+                    />
                   </div>
                 </div>
               )

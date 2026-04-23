@@ -24,6 +24,7 @@ import {
 import { useCodeCompletion } from './hooks/useCodeCompletion'
 import { useCodeIntelligence } from './hooks/useCodeIntelligence'
 import './styles/completion.css'
+import { getLanguageFromPath } from './utils/languageMap'
 
 const API_BASE = 'http://localhost:3847/api'
 
@@ -1181,18 +1182,9 @@ function App() {
     return `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   }, [])
 
-  // Get file language from path
+  // Get file language from path (using unified language map)
   const getFileLanguage = useCallback((path: string): string => {
-    const ext = path.split('.').pop()?.toLowerCase()
-    const langMap: Record<string, string> = {
-      'js': 'javascript', 'ts': 'typescript', 'tsx': 'tsx', 'jsx': 'jsx',
-      'py': 'python', 'json': 'json', 'md': 'markdown', 'css': 'css',
-      'scss': 'scss', 'html': 'html', 'xml': 'xml', 'yaml': 'yaml',
-      'yml': 'yaml', 'sh': 'bash', 'bash': 'bash', 'rs': 'rust',
-      'go': 'go', 'java': 'java', 'c': 'c', 'cpp': 'cpp', 'h': 'c',
-      'hpp': 'cpp', 'rb': 'ruby', 'php': 'php', 'sql': 'sql'
-    }
-    return langMap[ext || ''] || 'text'
+    return getLanguageFromPath(path)
   }, [])
 
   // Open file in tab

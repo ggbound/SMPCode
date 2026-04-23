@@ -1,6 +1,88 @@
+/**
+ * Code Block Component
+ * 
+ * Uses react-syntax-highlighter for syntax highlighting.
+ */
+
 import { useState } from 'react'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { Light as SyntaxHighlighter } from 'react-syntax-highlighter'
+import atomOneDark from 'react-syntax-highlighter/dist/esm/styles/hljs/atom-one-dark'
+import { LANGUAGE_TO_LABEL } from '../utils/languageMap'
+
+// Import commonly used languages
+import javascript from 'react-syntax-highlighter/dist/esm/languages/hljs/javascript'
+import typescript from 'react-syntax-highlighter/dist/esm/languages/hljs/typescript'
+import python from 'react-syntax-highlighter/dist/esm/languages/hljs/python'
+import css from 'react-syntax-highlighter/dist/esm/languages/hljs/css'
+import scss from 'react-syntax-highlighter/dist/esm/languages/hljs/scss'
+import json from 'react-syntax-highlighter/dist/esm/languages/hljs/json'
+import xml from 'react-syntax-highlighter/dist/esm/languages/hljs/xml'
+import bash from 'react-syntax-highlighter/dist/esm/languages/hljs/bash'
+import java from 'react-syntax-highlighter/dist/esm/languages/hljs/java'
+import c from 'react-syntax-highlighter/dist/esm/languages/hljs/c'
+import cpp from 'react-syntax-highlighter/dist/esm/languages/hljs/cpp'
+import csharp from 'react-syntax-highlighter/dist/esm/languages/hljs/csharp'
+import go from 'react-syntax-highlighter/dist/esm/languages/hljs/go'
+import rust from 'react-syntax-highlighter/dist/esm/languages/hljs/rust'
+import ruby from 'react-syntax-highlighter/dist/esm/languages/hljs/ruby'
+import php from 'react-syntax-highlighter/dist/esm/languages/hljs/php'
+import sql from 'react-syntax-highlighter/dist/esm/languages/hljs/sql'
+import yaml from 'react-syntax-highlighter/dist/esm/languages/hljs/yaml'
+import markdown from 'react-syntax-highlighter/dist/esm/languages/hljs/markdown'
+import plaintext from 'react-syntax-highlighter/dist/esm/languages/hljs/plaintext'
+
+// Register languages
+const registerLanguages = () => {
+  SyntaxHighlighter.registerLanguage('javascript', javascript)
+  SyntaxHighlighter.registerLanguage('js', javascript)
+  SyntaxHighlighter.registerLanguage('typescript', typescript)
+  SyntaxHighlighter.registerLanguage('ts', typescript)
+  SyntaxHighlighter.registerLanguage('python', python)
+  SyntaxHighlighter.registerLanguage('py', python)
+  SyntaxHighlighter.registerLanguage('css', css)
+  SyntaxHighlighter.registerLanguage('scss', scss)
+  SyntaxHighlighter.registerLanguage('json', json)
+  SyntaxHighlighter.registerLanguage('html', xml)
+  SyntaxHighlighter.registerLanguage('xml', xml)
+  SyntaxHighlighter.registerLanguage('bash', bash)
+  SyntaxHighlighter.registerLanguage('shell', bash)
+  SyntaxHighlighter.registerLanguage('sh', bash)
+  SyntaxHighlighter.registerLanguage('java', java)
+  SyntaxHighlighter.registerLanguage('c', c)
+  SyntaxHighlighter.registerLanguage('cpp', cpp)
+  SyntaxHighlighter.registerLanguage('csharp', csharp)
+  SyntaxHighlighter.registerLanguage('go', go)
+  SyntaxHighlighter.registerLanguage('rust', rust)
+  SyntaxHighlighter.registerLanguage('ruby', ruby)
+  SyntaxHighlighter.registerLanguage('php', php)
+  SyntaxHighlighter.registerLanguage('sql', sql)
+  SyntaxHighlighter.registerLanguage('yaml', yaml)
+  SyntaxHighlighter.registerLanguage('markdown', markdown)
+  SyntaxHighlighter.registerLanguage('md', markdown)
+  SyntaxHighlighter.registerLanguage('plaintext', plaintext)
+  SyntaxHighlighter.registerLanguage('text', plaintext)
+  
+  // Vue uses XML (HTML) as fallback - highlightjs-vue has compatibility issues
+  SyntaxHighlighter.registerLanguage('vue', xml)
+  SyntaxHighlighter.registerLanguage('svelte', xml)
+}
+
+registerLanguages()
+
+// Normalize language name
+const normalizeLanguage = (lang: string): string => {
+  const mapping: Record<string, string> = {
+    'js': 'javascript',
+    'ts': 'typescript',
+    'py': 'python',
+    'sh': 'bash',
+    'shell': 'bash',
+    'text': 'plaintext',
+    'cs': 'csharp',
+    'yml': 'yaml'
+  }
+  return mapping[lang.toLowerCase()] || lang.toLowerCase()
+}
 
 interface CodeBlockProps {
   code: string
@@ -23,6 +105,9 @@ export function CodeBlock({
   const lines = code.split('\n')
   const hasOverflow = lines.length > 20 || code.length > 1000
   
+  const normalizedLanguage = normalizeLanguage(language)
+  const displayLanguage = LANGUAGE_TO_LABEL[normalizedLanguage] || language.toUpperCase()
+  
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code)
@@ -33,67 +118,9 @@ export function CodeBlock({
     }
   }
   
-  // 语言显示名称映射
-  const languageLabels: Record<string, string> = {
-    'ts': 'TypeScript',
-    'tsx': 'TypeScript React',
-    'js': 'JavaScript',
-    'jsx': 'JavaScript React',
-    'py': 'Python',
-    'java': 'Java',
-    'go': 'Go',
-    'rs': 'Rust',
-    'cpp': 'C++',
-    'c': 'C',
-    'cs': 'C#',
-    'php': 'PHP',
-    'rb': 'Ruby',
-    'swift': 'Swift',
-    'kt': 'Kotlin',
-    'scala': 'Scala',
-    'sh': 'Shell',
-    'bash': 'Bash',
-    'zsh': 'Zsh',
-    'ps1': 'PowerShell',
-    'sql': 'SQL',
-    'json': 'JSON',
-    'yaml': 'YAML',
-    'yml': 'YAML',
-    'xml': 'XML',
-    'html': 'HTML',
-    'css': 'CSS',
-    'scss': 'SCSS',
-    'less': 'LESS',
-    'md': 'Markdown',
-    'dockerfile': 'Dockerfile',
-    'makefile': 'Makefile',
-    'cmake': 'CMake',
-    'vim': 'Vim',
-    'lua': 'Lua',
-    'perl': 'Perl',
-    'r': 'R',
-    'matlab': 'MATLAB',
-    'groovy': 'Groovy',
-    'gradle': 'Gradle',
-    'dart': 'Dart',
-    'flutter': 'Flutter',
-    'vue': 'Vue',
-    'svelte': 'Svelte',
-    'angular': 'Angular',
-    'solidity': 'Solidity',
-    'vyper': 'Vyper',
-    'move': 'Move',
-    'cairo': 'Cairo',
-    'rust': 'Rust',
-    'text': 'Text',
-    'plaintext': 'Plain Text'
-  }
-  
-  const displayLanguage = languageLabels[language.toLowerCase()] || language.toUpperCase()
-  
   return (
     <div className="code-block-container">
-      {/* 头部 */}
+      {/* Header */}
       <div className="code-block-header">
         <div className="code-block-meta">
           <span className="code-block-language">{displayLanguage}</span>
@@ -134,7 +161,7 @@ export function CodeBlock({
         </div>
       </div>
       
-      {/* 代码内容 */}
+      {/* Code content */}
       <div 
         className="code-block-content"
         style={{ 
@@ -143,8 +170,8 @@ export function CodeBlock({
         }}
       >
         <SyntaxHighlighter
-          language={language.toLowerCase()}
-          style={vscDarkPlus}
+          language={normalizedLanguage}
+          style={atomOneDark}
           showLineNumbers={showLineNumbers}
           lineNumberStyle={{
             minWidth: '3em',
@@ -165,7 +192,7 @@ export function CodeBlock({
         </SyntaxHighlighter>
       </div>
       
-      {/* 展开遮罩 */}
+      {/* Expand mask */}
       {!isExpanded && hasOverflow && (
         <div className="code-block-expand-mask">
           <button 

@@ -2,6 +2,9 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2 } from 'lucide-react'
 import { t } from '../i18n'
 import { gitIPC } from './GitStatusBar'
+import { getFileIconSVG } from '../utils/fileIconTheme'
+import { getSetiIconInfo } from '../utils/setiIconTheme'
+import '../styles/fileExplorer.css'
 
 interface FileNode {
   name: string
@@ -11,6 +14,10 @@ interface FileNode {
   isOpen?: boolean
   isLoading?: boolean
   gitStatus?: 'modified' | 'staged' | 'untracked' | 'conflicted' | null
+  // VSCode-style properties
+  hasChildren?: boolean  // Whether the node has children (for lazy loading)
+  isExpanded?: boolean   // Whether the node is currently expanded
+  depth?: number         // Depth in the tree for indentation
 }
 
 interface FileExplorerProps {
@@ -22,404 +29,18 @@ interface FileExplorerProps {
   onFileDeleted?: (path: string) => void
 }
 
-// VSCode-style file icon component
+// VSCode-style file icon component using Seti-UI font icons
 const FileIcon = ({ filename, isDirectory, isOpen }: { filename: string; isDirectory: boolean; isOpen?: boolean }) => {
-  if (isDirectory) {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        {isOpen ? (
-          <path d="M4 20C4 20 4 6 4 6C4 5.45 4.45 5 5 5H11L13 7H19C19.55 7 20 7.45 20 8V20C20 20.55 19.55 21 19 21H5C4.45 21 4 20.55 4 20Z" fill="#DCAD5A"/>
-        ) : (
-          <path d="M20 8H14L12 6H4C3.45 6 3 6.45 3 7V19C3 19.55 3.45 20 4 20H20C20.55 20 21 19.55 21 19V9C21 8.45 20.55 8 20 8Z" fill="#DCAD5A"/>
-        )}
-      </svg>
-    )
-  }
+  const iconInfo = getSetiIconInfo(filename, isDirectory, isOpen)
   
-  const ext = filename.split('.').pop()?.toLowerCase()
-  const name = filename.toLowerCase()
-  
-  // Special file names
-  if (name === 'package.json' || name === 'package-lock.json') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#CB3837"/>
-        <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">npm</text>
-      </svg>
-    )
-  }
-  if (name === '.gitignore' || name === '.gitattributes') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9" fill="#F05032"/>
-        <path d="M12 7V17M7 12H17" stroke="white" strokeWidth="2"/>
-      </svg>
-    )
-  }
-  if (name.startsWith('dockerfile') || name.endsWith('.dockerfile')) {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#2496ED"/>
-        <path d="M7 10H17M7 13H17M7 16H14" stroke="white" strokeWidth="1.5"/>
-      </svg>
-    )
-  }
-  if (name === 'readme.md' || name === 'readme') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="4" y="2" width="16" height="20" rx="2" fill="#42A5F5"/>
-        <path d="M7 6H17M7 10H17M7 14H13" stroke="white" strokeWidth="1.5"/>
-      </svg>
-    )
-  }
-  if (name === 'license' || name === 'license.md') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="4" y="2" width="16" height="20" rx="2" fill="#FF9800"/>
-        <circle cx="12" cy="10" r="3" fill="white"/>
-        <path d="M8 16C8 16 9 18 12 18C15 18 16 16 16 16" stroke="white" strokeWidth="1.5"/>
-      </svg>
-    )
-  }
-  if (name === '.env' || name.includes('.env.')) {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="6" width="18" height="12" rx="2" fill="#FFCA28"/>
-        <text x="12" y="15" textAnchor="middle" fill="#333" fontSize="8" fontWeight="bold">ENV</text>
-      </svg>
-    )
-  }
-  if (name === 'tsconfig.json') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#3178C6"/>
-        <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">TS</text>
-      </svg>
-    )
-  }
-  if (name === 'vite.config.ts' || name === 'vite.config.js') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" fill="#646CFF"/>
-        <path d="M12 6L17 10L12 14L7 10Z" fill="#FFD62E"/>
-      </svg>
-    )
-  }
-  if (name === 'tailwind.config.js' || name === 'tailwind.config.ts') {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#38BDF8"/>
-        <path d="M8 12C8 10 9 8 12 8C15 8 16 10 16 12C16 14 14 15 12 15C10 15 8 14 8 12Z" fill="white"/>
-      </svg>
-    )
-  }
-  if (name === 'webpack.config.js' || name.startsWith('webpack')) {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="18" height="18" rx="2" fill="#8DD6F9"/>
-        <rect x="6" y="8" width="12" height="8" fill="#1C78C0"/>
-      </svg>
-    )
-  }
-  if (name === 'eslint' || name.includes('.eslint')) {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <polygon points="12,2 22,8 22,16 12,22 2,16 2,8" fill="#4B32C3"/>
-        <path d="M8 12H16M12 8V16" stroke="white" strokeWidth="2"/>
-      </svg>
-    )
-  }
-  if (name === 'prettier' || name.includes('.prettier')) {
-    return (
-      <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9" fill="#F7B93E"/>
-        <circle cx="9" cy="12" r="2" fill="#333"/>
-        <circle cx="15" cy="12" r="2" fill="#333"/>
-      </svg>
-    )
-  }
-  
-  // Extension-based icons
-  switch (ext) {
-    case 'js':
-    case 'mjs':
-    case 'cjs':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#F7DF1E"/>
-          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="10" fontWeight="bold">JS</text>
-        </svg>
-      )
-    case 'ts':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#3178C6"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">TS</text>
-        </svg>
-      )
-    case 'tsx':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#3178C6"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">TSX</text>
-        </svg>
-      )
-    case 'jsx':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#61DAFB"/>
-          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="9" fontWeight="bold">JSX</text>
-        </svg>
-      )
-    case 'py':
-    case 'pyc':
-    case 'pyo':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="9" fill="#3776AB"/>
-          <path d="M9 9H15M9 15H15" stroke="#FFD43B" strokeWidth="2"/>
-        </svg>
-      )
-    case 'json':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#6B8E23"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">JSON</text>
-        </svg>
-      )
-    case 'md':
-    case 'markdown':
-    case 'mdx':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="2" width="16" height="20" rx="2" fill="#42A5F5"/>
-          <text x="12" y="14" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">MD</text>
-        </svg>
-      )
-    case 'css':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#264DE4"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">CSS</text>
-        </svg>
-      )
-    case 'scss':
-    case 'sass':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#CC6699"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">SCSS</text>
-        </svg>
-      )
-    case 'less':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#1D365D"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">LESS</text>
-        </svg>
-      )
-    case 'html':
-    case 'htm':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#E34F26"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">HTML</text>
-        </svg>
-      )
-    case 'xml':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FF6600"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">XML</text>
-        </svg>
-      )
-    case 'yaml':
-    case 'yml':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#CB171E"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">YAML</text>
-        </svg>
-      )
-    case 'toml':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#9C4221"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">TOML</text>
-        </svg>
-      )
-    case 'ini':
-    case 'conf':
-    case 'config':
-    case 'cfg':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#6D6D6D"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">CONF</text>
-        </svg>
-      )
-    case 'sh':
-    case 'bash':
-    case 'zsh':
-    case 'fish':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#89E051"/>
-          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="9" fontWeight="bold">SH</text>
-        </svg>
-      )
-    case 'rs':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#DEA584"/>
-          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="9" fontWeight="bold">RS</text>
-        </svg>
-      )
-    case 'go':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#00ADD8"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">GO</text>
-        </svg>
-      )
-    case 'java':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#B07219"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">JAVA</text>
-        </svg>
-      )
-    case 'kt':
-    case 'kts':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#A97BFF"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">KT</text>
-        </svg>
-      )
-    case 'c':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#555555"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="10" fontWeight="bold">C</text>
-        </svg>
-      )
-    case 'cpp':
-    case 'cc':
-    case 'cxx':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#F34B7D"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">C++</text>
-        </svg>
-      )
-    case 'h':
-    case 'hpp':
-    case 'hh':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#438EFF"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">H</text>
-        </svg>
-      )
-    case 'rb':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#701516"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">RB</text>
-        </svg>
-      )
-    case 'php':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#4F5D95"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">PHP</text>
-        </svg>
-      )
-    case 'swift':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#F05138"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">SWIFT</text>
-        </svg>
-      )
-    case 'sql':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#E38C00"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">SQL</text>
-        </svg>
-      )
-    case 'vue':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#41B883"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="9" fontWeight="bold">VUE</text>
-        </svg>
-      )
-    case 'svelte':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FF3E00"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">SVELTE</text>
-        </svg>
-      )
-    case 'astro':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FF5D01"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">ASTRO</text>
-        </svg>
-      )
-    case 'wasm':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#654FF0"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">WASM</text>
-        </svg>
-      )
-    case 'lock':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FFD54F"/>
-          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="8" fontWeight="bold">LOCK</text>
-        </svg>
-      )
-    case 'txt':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="2" width="16" height="20" rx="2" fill="#757575"/>
-          <text x="12" y="14" textAnchor="middle" fill="white" fontSize="7" fontWeight="bold">TXT</text>
-        </svg>
-      )
-    case 'svg':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#FFB13B"/>
-          <text x="12" y="16" textAnchor="middle" fill="#333" fontSize="8" fontWeight="bold">SVG</text>
-        </svg>
-      )
-    case 'png':
-    case 'jpg':
-    case 'jpeg':
-    case 'gif':
-    case 'webp':
-    case 'bmp':
-    case 'ico':
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="3" y="3" width="18" height="18" rx="2" fill="#26A69A"/>
-          <text x="12" y="16" textAnchor="middle" fill="white" fontSize="8" fontWeight="bold">IMG</text>
-        </svg>
-      )
-    default:
-      return (
-        <svg className="file-icon-svg" viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="2" width="16" height="20" rx="2" fill="#9E9E9E"/>
-          <text x="12" y="14" textAnchor="middle" fill="white" fontSize="6" fontWeight="bold">FILE</text>
-        </svg>
-      )
-  }
+  return (
+    <span 
+      className="seti-icon"
+      data-icon-char={iconInfo.char}
+      style={{ color: iconInfo.color }}
+      aria-hidden="true"
+    />
+  )
 }
 
 // Legacy function for backward compatibility
@@ -466,6 +87,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
   const [isLoading, setIsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [isSearching, setIsSearching] = useState(false)
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: FileNode | null } | null>(null)
   const [newItemDialog, setNewItemDialog] = useState<{ isOpen: boolean; type: 'file' | 'folder'; parentPath: string } | null>(null)
   const [newItemName, setNewItemName] = useState('')
@@ -478,6 +100,12 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
   const fileTreeRef = useRef<FileNode[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const isWatchingRef = useRef(false)
+  
+  // Virtual scrolling optimization
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 50 })
+  const ITEM_HEIGHT = 24 // Height of each file tree item in pixels
+  const VISIBLE_BUFFER = 10 // Number of items to render outside visible area
 
   const API_BASE = 'http://localhost:3847/api'
 
@@ -704,7 +332,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     return updatedNodes
   }, [])
 
-  // Toggle directory open/close
+  // Toggle directory open/close with lazy loading (VSCode-style)
   const toggleDirectory = useCallback(async (node: FileNode, tree: FileNode[], path: string[]) => {
     const newTree = [...tree]
     let current = newTree
@@ -715,12 +343,13 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
 
       if (i === path.length - 1) {
         const isOpening = !current[index].isOpen
-        current[index] = { ...current[index], isOpen: isOpening }
+        current[index] = { ...current[index], isOpen: isOpening, isExpanded: isOpening }
 
-        if (isOpening && !current[index].children) {
+        if (isOpening && (!current[index].children || current[index].children.length === 0)) {
           current[index] = { ...current[index], isLoading: true }
           setFileTree(newTree)
           
+          // Lazy load children only when expanding
           let children = await loadDirectory(current[index].path)
           
           // Get Git status for files
@@ -732,7 +361,12 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           const updateTree = (nodes: FileNode[]): FileNode[] => {
             return nodes.map(n => {
               if (n.path === node.path) {
-                return { ...n, children, isLoading: false }
+                return { 
+                  ...n, 
+                  children, 
+                  isLoading: false,
+                  hasChildren: children.length > 0
+                }
               }
               if (n.children) {
                 return { ...n, children: updateTree(n.children) }
@@ -749,7 +383,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     }
 
     return newTree
-  }, [loadDirectory])
+  }, [loadDirectory, rootPath])
 
   // Handle node click
   const handleNodeClick = useCallback(async (node: FileNode, tree: FileNode[], path: string[], e?: React.MouseEvent) => {
@@ -1108,14 +742,15 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     }
   }, [rootPath, loadDirectory])
 
-  // Filter file tree based on search query
+  // Filter file tree based on search query with debounce optimization
   const filteredFileTree = useMemo(() => {
     if (!searchQuery.trim()) return fileTree
     
+    const query = searchQuery.toLowerCase()
     const filterNodes = (nodes: FileNode[]): FileNode[] => {
       const result: FileNode[] = []
       for (const node of nodes) {
-        const matchesSearch = node.name.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesSearch = node.name.toLowerCase().includes(query)
         
         if (node.isDirectory && node.children) {
           const filteredChildren = filterNodes(node.children)
@@ -1132,6 +767,65 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     return filterNodes(fileTree)
   }, [fileTree, searchQuery])
 
+  // Flatten tree for virtual scrolling
+  const flattenedTree = useMemo(() => {
+    const flatten = (nodes: FileNode[], depth: number = 0, parentPath: string[] = []): Array<FileNode & { depth: number; fullPath: string[] }> => {
+      const result: Array<FileNode & { depth: number; fullPath: string[] }> = []
+      for (const node of nodes) {
+        const currentPath = [...parentPath, node.name]
+        result.push({ ...node, depth, fullPath: currentPath })
+        if (node.isDirectory && node.isOpen && node.children) {
+          result.push(...flatten(node.children, depth + 1, currentPath))
+        }
+      }
+      return result
+    }
+    return flatten(filteredFileTree)
+  }, [filteredFileTree])
+
+  // Handle scroll for virtual rendering
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const handleScroll = () => {
+      const scrollTop = container.scrollTop
+      const visibleHeight = container.clientHeight
+      const totalItems = flattenedTree.length
+      
+      const start = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - VISIBLE_BUFFER)
+      const end = Math.min(
+        totalItems,
+        Math.ceil((scrollTop + visibleHeight) / ITEM_HEIGHT) + VISIBLE_BUFFER
+      )
+      
+      setVisibleRange({ start, end })
+    }
+
+    container.addEventListener('scroll', handleScroll)
+    return () => container.removeEventListener('scroll', handleScroll)
+  }, [flattenedTree])
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+      }
+    }
+  }, [])
+
+  // Handle search input with debounce
+  const handleSearchChange = (value: string) => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+    }
+    
+    searchDebounceRef.current = setTimeout(() => {
+      setSearchQuery(value)
+    }, 300) // 300ms debounce
+  }
+
   // Collapse all folders
   const handleCollapseAll = () => {
     const collapseAll = (nodes: FileNode[]): FileNode[] => {
@@ -1145,17 +839,144 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     setFileTree(collapseAll(fileTree))
   }
 
-  // Render file tree node
-  const renderNode = (node: FileNode, tree: FileNode[], path: string[], depth: number = 0): React.ReactElement => {
+  // Render flattened file tree node (for virtual scrolling - no recursive children)
+  const renderFlattenedNode = (node: FileNode & { depth: number; fullPath: string[] }, index: number): React.ReactElement => {
     const isSelected = node.path === selectedPath
-    const currentPath = [...path, node.name]
-    const hasChildren = node.isDirectory && (node.children?.length ?? 0) > 0
+    const hasChildren = node.isDirectory && (node.hasChildren ?? (node.children?.length ?? 0) > 0)
     const isEmptyFolder = node.isDirectory && !hasChildren && !node.isLoading
     const isEditing = editingNode?.path === node.path
     const isDropTarget = dropTarget?.path === node.path
+    const isExpanded = node.isOpen || node.isExpanded
 
     return (
-      <div key={node.path} className="file-tree-node">
+      <div key={node.path} className="file-tree-node" data-depth={node.depth}>
+        <div
+          className={`file-node ${isSelected ? 'selected' : ''} ${node.isDirectory ? 'directory' : 'file'} ${isDropTarget ? `drop-target-${dropTarget?.position}` : ''}`}
+          style={{ paddingLeft: `${node.depth * 16 + 4}px` }}
+          onClick={(e) => handleNodeClick(node, filteredFileTree, node.fullPath, e)}
+          onContextMenu={(e) => handleContextMenu(e, node)}
+          title={node.path}
+          draggable={!node.isDirectory}
+          onDragStart={(e) => {
+            if (!node.isDirectory) {
+              e.dataTransfer.setData('text/plain', node.path)
+              setDraggedNode(node)
+            }
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            if (node.isDirectory) {
+              const rect = e.currentTarget.getBoundingClientRect()
+              const y = e.clientY - rect.top
+              const height = rect.height
+              
+              if (y < height * 0.25) {
+                setDropTarget({ path: node.path, position: 'before' })
+              } else if (y > height * 0.75) {
+                setDropTarget({ path: node.path, position: 'after' })
+              } else {
+                setDropTarget({ path: node.path, position: 'inside' })
+              }
+            }
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+              setDropTarget(null)
+            }
+          }}
+          onDrop={async (e) => {
+            e.preventDefault()
+            setDropTarget(null)
+            
+            const draggedPath = e.dataTransfer.getData('text/plain')
+            if (draggedPath && draggedPath !== node.path && node.isDirectory) {
+              try {
+                const fileName = draggedPath.split('/').pop()!
+                const targetDir = node.path
+                const response = await fetch(`${API_BASE}/files/move`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sourcePath: draggedPath,
+                    targetPath: `${targetDir}/${fileName}`
+                  })
+                })
+                
+                if (response.ok) {
+                  handleRefreshPreserveExpansion()
+                }
+              } catch (error) {
+                console.error('Failed to move file:', error)
+              }
+              setDraggedNode(null)
+            }
+          }}
+        >
+          {/* Expand/Collapse arrow for directories - VSCode style */}
+          {node.isDirectory && (
+            <span 
+              className={`file-arrow ${isExpanded ? 'expanded' : ''} ${isEmptyFolder ? 'empty' : ''}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (!isEmptyFolder) {
+                  handleNodeClick(node, filteredFileTree, node.fullPath, e)
+                }
+              }}
+            >
+              {!isEmptyFolder && (isExpanded ? '▼' : '▶')}
+            </span>
+          )}
+          {!node.isDirectory && <span className="file-arrow-placeholder" />}
+          
+          {/* File/Folder icon with VSCode-style icons */}
+          <FileIcon filename={node.name} isDirectory={node.isDirectory} isOpen={isExpanded} />
+          
+          {/* Git status badge */}
+          <GitStatusBadge status={node.gitStatus} />
+          
+          {/* File name or inline edit input */}
+          {isEditing ? (
+            <input
+              className="file-name-input"
+              value={editingNode.name}
+              onChange={(e) => setEditingNode({ ...editingNode, name: e.target.value })}
+              onBlur={handleInlineRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.stopPropagation()
+                  handleInlineRename()
+                }
+                if (e.key === 'Escape') {
+                  e.stopPropagation()
+                  setEditingNode(null)
+                }
+              }}
+              autoFocus
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span className="file-name">{node.name}</span>
+          )}
+          
+          {/* Loading indicator */}
+          {node.isLoading && <span className="file-loading">⟳</span>}
+        </div>
+      </div>
+    )
+  }
+
+  // Render file tree node with VSCode-style optimizations
+  const renderNode = (node: FileNode, tree: FileNode[], path: string[], depth: number = 0): React.ReactElement => {
+    const isSelected = node.path === selectedPath
+    const currentPath = [...path, node.name]
+    const hasChildren = node.isDirectory && (node.hasChildren ?? (node.children?.length ?? 0) > 0)
+    const isEmptyFolder = node.isDirectory && !hasChildren && !node.isLoading
+    const isEditing = editingNode?.path === node.path
+    const isDropTarget = dropTarget?.path === node.path
+    const isExpanded = node.isOpen || node.isExpanded
+
+    return (
+      <div key={node.path} className="file-tree-node" data-depth={depth}>
         <div
           className={`file-node ${isSelected ? 'selected' : ''} ${node.isDirectory ? 'directory' : 'file'} ${isDropTarget ? `drop-target-${dropTarget.position}` : ''}`}
           style={{ paddingLeft: `${depth * 16 + 4}px` }}
@@ -1213,10 +1034,10 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
             setDraggedNode(null)
           }}
         >
-          {/* Expand/Collapse arrow for directories */}
+          {/* Expand/Collapse arrow for directories - VSCode style */}
           {node.isDirectory && (
             <span 
-              className={`file-arrow ${node.isOpen ? 'expanded' : ''} ${isEmptyFolder ? 'empty' : ''}`}
+              className={`file-arrow ${isExpanded ? 'expanded' : ''} ${isEmptyFolder ? 'empty' : ''}`}
               onClick={(e) => {
                 e.stopPropagation()
                 if (!isEmptyFolder) {
@@ -1224,13 +1045,13 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                 }
               }}
             >
-              {!isEmptyFolder && '▶'}
+              {!isEmptyFolder && (isExpanded ? '▼' : '▶')}
             </span>
           )}
           {!node.isDirectory && <span className="file-arrow-placeholder" />}
           
-          {/* File/Folder icon */}
-          <FileIcon filename={node.name} isDirectory={node.isDirectory} isOpen={node.isOpen} />
+          {/* File/Folder icon with VSCode-style icons */}
+          <FileIcon filename={node.name} isDirectory={node.isDirectory} isOpen={isExpanded} />
           
           {/* Git status badge */}
           <GitStatusBadge status={node.gitStatus} />
@@ -1263,8 +1084,8 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           {node.isLoading && <span className="file-loading">⟳</span>}
         </div>
         
-        {/* Render children */}
-        {node.isDirectory && node.isOpen && node.children && (
+        {/* Render children only when expanded - Lazy loading */}
+        {node.isDirectory && isExpanded && node.children && (
           <div className="file-children">
             {node.children.map(child => renderNode(child, tree, currentPath, depth + 1))}
           </div>
@@ -1324,7 +1145,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
             className="file-search-input"
             placeholder={t('searchFiles')}
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
                 setIsSearching(false)
@@ -1354,11 +1175,30 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
       </div>
 
       {/* File tree content */}
-      <div className="file-explorer-content">
+      <div className="file-explorer-content" ref={containerRef}>
         {isLoading ? (
           <div className="file-explorer-loading">{t('loading') || 'Loading...'}</div>
-        ) : filteredFileTree.length > 0 ? (
-          filteredFileTree.map(node => renderNode(node, filteredFileTree, [], 0))
+        ) : flattenedTree.length > 0 ? (
+          <div 
+            className="virtual-tree-container"
+            style={{ height: flattenedTree.length * ITEM_HEIGHT, position: 'relative' }}
+          >
+            <div
+              className="virtual-tree-content"
+              style={{ 
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                transform: `translateY(${visibleRange.start * ITEM_HEIGHT}px)`,
+                willChange: 'transform'
+              }}
+            >
+              {flattenedTree.slice(visibleRange.start, visibleRange.end).map((node, index) => 
+                renderFlattenedNode(node, visibleRange.start + index)
+              )}
+            </div>
+          </div>
         ) : rootPath ? (
           searchQuery ? (
             <div className="file-explorer-empty">{t('noResultsFound')}</div>

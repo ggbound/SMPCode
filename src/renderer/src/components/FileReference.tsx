@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { File, FileCode, Settings, Database, Globe } from 'lucide-react'
+import { getLanguageFromPath, getLanguageLabel } from '../utils/languageMap'
 
 interface FileReferenceProps {
   filePath: string
@@ -57,32 +58,9 @@ export function FileReference({ filePath, onClick, onPreview }: FileReferencePro
     }
   }
 
-  // Get file language for syntax highlighting
+  // Get file language for syntax highlighting (using unified language map)
   const getFileLanguage = (path: string) => {
-    const ext = path.split('.').pop()?.toLowerCase()
-    const langMap: Record<string, string> = {
-      'ts': 'typescript',
-      'tsx': 'tsx',
-      'js': 'javascript',
-      'jsx': 'jsx',
-      'json': 'json',
-      'css': 'css',
-      'scss': 'scss',
-      'less': 'less',
-      'html': 'html',
-      'md': 'markdown',
-      'py': 'python',
-      'java': 'java',
-      'go': 'go',
-      'rs': 'rust',
-      'c': 'c',
-      'cpp': 'cpp',
-      'h': 'c',
-      'sql': 'sql',
-      'yml': 'yaml',
-      'yaml': 'yaml'
-    }
-    return langMap[ext || ''] || 'text'
+    return getLanguageFromPath(path)
   }
 
   // Handle mouse enter for preview

@@ -1,0 +1,545 @@
+/* VSCode-style File Explorer Styles */
+
+/* Seti-UI Icon Font */
+@font-face {
+  font-family: 'seti';
+  src: url('../assets/seti.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Seti Icon Base Styles */
+.seti-icon {
+  font-family: 'seti', sans-serif;
+  font-size: 16px;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  line-height: 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.seti-icon::before {
+  content: attr(data-icon-char);
+}
+
+.file-explorer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-sideBar-background);
+  color: var(--vscode-sideBar-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+.file-explorer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border);
+  background: var(--vscode-sideBarSectionHeader-background);
+}
+
+.file-explorer-title {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-sideBarSectionHeader-foreground);
+}
+
+.file-explorer-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.file-explorer-search {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vscode-input-border);
+  background: var(--vscode-input-background);
+}
+
+.file-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  outline: none;
+}
+
+.file-search-input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.btn-close-search {
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.btn-close-search:hover {
+  color: var(--vscode-foreground);
+}
+
+.file-explorer-path {
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-name {
+  font-weight: 500;
+}
+
+.no-folder {
+  font-style: italic;
+}
+
+.file-explorer-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+
+.file-explorer-loading,
+.file-explorer-empty,
+.file-explorer-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+  padding: 20px;
+  text-align: center;
+}
+
+.file-explorer-placeholder {
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* File Tree Node */
+.file-tree-node {
+  user-select: none;
+}
+
+.file-node {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  cursor: pointer;
+  position: relative;
+  min-height: 22px;
+  transition: background-color 0.1s ease;
+}
+
+.file-node:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.file-node.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.file-node.directory {
+  font-weight: 500;
+}
+
+/* File Arrow */
+.file-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  transition: transform 0.15s ease;
+  cursor: pointer;
+}
+
+.file-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.file-arrow.empty {
+  visibility: hidden;
+}
+
+.file-arrow:hover {
+  color: var(--vscode-foreground);
+}
+
+.file-arrow-placeholder {
+  width: 16px;
+  margin-right: 4px;
+}
+
+/* File Icon */
+.file-icon {
+  flex-shrink: 0;
+  margin-right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+  position: relative;
+  top: 0;
+  /* 创建独立的渲染上下文，防止全局样式影响 */
+  isolation: isolate;
+  line-height: 0;
+}
+
+/* 保护文件图标 SVG 不受全局样式影响 */
+.file-icon svg {
+  width: 16px;
+  height: 16px;
+  /* 防止外部 CSS 的 color 属性影响 SVG */
+  color: initial !important;
+  /* 确保 SVG 使用自己的 fill 属性 */
+  fill: initial;
+}
+
+/* 确保 SVG 内部元素使用内联 fill，不受全局 CSS 影响 */
+.file-icon svg rect,
+.file-icon svg text,
+.file-icon svg path,
+.file-icon svg circle,
+.file-icon svg line,
+.file-icon svg polyline,
+.file-icon svg polygon,
+.file-icon svg ellipse,
+.file-icon svg g {
+  color: initial !important;
+}
+
+/* Git Status Badge */
+.git-status-badge {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+/* File Name */
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.file-name-input {
+  flex: 1;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  padding: 2px 6px;
+  outline: none;
+  border-radius: 2px;
+}
+
+.file-name-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Loading Indicator */
+.file-loading {
+  margin-left: 6px;
+  font-size: 12px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* File Children */
+.file-children {
+  margin-left: 0;
+}
+
+/* Context Menu */
+.file-context-menu {
+  position: fixed;
+  background: var(--vscode-menu-background);
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  padding: 4px 0;
+  min-width: 180px;
+  z-index: 1000;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-menu-foreground);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
+}
+
+.context-menu-item:hover {
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.context-icon {
+  font-size: 14px;
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--vscode-menu-separatorBackground);
+  margin: 4px 0;
+}
+
+.context-menu-danger {
+  color: var(--vscode-errorForeground);
+}
+
+.context-menu-danger:hover {
+  background: var(--vscode-list-errorWarningBackground);
+}
+
+/* Drop Target Indicators */
+.drop-target-before {
+  border-top: 2px solid var(--vscode-list-dropBackground);
+}
+
+.drop-target-after {
+  border-bottom: 2px solid var(--vscode-list-dropBackground);
+}
+
+.drop-target-inside {
+  background: var(--vscode-list-dropBackground) !important;
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal {
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-editorWidget-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  min-width: 320px;
+  max-width: 90vw;
+}
+
+.modal-sm {
+  min-width: 280px;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vscode-editorWidget-border);
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--vscode-editorWidget-foreground);
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--vscode-descriptionForeground);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: var(--vscode-foreground);
+}
+
+.modal-body {
+  padding: 16px;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--vscode-editorWidget-border);
+}
+
+.form-group {
+  margin-bottom: 12px;
+}
+
+.form-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.form-input {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border);
+  color: var(--vscode-input-foreground);
+  font-size: 13px;
+  border-radius: 2px;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+/* Buttons */
+.btn {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: var(--vscode-button-background);
+}
+
+.btn-primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.btn-secondary {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-color: var(--vscode-button-secondaryBackground);
+}
+
+.btn-secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.btn-icon {
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  color: var(--vscode-icon-foreground);
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.btn-icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Scrollbar Styling */
+.file-explorer-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.file-explorer-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.file-explorer-content::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 5px;
+}
+
+.file-explorer-content::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.file-explorer-content::-webkit-scrollbar-thumb:active {
+  background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/* Virtual Scrolling Styles */
+.virtual-tree-container {
+  position: relative;
+  width: 100%;
+  /* 不设置 overflow，让外层 file-explorer-content 处理滚动 */
+}
+
+.virtual-tree-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}

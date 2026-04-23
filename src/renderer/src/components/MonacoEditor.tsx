@@ -1,9 +1,132 @@
 import { useRef, useEffect, useCallback } from 'react'
 import Editor, { OnMount, OnChange, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
+import { EXTENSION_TO_LANGUAGE } from '../utils/languageMap'
 
-// Configure Monaco to use local resources instead of CDN
-loader.config({ monaco })
+// Configure Monaco to load from CDN (required for proper worker support in Electron)
+// This ensures workers are loaded correctly from CDN URLs
+loader.config({
+  paths: {
+    vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs'
+  }
+})
+
+// Initialize Vue language support before Monaco loads
+// This ensures the language is registered when the editor initializes
+loader.init().then((monacoInstance) => {
+  registerVueLanguage(monacoInstance)
+})
+
+// Register Vue language support
+function registerVueLanguage(monacoInstance: typeof monaco) {
+  // Register Vue as a language
+  monacoInstance.languages.register({
+    id: 'vue',
+    extensions: ['.vue'],
+    aliases: ['Vue', 'vue'],
+    mimetypes: ['text/x-vue'],
+  })
+
+  // Set language configuration
+  monacoInstance.languages.setLanguageConfiguration('vue', {
+    wordPattern: /(-?\d*\.?\d\w*)|([^\`\~\!\@\$\^\&\*\(\)\=\+\[\{\]\}\\\|\;\:\'\"\,\.\<\>\/\?\s]+)/g,
+    brackets: [
+      ['<!--', '-->'],
+      ['<', '>'],
+      ['{{', '}}'],
+      ['{', '}'],
+      ['(', ')'],
+    ],
+    autoClosingPairs: [
+      { open: '{', close: '}' },
+      { open: '[', close: ']' },
+      { open: '(', close: ')' },
+      { open: '"', close: '"' },
+      { open: "'", close: "'" },
+      { open: '<', close: '>' },
+    ],
+  })
+
+  // Use HTML tokenizer as base for Vue
+  monacoInstance.languages.setMonarchTokensProvider('vue', {
+    defaultToken: '',
+    tokenPostfix: '.vue',
+    tokenizer: {
+      root: [
+        [/<!DOCTYPE/, 'metatag', '@doctype'],
+        [/<!--/, 'comment', '@comment'],
+        [/<script\s+setup/, { token: 'tag.tag-id', next: '@scriptTS', nextEmbedded: 'typescript' }],
+        [/<script\s+lang=["']ts["']/, { token: 'tag.tag-id', next: '@scriptTS', nextEmbedded: 'typescript' }],
+        [/<script/, { token: 'tag.tag-id', next: '@script', nextEmbedded: 'javascript' }],
+        [/<style\s+scoped/, { token: 'tag.tag-id', next: '@style', nextEmbedded: 'css' }],
+        [/<style/, { token: 'tag.tag-id', next: '@style', nextEmbedded: 'css' }],
+        [/<template/, { token: 'tag.tag-id', next: '@template' }],
+        [/(<)([\w\-:]+)/, [{ token: 'delimiter.tag' }, { token: 'tag.tag-id', next: '@tag' }]],
+        [/(<\/)([\w\-:]+)(>)/, [{ token: 'delimiter.tag' }, { token: 'tag.tag-id' }, { token: 'delimiter.tag' }]],
+        [/[^<{]+/, ''],
+      ],
+      doctype: [
+        [/[^>]+/, 'metatag.content'],
+        [/>/, 'metatag', '@pop'],
+      ],
+      comment: [
+        [/-->/, 'comment', '@pop'],
+        [/[^-]+/, 'comment.content'],
+        [/./, 'comment.content'],
+      ],
+      tag: [
+        [/\s+/, 'white'],
+        [/(v-[\w\-]+|@\w+|:\w+)(=)(["'])/, ['keyword', 'delimiter', { token: 'string', next: '@string' }]],
+        [/[\w\-]+(?=\s*=)/, 'attribute.name'],
+        [/=/, 'delimiter'],
+        [/["']/, { token: 'string', next: '@string' }],
+        [/>/, { token: 'delimiter.tag', next: '@pop' }],
+        [/\/>/, { token: 'delimiter.tag', next: '@pop' }],
+      ],
+      string: [
+        [/[^"'{{]+/, 'string'],
+        [/{{/, { token: 'delimiter.bracket', next: '@vueExpression' }],
+        [/["']/, { token: 'string', next: '@pop' }],
+      ],
+      vueExpression: [
+        [/}}/, { token: 'delimiter.bracket', next: '@pop' }],
+        [/[a-zA-Z_$][\w$]*/, 'identifier'],
+        [/[0-9]+/, 'number'],
+        [/["'][^"']*["']/, 'string'],
+        [/[+\-*/=<>!]+/, 'operator'],
+        [/\s+/, 'white'],
+        [/./, ''],
+      ],
+      template: [
+        [/>/, { token: 'delimiter.tag', next: '@templateContent' }],
+        { include: '@tag' },
+      ],
+      templateContent: [
+        [/<\/template>/, { token: 'tag.tag-id', next: '@popall' }],
+        [/{{/, { token: 'delimiter.bracket', next: '@vueExpression' }],
+        [/<[\w\-:]+/, { token: 'tag.tag-id', next: '@templateTag' }],
+        [/<\/[\w\-:]+>/, 'tag.tag-id'],
+        [/[^<{]+/, 'content'],
+      ],
+      templateTag: [
+        [/>/, { token: 'delimiter.tag', next: '@pop' }],
+        { include: '@tag' },
+      ],
+      script: [
+        [/<\/script>/, { token: 'tag.tag-id', next: '@popall' }],
+        [/[^<]+/, { token: '@rematch', next: '@pop', nextEmbedded: '@pop' }],
+      ],
+      scriptTS: [
+        [/<\/script>/, { token: 'tag.tag-id', next: '@popall' }],
+        [/[^<]+/, { token: '@rematch', next: '@pop', nextEmbedded: '@pop' }],
+      ],
+      style: [
+        [/<\/style>/, { token: 'tag.tag-id', next: '@popall' }],
+        [/[^<]+/, { token: '@rematch', next: '@pop', nextEmbedded: '@pop' }],
+      ],
+    },
+  })
+}
 
 interface MonacoEditorProps {
   value: string
@@ -28,11 +151,14 @@ function MonacoEditor({
   const decorationsRef = useRef<string[]>([])
 
   // Handle editor mount
-  const handleEditorDidMount: OnMount = useCallback((editor, monaco) => {
+  const handleEditorDidMount: OnMount = useCallback((editor, monacoInstance) => {
     editorRef.current = editor
 
+    // Register Vue language support
+    registerVueLanguage(monacoInstance)
+
     // Set up keyboard shortcuts
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+    editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
       onSave?.()
     })
 
@@ -65,49 +191,15 @@ function MonacoEditor({
     }
   }, [value])
 
-  // Map language aliases
+  // Map language aliases (using unified language map)
   const getMonacoLanguage = useCallback((lang: string): string => {
-    const langMap: Record<string, string> = {
-      'js': 'javascript',
-      'ts': 'typescript',
-      'py': 'python',
-      'rb': 'ruby',
-      'sh': 'shell',
-      'bash': 'shell',
-      'zsh': 'shell',
-      'yml': 'yaml',
-      'md': 'markdown',
-      'cpp': 'cpp',
-      'cxx': 'cpp',
-      'cc': 'cpp',
-      'hpp': 'cpp',
-      'h': 'c',
-      'rs': 'rust',
-      'go': 'go',
-      'java': 'java',
-      'kt': 'kotlin',
-      'cs': 'csharp',
-      'php': 'php',
-      'sql': 'sql',
-      'xml': 'xml',
-      'svg': 'xml',
-      'html': 'html',
-      'htm': 'html',
-      'css': 'css',
-      'scss': 'scss',
-      'sass': 'scss',
-      'less': 'less',
-      'json': 'json',
-      'yaml': 'yaml',
-      'toml': 'ini',
-      'ini': 'ini',
-      'conf': 'ini',
-      'txt': 'plaintext',
-      'text': 'plaintext',
-      'vue': 'html',
-      'svelte': 'html',
+    // First check if it's a file extension
+    const extMapping = EXTENSION_TO_LANGUAGE[lang.toLowerCase()]
+    if (extMapping) {
+      return extMapping
     }
-    return langMap[lang.toLowerCase()] || lang.toLowerCase()
+    // Otherwise return as-is (it's already a language ID)
+    return lang.toLowerCase()
   }, [])
 
   // Editor options
