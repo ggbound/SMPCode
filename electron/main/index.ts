@@ -26,12 +26,13 @@ import {
   getRecentCommits,
   getBranches
 } from './services/git-service'
-import {
+import { 
   watchDirectory,
   unwatchDirectory,
   stopAllWatchers,
   getGitIgnorePatterns
 } from './services/files-service'
+import { searchFiles } from './services/search-service'
 
 // Configure logging
 log.transports.file.level = 'info'
@@ -534,6 +535,33 @@ function setupIpcHandlers(): void {
   ipcMain.handle('fs:get-gitignore', (_event, dirPath: string) => {
     return getGitIgnorePatterns(dirPath)
   })
+
+  // Search handlers
+  ipcMain.handle('search:execute', async (_event, options: {
+    query: string
+    path: string
+    includePattern?: string
+    excludePattern?: string
+    isRegex?: boolean
+    isCaseSensitive?: boolean
+    isWholeWords?: boolean
+    maxResults?: number
+    useIgnoreFiles?: boolean
+  }) => {
+    try {
+      const result = await searchFiles(options)
+      return { success: true, data: result }
+    } catch (error) {
+      log.error('Search execution error:', error)
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : String(error) 
+      }
+    }
+  })
+
+  // Note: Search history will be managed in frontend using localStorage
+  // No need for IPC handlers for save/load history
 
   // File dialog handlers
   ipcMain.handle('show-open-dialog', async (_event, options) => {

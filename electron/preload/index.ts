@@ -167,7 +167,20 @@ const api = {
   onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => {
     ipcRenderer.on('fs:change', callback)
     return () => ipcRenderer.removeListener('fs:change', callback)
-  }
+  },
+
+  // Search API
+  executeSearch: (options: {
+    query: string
+    path: string
+    includePattern?: string
+    excludePattern?: string
+    isRegex?: boolean
+    isCaseSensitive?: boolean
+    isWholeWords?: boolean
+    maxResults?: number
+    useIgnoreFiles?: boolean
+  }) => ipcRenderer.invoke('search:execute', options)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

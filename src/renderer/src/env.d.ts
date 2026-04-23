@@ -106,6 +106,19 @@ declare global {
       fsUnwatch: (dirPath: string) => Promise<void>
       fsGetGitignore: (dirPath: string) => Promise<string[]>
       onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => () => void
+      
+      // Search API
+      executeSearch: (options: {
+        query: string
+        path: string
+        includePattern?: string
+        excludePattern?: string
+        isRegex?: boolean
+        isCaseSensitive?: boolean
+        isWholeWords?: boolean
+        maxResults?: number
+        useIgnoreFiles?: boolean
+      }) => Promise<{ success: boolean; data?: { matches: Array<{ file: string; line: number; column: number; content: string; match: string }>; totalFiles: number; limitHit: boolean }; error?: string }>
     }
   }
 }

@@ -136,6 +136,7 @@ interface MonacoEditorProps {
   onSave?: () => void
   theme?: string
   onCursorPositionChange?: (position: { line: number; column: number }) => void
+  onMount?: (editor: monaco.editor.IStandaloneCodeEditor) => void
 }
 
 function MonacoEditor({ 
@@ -145,7 +146,8 @@ function MonacoEditor({
   readOnly = false,
   onSave,
   theme = 'vs-dark',
-  onCursorPositionChange
+  onCursorPositionChange,
+  onMount
 }: MonacoEditorProps) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<string[]>([])
@@ -153,6 +155,9 @@ function MonacoEditor({
   // Handle editor mount
   const handleEditorDidMount: OnMount = useCallback((editor, monacoInstance) => {
     editorRef.current = editor
+    
+    // Notify parent component
+    onMount?.(editor)
 
     // Register Vue language support
     registerVueLanguage(monacoInstance)
@@ -174,7 +179,7 @@ function MonacoEditor({
 
     // Focus editor
     editor.focus()
-  }, [onSave, onCursorPositionChange])
+  }, [onSave, onCursorPositionChange, onMount])
 
   // Handle content change
   const handleEditorChange: OnChange = useCallback((value) => {

@@ -169,6 +169,28 @@ export const translations = {
     minimaxM25: 'MiniMax M2.5',
     claude35Sonnet: 'Claude 3.5 Sonnet',
     claude37Sonnet: 'Claude 3.7 Sonnet',
+
+    // Search (additional keys)
+    replacePlaceholder: '替换',
+    useRegex: '使用正则表达式',
+    matchCase: '区分大小写',
+    matchWholeWord: '全词匹配',
+    filesToInclude: '包含的文件',
+    filesToExclude: '排除的文件',
+    filesToIncludeHint: '例如: *.ts, src/**',
+    filesToExcludeHint: '例如: node_modules, **/*.test.ts',
+    useIgnoreFiles: '使用.gitignore文件',
+    resultsIn: '个结果在',
+    files: '个文件中',
+    results: '个结果',
+    clearResults: '清除结果',
+    clear: '清除',
+    searchLimitHit: '搜索结果过多,仅显示前10000条',
+    searchHistory: '搜索历史',
+    replaceAll: '全部替换',
+    showQueryDetails: '显示查询详情',
+    hideQueryDetails: '隐藏查询详情',
+    searching: '搜索中...',
   },
   en: {
     // App
@@ -338,6 +360,28 @@ export const translations = {
     minimaxM25: 'MiniMax M2.5',
     claude35Sonnet: 'Claude 3.5 Sonnet',
     claude37Sonnet: 'Claude 3.7 Sonnet',
+
+    // Search (additional keys)
+    replacePlaceholder: 'Replace',
+    useRegex: 'Use Regular Expression',
+    matchCase: 'Match Case',
+    matchWholeWord: 'Match Whole Word',
+    filesToInclude: 'files to include',
+    filesToExclude: 'files to exclude',
+    filesToIncludeHint: 'e.g. *.ts, src/**',
+    filesToExcludeHint: 'e.g. node_modules, **/*.test.ts',
+    useIgnoreFiles: 'Use .gitignore Files',
+    resultsIn: 'results in',
+    files: 'files',
+    results: 'results',
+    clearResults: 'Clear Results',
+    clear: 'Clear',
+    searchLimitHit: 'Too many results, showing first 10000',
+    searchHistory: 'Search History',
+    replaceAll: 'Replace All',
+    showQueryDetails: 'Show Query Details',
+    hideQueryDetails: 'Hide Query Details',
+    searching: 'Searching...',
   }
 }
 

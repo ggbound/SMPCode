@@ -46,6 +46,7 @@ import {
 } from './services/execution-registry'
 import { executeCommand, setCurrentWorkingDirectory, getCurrentWorkingDirectory } from './services/command-executor'
 import { listDirectory, readFile, writeFile } from './services/files-service'
+import { searchFiles } from './services/search-service'
 import {
   CODE_TOOLS,
   ToolCall,
@@ -1541,6 +1542,86 @@ export async function startApiServer(): Promise<void> {
     } catch (error) {
       log.error('Code context error:', error)
       res.status(500).json({ error: String(error) })
+    }
+  })
+
+  // ============================================
+  // Search API Routes
+  // ============================================
+
+  // Execute file content search using ripgrep
+  expressApp.get('/api/search', async (req: Request, res: Response) => {
+    try {
+      const { path, query, include, exclude, isRegex, isCaseSensitive, isWholeWords, maxResults, useIgnoreFiles } = req.query
+
+      if (!path || !query) {
+        res.status(400).json({ 
+          success: false, 
+          error: 'path and query parameters are required' 
+        })
+        return
+      }
+
+      const result = await searchFiles({
+        query: String(query),
+        path: String(path),
+        includePattern: include ? String(include) : undefined,
+        excludePattern: exclude ? String(exclude) : undefined,
+        isRegex: isRegex === 'true',
+        isCaseSensitive: isCaseSensitive === 'true',
+        isWholeWords: isWholeWords === 'true',
+        maxResults: maxResults ? Number(maxResults) : 10000,
+        useIgnoreFiles: useIgnoreFiles !== 'false'
+      })
+
+      res.json({
+        success: true,
+        data: result
+      })
+    } catch (error) {
+      log.error('Search error:', error)
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  })
+
+  // POST version for complex search queries
+  expressApp.post('/api/search', async (req: Request, res: Response) => {
+    try {
+      const { query, path, includePattern, excludePattern, isRegex, isCaseSensitive, isWholeWords, maxResults, useIgnoreFiles } = req.body
+
+      if (!path || !query) {
+        res.status(400).json({ 
+          success: false, 
+          error: 'path and query are required' 
+        })
+        return
+      }
+
+      const result = await searchFiles({
+        query,
+        path,
+        includePattern,
+        excludePattern,
+        isRegex,
+        isCaseSensitive,
+        isWholeWords,
+        maxResults: maxResults || 10000,
+        useIgnoreFiles: useIgnoreFiles !== false
+      })
+
+      res.json({
+        success: true,
+        data: result
+      })
+    } catch (error) {
+      log.error('Search error:', error)
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      })
     }
   })
 

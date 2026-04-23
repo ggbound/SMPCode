@@ -16,12 +16,13 @@ interface FileViewerProps {
   onExplainCode?: (code: string, language: string) => void
   rootPath?: string
   onCursorPositionChange?: (position: { line: number; column: number }) => void
+  onEditorMount?: (editor: any) => void
 }
 
 // Auto-save delay in milliseconds
 const AUTO_SAVE_DELAY = 1000
 
-function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onCursorPositionChange }: FileViewerProps) {
+function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onCursorPositionChange, onEditorMount }: FileViewerProps) {
   const [editedContent, setEditedContent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
@@ -299,6 +300,7 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
               onChange={(value) => handleContentChange(value)}
               onSave={handleManualSave}
               onCursorPositionChange={onCursorPositionChange}
+              onMount={onEditorMount}
             />
 
             {/* Copilot Code Completion Overlay */}

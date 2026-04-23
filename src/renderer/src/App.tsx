@@ -117,6 +117,9 @@ function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   
+  // Editor reference for jumping to lines
+  const editorRef = useRef<any>(null)
+  
   // Session sidebar state - 已移动到顶部，不再需要侧边栏
   const [localSessions, setLocalSessions] = useState<Session[]>([])
   
@@ -1192,6 +1195,23 @@ function App() {
     return getLanguageFromPath(path)
   }, [])
 
+  // Jump to line in editor
+  const goToLine = useCallback((lineNumber: number) => {
+    if (editorRef.current) {
+      try {
+        // Reveal the line in the center of the viewport
+        editorRef.current.revealLineInCenter(lineNumber)
+        // Set cursor position to the line
+        editorRef.current.setPosition({ lineNumber, column: 1 })
+        // Focus the editor
+        editorRef.current.focus()
+        console.log(`[App] Jumped to line ${lineNumber}`)
+      } catch (error) {
+        console.error('[App] Failed to jump to line:', error)
+      }
+    }
+  }, [])
+
   // Open file in tab
   const openFile = useCallback((path: string, content: string) => {
     // Check if file is already open
@@ -1647,7 +1667,34 @@ function App() {
             </div>
             
             <div style={{ display: activeActivity === 'search' ? 'flex' : 'none', flex: '0 0 auto' }}>
-              <SearchPanel projectPath={projectPath} />
+              <SearchPanel 
+                projectPath={projectPath} 
+                onFileClick={(filePath, line) => {
+                  // 打开文件并跳转到指定行
+                  console.log('[App] onFileClick called with:', filePath, line)
+                  const existingTab = tabs.find(tab => tab.path === filePath)
+                  if (existingTab) {
+                    console.log('[App] Tab already exists, switching to it')
+                    setActiveTabId(existingTab.id)
+                    // 延迟跳转，等待标签页切换完成
+                    setTimeout(() => goToLine(line), 100)
+                  } else {
+                    console.log('[App] Opening new file')
+                    // 读取文件内容
+                    fetch(`http://localhost:3847/api/fs/read?path=${encodeURIComponent(filePath)}`)
+                      .then(res => res.json())
+                      .then(data => {
+                        if (data.content !== undefined) {
+                          console.log('[App] File loaded, opening in editor')
+                          openFile(filePath, data.content)
+                          // 延迟跳转，等待编辑器渲染完成
+                          setTimeout(() => goToLine(line), 200)
+                        }
+                      })
+                      .catch(err => console.error('Failed to read file:', err))
+                  }
+                }}
+              />
             </div>
 
             {/* Center: File Tabs + File Viewer + Terminal */}
@@ -1672,6 +1719,10 @@ function App() {
                   onSave={handleTabSave}
                   rootPath={projectPath || undefined}
                   onCursorPositionChange={setCursorPosition}
+                  onEditorMount={(editor) => {
+                    editorRef.current = editor
+                    console.log('[App] Editor mounted')
+                  }}
                 />
               </div>
               <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />
