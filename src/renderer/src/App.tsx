@@ -294,6 +294,37 @@ function App() {
 
   // Load config on mount
   useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        console.log('Loading config from store...')
+        const api = window.api as unknown as { getConfig?: () => Promise<{
+          apiKey: string
+          model: string
+          defaultModel: string
+          permissionMode: string
+          providers: any[]
+        }> }
+        
+        if (api?.getConfig) {
+          const config = await api.getConfig()
+          console.log('Loaded config:', config)
+          
+          if (config) {
+            setApiKey(config.apiKey || '')
+            setModel(config.model || '')
+            setDefaultModel(config.defaultModel || '')
+            setPermissionMode(config.permissionMode || 'workspace-write')
+            setProviders(config.providers || [])
+            console.log(`Config loaded: ${config.providers?.length || 0} providers`)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load config:', error)
+      }
+    }
+    
+    loadConfig()
+    
     const unsubOpenSettings = window.api?.onOpenSettings?.(() => {
       setShowSettings(true)
     })
@@ -301,7 +332,7 @@ function App() {
     return () => {
       unsubOpenSettings?.()
     }
-  }, [])
+  }, [setApiKey, setModel, setDefaultModel, setPermissionMode, setProviders])
 
   // Stop generation handler
   const handleStopGeneration = () => {

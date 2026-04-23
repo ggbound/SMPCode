@@ -182,7 +182,17 @@ function FileTabs({
   }
 
   if (tabs.length === 0) {
-    return null
+    return (
+      <div className="file-tabs-container">
+        {/* Empty tabs placeholder to maintain layout */}
+        <div className="file-tabs" style={{ opacity: 0, pointerEvents: 'none' }}>
+          <div className="file-tab" style={{ visibility: 'hidden' }}>
+            <span className="tab-icon"></span>
+            <span className="tab-name">placeholder</span>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
