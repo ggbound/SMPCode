@@ -30,18 +30,11 @@ export function listDirectory(dirPath: string, options?: { includeHidden?: boole
 
     const items = fs.readdirSync(dirPath, { withFileTypes: true })
     const nodes: FileNode[] = []
-    const includeHidden = options?.includeHidden ?? false
+    const includeHidden = options?.includeHidden ?? true  // 默认显示隐藏文件
 
     for (const item of items) {
-      // Skip hidden files unless explicitly included
-      if (!includeHidden && item.name.startsWith('.')) {
-        continue
-      }
-
-      // Skip node_modules and other common exclusions
-      if (item.name === 'node_modules' || item.name === '.git') {
-        continue
-      }
+      // 显示所有文件，包括隐藏文件和node_modules
+      // 不再过滤任何文件或目录
 
       const itemPath = path.join(dirPath, item.name)
       try {
