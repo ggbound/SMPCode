@@ -2529,6 +2529,89 @@ code ::selection {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 }
 
+/* Shiki 高亮样式 - VSCode Dark+ 主题 */
+.shiki-container {
+  padding: 16px;
+  overflow-x: auto;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+}
+
+.shiki-container pre {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.shiki-container code {
+  font-family: inherit !important;
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+}
+
+/* Shiki token colors - GitHub Dark theme */
+.shiki-container .token.keyword {
+  color: #ff7b72;
+}
+
+.shiki-container .token.string,
+.shiki-container .token.attr-value {
+  color: #a5d6ff;
+}
+
+.shiki-container .token.comment,
+.shiki-container .token.prolog,
+.shiki-container .token.doctype,
+.shiki-container .token.cdata {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.shiki-container .token.function,
+.shiki-container .token.function-call {
+  color: #d2a8ff;
+}
+
+.shiki-container .token.number {
+  color: #79c0ff;
+}
+
+.shiki-container .token.class-name,
+.shiki-container .token.builtin {
+  color: #ffa657;
+}
+
+.shiki-container .token.operator,
+.shiki-container .token.punctuation {
+  color: #c9d1d9;
+}
+
+.shiki-container .token.property,
+.shiki-container .token.attr-name {
+  color: #7ee787;
+}
+
+.shiki-container .token.tag {
+  color: #7ee787;
+}
+
+.shiki-container .token.selector,
+.shiki-container .token.attr-name {
+  color: #79c0ff;
+}
+
+.shiki-container .token.regex {
+  color: #a5d6ff;
+}
+
+.shiki-container .token.important,
+.shiki-container .token.bold {
+  font-weight: bold;
+}
+
+.shiki-container .token.italic {
+  font-style: italic;
+}
+
 .code-block-header {
   display: flex;
   justify-content: space-between;

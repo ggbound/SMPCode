@@ -8,13 +8,22 @@ import { EXTENSION_TO_LANGUAGE } from '../utils/languageMap'
 loader.config({
   paths: {
     vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs'
+  },
+  // Load additional language support from CDN
+  'vs/nls': {
+    availableLanguages: {
+      '*': 'zh-cn'
+    }
   }
 })
 
 // Initialize Vue language support before Monaco loads
 // This ensures the language is registered when the editor initializes
 loader.init().then((monacoInstance) => {
+  console.log('[MonacoEditor] Monaco initialized, available languages:', 
+    monacoInstance.languages.getLanguages().map((l: any) => l.id).join(', '))
   registerVueLanguage(monacoInstance)
+  console.log('[MonacoEditor] Vue language registered')
 })
 
 // Register Vue language support
@@ -198,13 +207,33 @@ function MonacoEditor({
 
   // Map language aliases (using unified language map)
   const getMonacoLanguage = useCallback((lang: string): string => {
+    console.log('[MonacoEditor] Input language:', lang)
+    
     // First check if it's a file extension
-    const extMapping = EXTENSION_TO_LANGUAGE[lang.toLowerCase()]
+    const langLower = lang.toLowerCase()
+    const extMapping = EXTENSION_TO_LANGUAGE[langLower]
     if (extMapping) {
+      console.log('[MonacoEditor] Mapped from extension:', langLower, '->', extMapping)
       return extMapping
     }
-    // Otherwise return as-is (it's already a language ID)
-    return lang.toLowerCase()
+    
+    // Check if it's already a valid Monaco language
+    // Monaco supports: javascript, typescript, python, java, cpp, csharp, go, rust, ruby, php, sql, html, css, json, xml, yaml, markdown, shell, powershell, etc.
+    const validLanguages = [
+      'javascript', 'typescript', 'python', 'java', 'cpp', 'c', 'csharp',
+      'go', 'rust', 'ruby', 'php', 'sql', 'html', 'css', 'scss', 'less',
+      'json', 'xml', 'yaml', 'markdown', 'shell', 'powershell', 'vue',
+      'plaintext', 'ini', 'dockerfile', 'makefile', 'cmake', 'graphql', 'perl'
+    ]
+    
+    if (validLanguages.includes(langLower)) {
+      console.log('[MonacoEditor] Using language as-is:', langLower)
+      return langLower
+    }
+    
+    // Fallback to plaintext
+    console.log('[MonacoEditor] Unknown language, falling back to plaintext:', lang)
+    return 'plaintext'
   }, [])
 
   // Editor options

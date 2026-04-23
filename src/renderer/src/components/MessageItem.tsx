@@ -8,7 +8,7 @@ import type { Message, ImageContent } from '../store'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
-import MonacoCodeHighlight from './CodeBlock'
+import { CodeBlock } from './CodeBlock'
 import { t } from '../i18n'
 import BuilderMessage from './BuilderMessage'
 
@@ -227,7 +227,7 @@ export const MessageItem = memo(function MessageItem({
                     </button>
                   </div>
                   <div className="code-block-content">
-                    <MonacoCodeHighlight
+                    <CodeBlock
                       code={contentStr}
                       language={language}
                       showLineNumbers={true}

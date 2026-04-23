@@ -167,17 +167,134 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
 
   const language = useMemo(() => {
     if (!tab?.path) return 'text'
+    
     const ext = tab.path.split('.').pop()?.toLowerCase() || ''
+    
+    // 完整的语言映射表
     const langMap: Record<string, string> = {
-      'js': 'javascript', 'ts': 'typescript', 'tsx': 'tsx', 'jsx': 'jsx',
-      'py': 'python', 'json': 'json', 'md': 'markdown', 'css': 'css',
-      'scss': 'scss', 'html': 'html', 'xml': 'xml', 'yaml': 'yaml',
-      'yml': 'yaml', 'sh': 'bash', 'bash': 'bash', 'rs': 'rust',
-      'go': 'go', 'java': 'java', 'c': 'c', 'cpp': 'cpp', 'h': 'c',
-      'hpp': 'cpp', 'rb': 'ruby', 'php': 'php', 'sql': 'sql'
+      // JavaScript/TypeScript
+      'js': 'javascript',
+      'mjs': 'javascript',
+      'cjs': 'javascript',
+      'ts': 'typescript',
+      'tsx': 'typescript',
+      'jsx': 'javascript',
+      
+      // Web
+      'html': 'html',
+      'htm': 'html',
+      'css': 'css',
+      'scss': 'scss',
+      'sass': 'scss',
+      'less': 'less',
+      'vue': 'vue',
+      'svelte': 'html',
+      
+      // Data formats
+      'json': 'json',
+      'jsonc': 'json',
+      'xml': 'xml',
+      'svg': 'xml',
+      'yaml': 'yaml',
+      'yml': 'yaml',
+      'toml': 'ini',
+      'ini': 'ini',
+      
+      // Documentation
+      'md': 'markdown',
+      'markdown': 'markdown',
+      
+      // Python
+      'py': 'python',
+      'pyw': 'python',
+      
+      // Java
+      'java': 'java',
+      
+      // C/C++
+      'c': 'c',
+      'cpp': 'cpp',
+      'cxx': 'cpp',
+      'cc': 'cpp',
+      'h': 'c',
+      'hpp': 'cpp',
+      
+      // C#
+      'cs': 'csharp',
+      
+      // Go
+      'go': 'go',
+      
+      // Rust
+      'rs': 'rust',
+      
+      // Ruby
+      'rb': 'ruby',
+      
+      // PHP
+      'php': 'php',
+      'phtml': 'php',
+      
+      // Shell
+      'sh': 'shell',
+      'bash': 'shell',
+      'zsh': 'shell',
+      'fish': 'shell',
+      'ps1': 'powershell',
+      
+      // SQL
+      'sql': 'sql',
+      
+      // Other
+      'lua': 'lua',
+      'r': 'r',
+      'perl': 'perl',
+      'pl': 'perl',
+      'swift': 'swift',
+      'kt': 'kotlin',
+      'scala': 'scala',
+      'dart': 'dart',
+      'graphql': 'graphql',
+      'gql': 'graphql',
+      'dockerfile': 'dockerfile',
+      'makefile': 'makefile',
+      'cmake': 'cmake'
     }
-    return langMap[ext] || 'text'
-  }, [tab?.path])
+    
+    const mappedLang = langMap[ext]
+    
+    // 如果没有扩展名，基于文件名和内容检测
+    if (!mappedLang && !ext) {
+      const fileName = tab.path.split('/').pop() || ''
+      
+      // 检查常见脚本文件名
+      if (fileName === 'rake' || fileName === 'gemfile') {
+        return 'ruby'
+      }
+      
+      // 对于artisan等文件，检查内容中的shebang
+      if (editedContent) {
+        const firstLine = editedContent.split('\n')[0]?.trim() || ''
+        
+        // Shebang检测
+        if (firstLine.startsWith('#!')) {
+          if (firstLine.includes('php')) return 'php'
+          if (firstLine.includes('python')) return 'python'
+          if (firstLine.includes('ruby')) return 'ruby'
+          if (firstLine.includes('perl')) return 'perl'
+          if (firstLine.includes('node')) return 'javascript'
+          if (firstLine.includes('bash') || firstLine.includes('sh')) return 'shell'
+        }
+        
+        // 内容特征检测（如果没有shebang）
+        if (fileName === 'artisan' || firstLine.includes('<?php')) {
+          return 'php'
+        }
+      }
+    }
+    
+    return mappedLang || 'text'
+  }, [tab?.path, editedContent])
 
   // Handle editor selection change for Monaco
   const handleEditorSelectionChange = useCallback((selection: any) => {
