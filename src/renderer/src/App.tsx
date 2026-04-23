@@ -1,3 +1,4 @@
+/// <reference types="./env" />
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore, type ProviderConfig, type Session, type Step, type ImageContent } from './store'
 import ChatArea from './components/ChatArea'
@@ -293,38 +294,11 @@ function App() {
 
   // Load config on mount
   useEffect(() => {
-    const api = window.api as unknown as { 
-      getConfig?: () => Promise<Record<string, unknown>>;
-      onNewSession?: (callback: () => void) => () => void;
-      onOpenSettings?: (callback: () => void) => () => void;
-    }
-    api?.getConfig?.().then((config: Record<string, unknown>) => {
-      console.log('Loaded config:', config)
-      if (config?.apiKey !== undefined) setApiKey(config.apiKey as string)
-      if (config?.defaultModel !== undefined) setDefaultModel(config.defaultModel as string)
-      if (config?.permissionMode !== undefined) setPermissionMode(config.permissionMode as string)
-      if (config?.providers && Array.isArray(config.providers)) {
-        console.log('Setting providers:', config.providers.length)
-        setProviders(config.providers as ProviderConfig[])
-      }
-      // Set model: use config.model if available, otherwise use defaultModel
-      const modelToSet = (config?.model as string) || (config?.defaultModel as string)
-      if (modelToSet) {
-        console.log('Setting model:', modelToSet)
-        setModel(modelToSet)
-      }
-    })
-
-    // Listen for menu events
-    const unsubNewSession = api?.onNewSession?.(() => {
-      handleNewSession()
-    })
-    const unsubOpenSettings = api?.onOpenSettings?.(() => {
+    const unsubOpenSettings = window.api?.onOpenSettings?.(() => {
       setShowSettings(true)
     })
 
     return () => {
-      unsubNewSession?.()
       unsubOpenSettings?.()
     }
   }, [])
@@ -542,7 +516,7 @@ function App() {
       if (window.api?.listSessions) {
         const result = await window.api.listSessions(newPath)
         if (result.success && result.sessions) {
-          const loadedSessions = result.sessions.map(s => ({
+          const loadedSessions = result.sessions.map((s: { id: string; title: string; updatedAt: string; messageCount: number }) => ({
             id: s.id,
             createdAt: s.updatedAt,
             messageCount: s.messageCount,
@@ -1325,8 +1299,116 @@ function App() {
     return false
   }, [tabs])
 
-  // Get active tab
+  // Get active tab - must be before file menu event listeners
   const activeTab = tabs.find(t => t.id === activeTabId) || null
+
+  // File menu event listeners - must be after function definitions
+  useEffect(() => {
+    // New Session
+    const unsubNewSession = window.api?.onNewSession?.(() => {
+      handleNewSession()
+    })
+    
+    // New File
+    const unsubFileNew = window.api?.onFileNew?.(() => {
+      const newFileName = `untitled-${Date.now()}.txt`
+      openFile(newFileName, '')
+    })
+    
+    // Open File
+    const unsubFileOpen = window.api?.onFileOpen?.(async () => {
+      try {
+        const filePath = await window.api.openFile()
+        if (filePath) {
+          const response = await fetch(`http://localhost:3847/api/file/read?path=${encodeURIComponent(filePath)}`)
+          if (response.ok) {
+            const data = await response.json()
+            openFile(filePath, data.content || '')
+          }
+        }
+      } catch (error) {
+        console.error('Failed to open file:', error)
+      }
+    })
+    
+    // Open Folder
+    const unsubFolderOpen = window.api?.onFolderOpen?.(async () => {
+      try {
+        const folderPath = await window.api.selectFolder()
+        if (folderPath) {
+          setProjectPath(folderPath)
+        }
+      } catch (error) {
+        console.error('Failed to open folder:', error)
+      }
+    })
+    
+    // Save File
+    const unsubFileSave = window.api?.onFileSave?.(() => {
+      if (activeTabId) {
+        const tab = tabs.find(t => t.id === activeTabId)
+        if (tab && tab.isDirty) {
+          handleTabSave(tab.id, tab.content)
+        }
+      }
+    })
+    
+    // Save As
+    const unsubFileSaveAs = window.api?.onFileSaveAs?.(async () => {
+      if (!activeTab) return
+      
+      try {
+        // Show save dialog
+        const result = await window.api.showSaveDialog({
+          defaultPath: activeTab.path,
+          title: 'Save As',
+          buttonLabel: 'Save'
+        })
+        
+        if (!result.canceled && result.filePath) {
+          // Write to new file
+          const res = await fetch(`${API_BASE}/fs/write`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: result.filePath, content: activeTab.content })
+          })
+          
+          if (res.ok) {
+            // Update tab with new path
+            setTabs(prev => prev.map(t => 
+              t.id === activeTabId ? { 
+                ...t, 
+                path: result.filePath!, 
+                name: result.filePath!.split('/').pop()!,
+                isDirty: false 
+              } : t
+            ))
+            setSelectedFilePath(result.filePath!)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to save as:', error)
+      }
+    })
+    
+    // Refresh File Tree
+    const unsubFileRefresh = window.api?.onFileRefresh?.(() => {
+      // Trigger re-render of FileExplorer by temporarily changing projectPath
+      const currentPath = projectPath
+      setProjectPath(null)
+      setTimeout(() => setProjectPath(currentPath), 100)
+    })
+
+    return () => {
+      unsubNewSession?.()
+      unsubFileNew?.()
+      unsubFileOpen?.()
+      unsubFolderOpen?.()
+      unsubFileSave?.()
+      unsubFileSaveAs?.()
+      unsubFileRefresh?.()
+    }
+  }, [activeTabId, tabs, activeTab, openFile, handleTabSave, handleNewSession, projectPath, setProjectPath])
 
   // Handle file renamed from FileExplorer
   const handleFileRenamed = useCallback((oldPath: string, newPath: string, newName: string) => {
@@ -1557,7 +1639,7 @@ function App() {
                   tab={activeTab}
                   onContentChange={handleTabContentChange}
                   onSave={handleTabSave}
-                  rootPath={projectPath}
+                  rootPath={projectPath || undefined}
                   onCursorPositionChange={setCursorPosition}
                 />
               </div>

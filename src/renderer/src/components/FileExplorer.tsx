@@ -1097,43 +1097,8 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
   return (
     <div className="file-explorer">
       {/* Header */}
-      {/* Header */}
       <div className="file-explorer-header">
         <span className="file-explorer-title">{t('explorer').toUpperCase()}</span>
-        <div className="file-explorer-actions">
-          <button
-            className="btn-icon"
-            onClick={() => setNewItemDialog({ isOpen: true, type: 'file', parentPath: rootPath })}
-            disabled={!rootPath || isLoading}
-            title={t('newFile')}
-          >
-            📝
-          </button>
-          <button
-            className="btn-icon"
-            onClick={() => setNewItemDialog({ isOpen: true, type: 'folder', parentPath: rootPath })}
-            disabled={!rootPath || isLoading}
-            title={t('newFolder')}
-          >
-            📁
-          </button>
-          <button
-            className="btn-icon"
-            onClick={handleRefreshPreserveExpansion}
-            disabled={!rootPath || isLoading}
-            title={t('refresh') || 'Refresh'}
-          >
-            🔄
-          </button>
-          <button
-            className="btn-icon"
-            onClick={handleCollapseAll}
-            disabled={!rootPath || isLoading}
-            title={t('collapseAll')}
-          >
-            <ArrowUp size={16} />
-          </button>
-        </div>
       </div>
 
       {/* Search bar */}

@@ -121,74 +121,89 @@ function createWindow(): void {
     {
       label: 'SMP Code',
       submenu: [
-        { label: 'About SMP Code', role: 'about' },
+        { label: '关于 SMP Code', role: 'about' },
         { type: 'separator' },
-        { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: () => mainWindow?.webContents.send('open-settings') },
+        { label: '设置', accelerator: 'CmdOrCtrl+,', click: () => mainWindow?.webContents.send('open-settings') },
         { type: 'separator' },
-        { label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => { isQuitting = true; app.quit() } }
+        { label: '退出', accelerator: 'CmdOrCtrl+Q', click: () => { isQuitting = true; app.quit() } }
       ]
     },
     {
-      label: 'Edit',
+      label: '编辑',
       submenu: [
-        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
-        { label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', role: 'redo' },
+        { label: '撤销', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
+        { label: '重做', accelerator: 'Shift+CmdOrCtrl+Z', role: 'redo' },
         { type: 'separator' },
-        { label: 'Cut', accelerator: 'CmdOrCtrl+X', role: 'cut' },
-        { label: 'Copy', accelerator: 'CmdOrCtrl+C', role: 'copy' },
-        { label: 'Paste', accelerator: 'CmdOrCtrl+V', role: 'paste' },
-        { label: 'Select All', accelerator: 'CmdOrCtrl+A', role: 'selectAll' }
+        { label: '剪切', accelerator: 'CmdOrCtrl+X', role: 'cut' },
+        { label: '复制', accelerator: 'CmdOrCtrl+C', role: 'copy' },
+        { label: '粘贴', accelerator: 'CmdOrCtrl+V', role: 'paste' },
+        { label: '全选', accelerator: 'CmdOrCtrl+A', role: 'selectAll' }
       ]
     },
     {
-      label: 'View',
+      label: '视图',
       submenu: [
-        { label: 'Reload', accelerator: 'CmdOrCtrl+R', role: 'reload' },
-        { label: 'Force Reload', accelerator: 'CmdOrCtrl+Shift+R', role: 'forceReload' },
-        { label: 'Toggle DevTools', accelerator: 'F12', role: 'toggleDevTools' },
+        { label: '重新加载', accelerator: 'CmdOrCtrl+R', role: 'reload' },
+        { label: '强制重新加载', accelerator: 'CmdOrCtrl+Shift+R', role: 'forceReload' },
+        { label: '切换开发者工具', accelerator: 'F12', role: 'toggleDevTools' },
         { type: 'separator' },
-        { label: 'Actual Size', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' },
-        { label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', role: 'zoomIn' },
-        { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', role: 'zoomOut' },
+        { label: '实际大小', accelerator: 'CmdOrCtrl+0', role: 'resetZoom' },
+        { label: '放大', accelerator: 'CmdOrCtrl+Plus', role: 'zoomIn' },
+        { label: '缩小', accelerator: 'CmdOrCtrl+-', role: 'zoomOut' },
         { type: 'separator' },
-        { label: 'Toggle Full Screen', accelerator: 'F11', role: 'togglefullscreen' }
+        { label: '切换全屏', accelerator: 'F11', role: 'togglefullscreen' }
       ]
     },
     {
-      label: 'Session',
+      label: '会话',
       submenu: [
-        { label: 'New Session', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('new-session') },
-        { label: 'New Session (Global)', accelerator: 'CmdOrCtrl+Shift+N', click: () => mainWindow?.webContents.send('new-session') }
+        { label: '新建会话', accelerator: 'CmdOrCtrl+Shift+N', click: () => mainWindow?.webContents.send('new-session') },
+        { label: '打开会话', accelerator: 'CmdOrCtrl+Shift+O', click: () => mainWindow?.webContents.send('open-session') }
+      ]
+    },
+    {
+      label: '文件',
+      submenu: [
+        { label: '新建文件', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('file:new') },
+        { label: '打开文件...', accelerator: 'CmdOrCtrl+Shift+F', click: () => mainWindow?.webContents.send('file:open') },
+        { label: '打开文件夹...', accelerator: 'CmdOrCtrl+Shift+O', click: () => mainWindow?.webContents.send('folder:open') },
+        { type: 'separator' },
+        { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('file:save') },
+        { label: '另存为...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow?.webContents.send('file:save-as') },
+        { type: 'separator' },
+        { label: '刷新文件树', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow?.webContents.send('file:refresh') },
+        { type: 'separator' },
+        { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', role: 'close' }
       ]
     },
     {
       label: 'Copilot',
       submenu: [
-        { label: 'Trigger Inline Edit', accelerator: 'CmdOrCtrl+I', click: () => mainWindow?.webContents.send('copilot-inline-edit') },
-        { label: 'Explain Selected Code', accelerator: 'CmdOrCtrl+Shift+E', click: () => mainWindow?.webContents.send('copilot-explain') },
-        { label: 'Refactor Selected Code', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow?.webContents.send('copilot-refactor') },
+        { label: '触发内联编辑', accelerator: 'CmdOrCtrl+I', click: () => mainWindow?.webContents.send('copilot-inline-edit') },
+        { label: '解释选中代码', accelerator: 'CmdOrCtrl+Shift+E', click: () => mainWindow?.webContents.send('copilot-explain') },
+        { label: '重构选中代码', accelerator: 'CmdOrCtrl+Alt+R', click: () => mainWindow?.webContents.send('copilot-refactor') },
         { type: 'separator' },
-        { label: 'Toggle Copilot', accelerator: 'CmdOrCtrl+Shift+C', click: () => mainWindow?.webContents.send('copilot-toggle') },
-        { label: 'Accept Completion', accelerator: 'Tab', click: () => mainWindow?.webContents.send('copilot-accept') },
-        { label: 'Dismiss Completion', accelerator: 'Esc', click: () => mainWindow?.webContents.send('copilot-dismiss') }
+        { label: '切换 Copilot', accelerator: 'CmdOrCtrl+Shift+C', click: () => mainWindow?.webContents.send('copilot-toggle') },
+        { label: '接受补全', accelerator: 'Tab', click: () => mainWindow?.webContents.send('copilot-accept') },
+        { label: '取消补全', accelerator: 'Esc', click: () => mainWindow?.webContents.send('copilot-dismiss') }
       ]
     },
     {
-      label: 'Window',
+      label: '窗口',
       submenu: [
-        { label: 'Minimize', accelerator: 'CmdOrCtrl+M', role: 'minimize' },
-        { label: 'Close', accelerator: 'CmdOrCtrl+W', role: 'close' }
+        { label: '最小化', accelerator: 'CmdOrCtrl+M', role: 'minimize' },
+        { label: '关闭', accelerator: 'CmdOrCtrl+W', role: 'close' }
       ]
     },
     {
-      label: 'Help',
+      label: '帮助',
       submenu: [
         {
-          label: 'Documentation',
+          label: '文档',
           click: async () => { await shell.openExternal('https://github.com/instructkr/claw-code') }
         },
         {
-          label: 'Report Issue',
+          label: '报告问题',
           click: async () => { await shell.openExternal('https://github.com/instructkr/claw-code/issues') }
         }
       ]
@@ -260,6 +275,29 @@ function setupIpcHandlers(): void {
     const config = loadConfigFromStore()
     log.info(`Config loaded with ${config.providers?.length || 0} providers`)
     return config
+  })
+
+  // File dialog handlers
+  ipcMain.handle('select-folder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openDirectory'],
+      title: 'Select Folder'
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0]
+    }
+    return null
+  })
+
+  ipcMain.handle('open-file', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      properties: ['openFile'],
+      title: 'Open File'
+    })
+    if (!result.canceled && result.filePaths.length > 0) {
+      return result.filePaths[0]
+    }
+    return null
   })
 
   ipcMain.handle('set-config', (_event, key: string, value: unknown) => {
@@ -506,19 +544,6 @@ function setupIpcHandlers(): void {
   ipcMain.handle('show-save-dialog', async (_event, options) => {
     if (!mainWindow) return { canceled: true, filePath: undefined }
     return dialog.showSaveDialog(mainWindow, options)
-  })
-
-  // Select folder handler
-  ipcMain.handle('select-folder', async () => {
-    if (!mainWindow) return null
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory'],
-      title: 'Select Folder'
-    })
-    if (!result.canceled && result.filePaths.length > 0) {
-      return result.filePaths[0]
-    }
-    return null
   })
 
   log.info('IPC handlers registered')

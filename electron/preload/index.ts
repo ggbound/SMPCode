@@ -16,6 +16,8 @@ const api = {
 
   // File System
   selectFolder: () => ipcRenderer.invoke('select-folder'),
+  openFile: () => ipcRenderer.invoke('open-file'),
+  showSaveDialog: (options?: Electron.SaveDialogOptions) => ipcRenderer.invoke('show-save-dialog', options),
 
   // Updates
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
@@ -53,6 +55,32 @@ const api = {
   onUpdateDownloaded: (callback: () => void) => {
     ipcRenderer.on('update-downloaded', callback)
     return () => ipcRenderer.removeListener('update-downloaded', callback)
+  },
+  
+  // File menu events
+  onFileNew: (callback: () => void) => {
+    ipcRenderer.on('file:new', callback)
+    return () => ipcRenderer.removeListener('file:new', callback)
+  },
+  onFileOpen: (callback: () => void) => {
+    ipcRenderer.on('file:open', callback)
+    return () => ipcRenderer.removeListener('file:open', callback)
+  },
+  onFolderOpen: (callback: () => void) => {
+    ipcRenderer.on('folder:open', callback)
+    return () => ipcRenderer.removeListener('folder:open', callback)
+  },
+  onFileSave: (callback: () => void) => {
+    ipcRenderer.on('file:save', callback)
+    return () => ipcRenderer.removeListener('file:save', callback)
+  },
+  onFileSaveAs: (callback: () => void) => {
+    ipcRenderer.on('file:save-as', callback)
+    return () => ipcRenderer.removeListener('file:save-as', callback)
+  },
+  onFileRefresh: (callback: () => void) => {
+    ipcRenderer.on('file:refresh', callback)
+    return () => ipcRenderer.removeListener('file:refresh', callback)
   },
   onTerminalData: (callback: (event: unknown, data: { id: string; data: string }) => void) => {
     ipcRenderer.on('terminal:data', callback)

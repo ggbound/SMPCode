@@ -46,7 +46,7 @@ export interface ImageContent {
 }
 
 export interface Message {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system'
   content: string
   timestamp?: number
   needsAction?: 'continue' // 标记消息需要用户操作（如继续执行）

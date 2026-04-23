@@ -32,6 +32,8 @@ declare global {
       
       // File System
       selectFolder: () => Promise<string | null>
+      openFile: () => Promise<string | null>
+      showSaveDialog: (options?: Electron.SaveDialogOptions) => Promise<Electron.SaveDialogReturnValue>
       
       // Updates
       checkForUpdates: () => Promise<unknown>
@@ -47,6 +49,14 @@ declare global {
       onOpenSettings: (callback: () => void) => () => void
       onUpdateAvailable: (callback: () => void) => () => void
       onUpdateDownloaded: (callback: () => void) => () => void
+      
+      // File menu events
+      onFileNew: (callback: () => void) => () => void
+      onFileOpen: (callback: () => void) => () => void
+      onFolderOpen: (callback: () => void) => () => void
+      onFileSave: (callback: () => void) => () => void
+      onFileSaveAs: (callback: () => void) => () => void
+      onFileRefresh: (callback: () => void) => () => void
       
       // Terminal APIs
       createTerminal: (options?: { name?: string; cwd?: string; id?: string }) => Promise<{ id: string; name: string }>
@@ -82,6 +92,20 @@ declare global {
       onProcessData: (callback: (event: unknown, data: { terminalId: string; processId: string; data: string }) => void) => () => void
       onProcessExit: (callback: (event: unknown, data: { terminalId: string; processId: string; exitCode: number }) => void) => () => void
       onProcessError: (callback: (event: unknown, data: { terminalId: string; processId: string; error: string }) => void) => () => void
+      
+      // Git operations
+      gitStatus: (repoPath: string) => Promise<unknown>
+      gitIsRepo: (dirPath: string) => Promise<boolean>
+      gitFindRoot: (startPath: string) => Promise<string | null>
+      gitFileStatus: (repoPath: string, filePath: string) => Promise<unknown>
+      gitCommits: (repoPath: string, count?: number) => Promise<unknown>
+      gitBranches: (repoPath: string) => Promise<unknown>
+      
+      // File watching
+      fsWatch: (dirPath: string) => Promise<void>
+      fsUnwatch: (dirPath: string) => Promise<void>
+      fsGetGitignore: (dirPath: string) => Promise<string[]>
+      onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => () => void
     }
   }
 }
