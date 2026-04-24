@@ -105,7 +105,9 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
       const shellConfig = getShell()
       const cwd = getSafeCwd(options?.cwd)
       
-      log.info(`Creating terminal with command: ${shellConfig.command}, args: ${JSON.stringify(shellConfig.args)}, cwd: ${cwd}`)
+      log.info(`[Terminal] Creating terminal with shell: ${shellConfig.command}, cwd: ${cwd}`)
+      log.info(`[Terminal] Options received: ${JSON.stringify(options)}`)
+      log.info(`[Terminal] process.env.SHELL: ${process.env.SHELL}`)
       
       // Verify shell exists
       if (!existsSync(shellConfig.command)) {
@@ -148,25 +150,25 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
       
       // Try multiple strategies in order of preference
       const spawnStrategies = [
-        // Strategy 1: Use /usr/bin/env with bash (most compatible)
+        // Strategy 1: Use detected shell (prefer zsh on macOS)
         () => {
-          log.info('Strategy 1: Using /usr/bin/env bash')
-          return pty.spawn('/usr/bin/env', ['bash'], { ...spawnOptions })
+          log.info(`Strategy 1: Spawning ${shellConfig.command} (system default shell)`)
+          return pty.spawn(shellConfig.command, shellConfig.args.length > 0 ? shellConfig.args : ['-l'], spawnOptions)
         },
-        // Strategy 2: Use detected shell without args
+        // Strategy 2: Use /usr/bin/env with detected shell
         () => {
-          log.info(`Strategy 2: Spawning ${shellConfig.command} without args`)
-          return pty.spawn(shellConfig.command, [], spawnOptions)
+          log.info(`Strategy 2: Using /usr/bin/env ${shellConfig.command}`)
+          return pty.spawn('/usr/bin/env', [shellConfig.command, '-l'], { ...spawnOptions })
         },
-        // Strategy 3: Use /bin/bash as fallback
+        // Strategy 3: Use /bin/zsh as fallback for macOS
         () => {
-          log.info('Strategy 3: Falling back to /bin/bash')
-          return pty.spawn('/bin/bash', [], spawnOptions)
+          log.info('Strategy 3: Falling back to /bin/zsh')
+          return pty.spawn('/bin/zsh', ['-l'], spawnOptions)
         },
-        // Strategy 4: Use /bin/sh as last resort
+        // Strategy 4: Use /bin/bash as last fallback
         () => {
-          log.info('Strategy 4: Falling back to /bin/sh')
-          return pty.spawn('/bin/sh', [], spawnOptions)
+          log.info('Strategy 4: Falling back to /bin/bash')
+          return pty.spawn('/bin/bash', ['-l'], spawnOptions)
         }
       ]
       
