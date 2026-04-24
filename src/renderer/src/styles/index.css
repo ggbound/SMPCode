@@ -106,7 +106,7 @@ body {
   flex-direction: column;
 }
 
-/* Session Bar - 顶部横向会话管理 */
+/* Session Bar - 整合到ChatArea内部，作为标题栏 */
 .session-bar {
   display: flex;
   align-items: center;
@@ -115,10 +115,10 @@ body {
   max-height: 36px;
   width: 100%;
   min-width: 0;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border-bottom: none;
   padding: 0 8px;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
   user-select: none;
   overflow: hidden;
@@ -130,19 +130,23 @@ body {
   gap: 4px;
   height: 24px;
   padding: 0 8px;
-  background: var(--accent-color);
-  color: var(--text-inverse);
-  border: none;
-  border-radius: var(--border-radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
   font-size: 12px;
+  font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background-color 0.15s ease;
+  transition: all 0.15s ease;
+  letter-spacing: 0;
 }
 
 .session-bar-new-btn:hover {
-  background: var(--accent-hover);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent-border);
 }
 
 .session-bar-divider {
@@ -150,13 +154,14 @@ body {
   height: 20px;
   background: var(--border-color);
   flex-shrink: 0;
+  opacity: 0.5;
 }
 
 .session-bar-empty {
   display: flex;
   align-items: center;
   height: 24px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   font-size: 12px;
   padding: 0 8px;
   flex: 1;
@@ -164,38 +169,44 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 0.6;
 }
 
 .session-bar-list {
   display: flex;
   align-items: center;
   height: 100%;
-  gap: 2px;
+  gap: 3px;
   overflow-x: auto;
   overflow-y: hidden;
   flex: 1;
   min-width: 0;
   max-width: 100%;
+  padding: 0;
+  margin-bottom: -8px;
+  padding-bottom: 8px;
   /* 隐藏滚动条但保持滚动功能 */
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-width: none;
 }
 
 .session-bar-list::-webkit-scrollbar {
-  height: 4px;
+  height: 0;
+  width: 0;
+  background: transparent;
 }
 
 .session-bar-list::-webkit-scrollbar-track {
   background: transparent;
+  height: 0;
 }
 
 .session-bar-list::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 2px;
+  background: transparent;
+  height: 0;
 }
 
 .session-bar-list::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  background: transparent;
 }
 
 .session-bar-item {
@@ -203,29 +214,51 @@ body {
   align-items: center;
   gap: 6px;
   height: 26px;
-  padding: 0 8px;
-  background: var(--bg-tertiary);
+  padding: 0 10px;
+  background: transparent;
   color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
+  border: none;
+  border-radius: 4px;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
   transition: all 0.15s ease;
   position: relative;
+  overflow: hidden;
+}
+
+.session-bar-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-color);
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 
 .session-bar-item:hover {
-  background: var(--bg-hover);
+  background: var(--bg-tertiary);
   color: var(--text-primary);
-  border-color: var(--accent-border);
+}
+
+.session-bar-item:hover::before {
+  opacity: 0.3;
 }
 
 .session-bar-item.active {
-  background: var(--bg-active);
-  color: var(--accent-color);
-  border-color: var(--accent-border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.session-bar-item.active::before {
+  opacity: 1;
+  height: 2px;
+  background: var(--accent-color);
 }
 
 .session-bar-title {
@@ -233,33 +266,42 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 120px;
+  font-weight: 400;
+}
+
+.session-bar-item.active .session-bar-title {
+  font-weight: 500;
 }
 
 .session-bar-time {
   color: var(--text-tertiary);
   font-size: 11px;
   flex-shrink: 0;
+  opacity: 0.6;
+  padding-left: 3px;
+  border-left: 1px solid var(--border-color);
 }
 
 .session-bar-item.active .session-bar-time {
-  color: var(--accent-color);
+  color: var(--text-secondary);
   opacity: 0.7;
+  border-left-color: var(--border-color);
 }
 
 .session-bar-edit-input {
-  background: var(--bg-primary);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--border-radius-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
   color: var(--text-primary);
   font-size: 12px;
-  padding: 2px 4px;
+  padding: 3px 6px;
   width: 120px;
   outline: none;
+  transition: all 0.15s ease;
 }
 
 .session-bar-edit-input:focus {
-  border-color: var(--accent-hover);
-  box-shadow: 0 0 0 1px var(--accent-hover);
+  border-color: var(--accent-border);
 }
 
 /* Session Context Menu - 右键菜单 */
@@ -5851,6 +5893,7 @@ code ::selection {
   flex-direction: column;
   background: var(--bg-primary);
   position: relative;
+  min-width: 0;
 }
 
 /* Messages Container */
