@@ -119,6 +119,10 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     
     try {
       // 调用Electron API执行搜索
+      if (!window.api?.executeSearch) {
+        throw new Error('executeSearch IPC not available')
+      }
+      
       const response = await window.api.executeSearch({
         query: query.contentPattern,
         path: projectPath,

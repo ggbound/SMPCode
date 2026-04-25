@@ -292,11 +292,12 @@ async function* streamOpenAIMessage(
     stream: true
   }
 
-  // NOTE: We don't send tools parameter to force AI to use JSON format
-  // Tools are described in system prompt instead
-  // if (tools && tools.length > 0) {
-  //   requestBody.tools = tools
-  // }
+  // CRITICAL: Pass tools to enable OpenAI standard tool calling (like VSCode/Claude Code)
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools
+    requestBody.tool_choice = 'auto'
+    log.info(`[LLM] Stream: Sending ${tools.length} tools to API`)
+  }
 
   const url = getApiUrl(apiUrl, false)
 
@@ -340,9 +341,20 @@ async function* streamOpenAIMessage(
           }
           try {
             const parsed = JSON.parse(data)
+            
+            // CRITICAL: Pass through the entire delta including tool_calls
+            // This is how VSCode and Claude Code handle streaming tool calls
+            const delta = parsed.choices?.[0]?.delta || {}
+            
             yield {
               type: 'content_block_delta',
-              delta: { type: 'text', text: parsed.choices[0]?.delta?.content || '' }
+              delta: delta,  // Pass entire delta (includes content and tool_calls)
+              choices: parsed.choices  // Also pass full choices for compatibility
+            }
+            
+            // Debug log if tool_calls present
+            if (delta.tool_calls && delta.tool_calls.length > 0) {
+              log.info('[LLM] Stream: Tool calls detected in chunk:', delta.tool_calls)
             }
           } catch (e) {
             // Ignore parse errors
@@ -373,11 +385,11 @@ async function* streamAnthropicMessage(
     stream: true
   }
 
-  // NOTE: We don't send tools parameter to force AI to use JSON format
-  // Tools are described in system prompt instead
-  // if (tools && tools.length > 0) {
-  //   requestBody.tools = tools
-  // }
+  // CRITICAL: Pass tools to enable Anthropic standard tool calling
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools
+    log.info(`[LLM] Stream (Anthropic): Sending ${tools.length} tools to API`)
+  }
 
   const url = getApiUrl(apiUrl, true)
 

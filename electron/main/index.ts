@@ -30,9 +30,11 @@ import {
   watchDirectory,
   unwatchDirectory,
   stopAllWatchers,
-  getGitIgnorePatterns
+  getGitIgnorePatterns,
+  writeFile
 } from './services/files-service'
 import { searchFiles } from './services/search-service'
+import { initializeToolExecutor } from './services/tool-executor'
 
 // Configure logging
 log.transports.file.level = 'info'
@@ -521,9 +523,13 @@ function setupIpcHandlers(): void {
 
   // File watching handlers
   ipcMain.handle('fs:watch', (_event, dirPath: string) => {
+    log.info(`[IPC] Starting to watch directory: ${dirPath}`)
     return watchDirectory(dirPath, (eventType, filename) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
+        log.info(`[IPC] Sending fs:change event: ${eventType} - ${filename} in ${dirPath}`)
         mainWindow.webContents.send('fs:change', { eventType, filename, dirPath })
+      } else {
+        log.warn('[IPC] mainWindow is destroyed or not available')
       }
     })
   })
@@ -950,10 +956,9 @@ function initializeCLIRegistries(): void {
     required: ['path', 'content'],
     execute: async (args, context) => {
       try {
-        const fs = require('fs')
         const path = require('path')
         const filePath = path.resolve(context.cwd, String(args.path))
-        fs.writeFileSync(filePath, String(args.content), 'utf-8')
+        writeFile(filePath, String(args.content))  // Use unified function to trigger watchers
         return {
           success: true,
           output: `File written: ${filePath}`,
@@ -1143,7 +1148,7 @@ app.whenReady().then(async () => {
 
   setupIpcHandlers()
   createWindow()
-  
+
   // Initialize terminal service after window is created
   // Note: createWindow() sets mainWindow, so we check it here
   if (mainWindow) {
@@ -1152,6 +1157,15 @@ app.whenReady().then(async () => {
     log.info('Terminal service initialized')
   } else {
     log.error('Failed to initialize terminal service: mainWindow is null')
+  }
+
+  // Initialize tool executor
+  log.info('[Main] Initializing tool executor...')
+  try {
+    initializeToolExecutor()
+    log.info('[Main] Tool executor initialized successfully')
+  } catch (error) {
+    log.error('[Main] Failed to initialize tool executor:', error)
   }
 
   // Setup process bridge IPC handlers

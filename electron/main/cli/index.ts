@@ -17,7 +17,7 @@ export {
 } from './runtime-engine'
 
 // 导出 CLI 入口
-export { program as cliProgram } from './cli-entry'
+export { getCLIProgram } from './cli-entry'
 
 // 导出类型
 export type { CommandDefinition, CommandContext, CommandResult } from './command-registry'

@@ -3,6 +3,7 @@ import * as path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import log from 'electron-log'
+import { writeFile } from './files-service'  // Import unified file write function
 
 const execPromise = promisify(exec)
 
@@ -221,7 +222,7 @@ export async function executeTouch(args: string[]): Promise<CommandResult> {
     const targetPath = path.resolve(currentWorkingDirectory, fileName)
 
     if (!fs.existsSync(targetPath)) {
-      fs.writeFileSync(targetPath, '', 'utf-8')
+      writeFile(targetPath, '')
       return { success: true, output: `Created file: ${targetPath}` }
     } else {
       // Update timestamp

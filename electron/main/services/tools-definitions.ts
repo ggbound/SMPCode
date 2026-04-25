@@ -12,9 +12,46 @@ import {
   ExecutionContext,
   ToolExecutionResult,
   createSuccessResult,
-  createErrorResult,
-  toolRegistry
+  createErrorResult
 } from './tools-core'
+
+// Simple tool registry
+class ToolRegistry {
+  private tools: Map<string, ToolExecutor> = new Map()
+
+  register(tool: ToolExecutor): void {
+    this.tools.set(tool.name, tool)
+  }
+
+  get(name: string): ToolExecutor | undefined {
+    return this.tools.get(name)
+  }
+
+  getAll(): ToolExecutor[] {
+    return Array.from(this.tools.values())
+  }
+
+  count(): number {
+    return this.tools.size
+  }
+
+  toOpenAIDefinitions(): ToolDefinition[] {
+    return this.getAll().map(tool => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: 'object',
+          properties: tool.parameters,
+          required: tool.required
+        }
+      }
+    }))
+  }
+}
+
+export const toolRegistry = new ToolRegistry()
 
 import * as fs from 'fs'
 import * as path from 'path'
@@ -23,8 +60,28 @@ import { promisify } from 'util'
 import log from 'electron-log'
 import { getCurrentWorkingDirectory } from './command-executor'
 import { processBridge } from './process-terminal-bridge'
+import { writeFile, appendFile } from './files-service'  // Import unified file functions
+import { BrowserWindow } from 'electron'
 
 const execPromise = promisify(exec)
+
+/**
+ * 发送文件操作事件到前端
+ */
+function notifyFileOperation(operation: 'writing' | 'editing' | 'creating', filePath: string) {
+  try {
+    const mainWindow = BrowserWindow.getAllWindows()[0]
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('file-operation-notification', {
+        operation,
+        path: filePath,
+        timestamp: Date.now()
+      })
+    }
+  } catch (error) {
+    log.warn('[tools-definitions] Failed to notify file operation:', error)
+  }
+}
 
 /**
  * 使用 spawn 执行命令（更可靠，支持大输出和更好的错误处理）
@@ -248,13 +305,13 @@ const writeFileTool: ToolExecutor = {
       const content = args.content as string
       const targetPath = path.resolve(context.cwd, filePath)
 
-      // Ensure parent directory exists
-      const parentDir = path.dirname(targetPath)
-      if (!fs.existsSync(parentDir)) {
-        fs.mkdirSync(parentDir, { recursive: true })
-      }
+      // Notify frontend of file operation
+      const isNewFile = !fs.existsSync(targetPath)
+      notifyFileOperation(isNewFile ? 'creating' : 'writing', targetPath)
 
-      fs.writeFileSync(targetPath, content, 'utf-8')
+      // Use unified writeFile function to trigger file watchers
+      writeFile(targetPath, content)
+
       return createSuccessResult(`File written successfully: ${targetPath}`, { filePath: targetPath })
     } catch (error) {
       return createErrorResult(String(error))
@@ -289,16 +346,20 @@ const editFileTool: ToolExecutor = {
 
       // If file doesn't exist, create it with new_string content
       if (!fs.existsSync(targetPath)) {
-        fs.writeFileSync(targetPath, newString, 'utf-8')
+        notifyFileOperation('creating', targetPath)
+        writeFile(targetPath, newString)
         return createSuccessResult(`File created (did not exist): ${targetPath}`, { filePath: targetPath, created: true })
       }
+
+      // Notify frontend of file edit operation
+      notifyFileOperation('editing', targetPath)
 
       let content = fs.readFileSync(targetPath, 'utf-8')
 
       // Try exact match first
       if (content.includes(oldString)) {
         content = content.replace(oldString, newString)
-        fs.writeFileSync(targetPath, content, 'utf-8')
+        writeFile(targetPath, content)
         return createSuccessResult(`File edited successfully: ${targetPath}`, { filePath: targetPath })
       }
 
@@ -331,7 +392,7 @@ const editFileTool: ToolExecutor = {
         if (startIdx !== -1 && endIdx !== -1) {
           const actualOldString = contentLines.slice(startIdx, endIdx + 1).join('\n')
           content = content.replace(actualOldString, newString)
-          fs.writeFileSync(targetPath, content, 'utf-8')
+          writeFile(targetPath, content)
           return createSuccessResult(`File edited successfully (with whitespace normalization): ${targetPath}`, { filePath: targetPath })
         }
       }
@@ -379,8 +440,8 @@ const appendFileTool: ToolExecutor = {
         fs.mkdirSync(parentDir, { recursive: true })
       }
 
-      // Append content to file (create if doesn't exist)
-      fs.appendFileSync(targetPath, content, 'utf-8')
+      // Append content to file (create if doesn't exist) - use unified function to trigger watchers
+      appendFile(targetPath, content)
       
       const action = fs.existsSync(targetPath) ? 'Appended to' : 'Created'
       return createSuccessResult(`${action} file: ${targetPath}`, { filePath: targetPath })
@@ -619,11 +680,11 @@ const executeBashTool: ToolExecutor = {
 }
 
 /**
- * Search Code Tool
+ * Search Files Tool
  */
 const searchCodeTool: ToolExecutor = {
-  name: 'search_code',
-  description: 'Search for code patterns in the project using grep. Use this to find specific functions, variables, imports, or patterns across multiple files. Best for: finding where a function is defined, finding all usages of a variable, searching for specific code patterns.',
+  name: 'search_files',
+  description: 'Search for files by pattern in the project using grep. Use this to find specific files or content across multiple files. Best for: finding where a function is defined, finding all usages of a variable, searching for specific patterns.',
   parameters: {
     pattern: patternParam,
     path: searchPathParam
@@ -797,8 +858,7 @@ export type { ToolDefinition, ToolCall, ToolResult, ToolParameter, ToolExecutor,
 // 导出工具定义数组（OpenAI 格式）
 export const CODE_TOOLS: ToolDefinition[] = toolRegistry.toOpenAIDefinitions()
 
-// 导出便捷函数
-export { createSuccessResult, createErrorResult, toolRegistry }
+// 导出便捷函数（toolRegistry 已在上面定义）
 
 // 工具名称映射（支持大驼峰命名向后兼容）
 const TOOL_NAME_MAP: Record<string, string> = {
@@ -846,20 +906,5 @@ function normalizeParameters(args: Record<string, unknown>): Record<string, unkn
   return normalized
 }
 
-// 导出工具执行函数（向后兼容）
-export async function executeTool(
-  name: string,
-  args: Record<string, unknown>,
-  cwd?: string
-): Promise<ToolExecutionResult> {
-  const { executeToolWithMiddleware, createExecutionContext } = await import('./tools-core')
-  const context = createExecutionContext(cwd || getCurrentWorkingDirectory())
-
-  // 转换工具名称和参数
-  const normalizedName = normalizeToolName(name)
-  const normalizedArgs = normalizeParameters(args)
-
-  log.info(`[executeTool] Original name: ${name}, Normalized: ${normalizedName}`)
-
-  return executeToolWithMiddleware(normalizedName, normalizedArgs, context)
-}
+// 注意：工具执行已迁移到 tool-manager.ts
+// 如需执行工具，请使用: import { executeTool } from './tool-executor'

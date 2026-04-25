@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react'
 import { useStore, type Message } from '../store'
 import { buildAgentModePrompt, getSystemInfo, type PromptCommand } from '../prompts'
+import { executeTool } from '../services/tool-client'
 
 const API_BASE = 'http://localhost:3847/api'
 
@@ -30,75 +31,134 @@ interface AgentModeOptions {
  * 从截断的 JSON 内容中提取工具调用信息
  * 当 AI 返回的 JSON 被截断时使用启发式方法提取关键信息
  */
-function extractToolCallFromTruncatedContent(content: string): ToolCall | null {
+function extractToolCallFromTruncatedContent(content: string): Array<ToolCall> {
   try {
-    // 尝试提取 tool 名称
-    const toolMatch = content.match(/"tool"\s*:\s*"([^"]+)"/)
-    if (!toolMatch) return null
-    const toolName = toolMatch[1]
-
-    // 尝试提取 arguments 对象的开始
-    const argsMatch = content.match(/"arguments"\s*:\s*\{/)
-    if (!argsMatch) return null
-
-    // 从 arguments 开始位置提取所有可能的键值对
-    const argsStartIndex = content.indexOf('"arguments"')
-    const argsContent = content.substring(argsStartIndex + '"arguments"'.length)
-
-    // 尝试提取常见的参数
-    const args: Record<string, unknown> = {}
-
-    // 提取 path 参数
-    const pathMatch = argsContent.match(/"path"\s*:\s*"([^"]+)"/)
-    if (pathMatch) args.path = pathMatch[1]
-
-    // 提取 content 参数（可能是多行，尝试匹配到下一个引号前）
-    const contentMatch = argsContent.match(/"content"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"|"\s*})/)
-    if (contentMatch) args.content = contentMatch[1]
-
-    // 提取 old_string 参数
-    const oldStringMatch = argsContent.match(/"old_string"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"|"\s*})/)
-    if (oldStringMatch) args.old_string = oldStringMatch[1]
-
-    // 提取 new_string 参数（可能被截断，尝试提取已有部分）
-    const newStringMatch = argsContent.match(/"new_string"\s*:\s*"([\s\S]*?)$/)
-    if (newStringMatch) {
-      // 如果被截断，尝试清理未闭合的转义字符
-      let newString = newStringMatch[1]
-      // 移除末尾未闭合的转义序列
-      newString = newString.replace(/\\$/, '')
-      args.new_string = newString
-    }
-
-    // 提取其他常见参数
-    const paramMatches = argsContent.matchAll(/"(\w+)"\s*:\s*(?:"([^"]*)"|true|false|null|\d+)/g)
-    for (const match of paramMatches) {
-      const key = match[1]
-      const value = match[2]
-      if (!(key in args)) {
-        if (value === undefined) {
-          // 可能是布尔值或数字
-          if (match[0].includes('true')) args[key] = true
-          else if (match[0].includes('false')) args[key] = false
-          else if (match[0].includes('null')) args[key] = null
-          else {
-            const numMatch = match[0].match(/:\s*(\d+)/)
-            if (numMatch) args[key] = parseInt(numMatch[1], 10)
+    const toolCalls: Array<ToolCall> = []
+    
+    // 尝试提取 tool_calls 数组格式
+    const toolCallsMatch = content.match(/"tool_calls"\s*:\s*\[/)
+    if (toolCallsMatch) {
+      // 格式: {"tool_calls": [{"name": "...", "arguments": {...}}]}
+      const arrayStartIndex = content.indexOf('[')
+      const arrayContent = content.substring(arrayStartIndex)
+      
+      // 尝试提取每个工具调用
+      const nameMatches = Array.from(arrayContent.matchAll(/"name"\s*:\s*"([^"]+)"/g))
+      
+      for (const nameMatch of nameMatches) {
+        const toolName = nameMatch[1]
+        const nameIndex = nameMatch.index!
+        
+        // 查找对应的 arguments
+        const argsSection = arrayContent.substring(nameIndex)
+        const argsMatch = argsSection.match(/"arguments"\s*:\s*\{/)
+        
+        if (argsMatch) {
+          const argsStartIndex = argsSection.indexOf('{', argsMatch.index)
+          const argsContent = argsSection.substring(argsStartIndex)
+          
+          // 提取参数
+          const args: Record<string, unknown> = {}
+          
+          // 提取 path 参数
+          const pathMatch = argsContent.match(/"path"\s*:\s*"([^"]+)"/)
+          if (pathMatch) args.path = pathMatch[1]
+          
+          // 提取 command 参数
+          const commandMatch = argsContent.match(/"command"\s*:\s*"([^"]+)"/)
+          if (commandMatch) args.command = commandMatch[1]
+          
+          // 提取 query/pattern 参数
+          const queryMatch = argsContent.match(/"(query|pattern)"\s*:\s*"([^"]+)"/)
+          if (queryMatch) args[queryMatch[1]] = queryMatch[2]
+          
+          // 提取其他简单参数
+          const paramMatches = argsContent.matchAll(/"(\w+)"\s*:\s*"([^"]*)"/g)
+          for (const match of paramMatches) {
+            const key = match[1]
+            const value = match[2]
+            if (!(key in args)) {
+              args[key] = value
+            }
           }
-        } else {
-          args[key] = value
+          
+          if (Object.keys(args).length > 0) {
+            toolCalls.push({ tool: toolName, arguments: args })
+            console.log('[extractToolCallFromTruncatedContent] Extracted tool call:', toolName, args)
+          }
         }
       }
-    }
+    } else {
+      // 尝试提取单个工具格式: {"tool": "...", "arguments": {...}}
+      const toolMatch = content.match(/"tool"\s*:\s*"([^"]+)"/)
+      if (!toolMatch) return []
+      const toolName = toolMatch[1]
 
-    if (Object.keys(args).length > 0) {
-      console.log('[extractToolCallFromTruncatedContent] Extracted args:', Object.keys(args))
-      return { tool: toolName, arguments: args }
+      // 尝试提取 arguments 对象的开始
+      const argsMatch = content.match(/"arguments"\s*:\s*\{/)
+      if (!argsMatch) return []
+
+      // 从 arguments 开始位置提取所有可能的键值对
+      const argsStartIndex = content.indexOf('"arguments"')
+      const argsContent = content.substring(argsStartIndex + '"arguments"'.length)
+
+      // 尝试提取常见的参数
+      const args: Record<string, unknown> = {}
+
+      // 提取 path 参数
+      const pathMatch = argsContent.match(/"path"\s*:\s*"([^"]+)"/)
+      if (pathMatch) args.path = pathMatch[1]
+
+      // 提取 content 参数（可能是多行，尝试匹配到下一个引号前）
+      const contentMatch = argsContent.match(/"content"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"|"\s*})/)
+      if (contentMatch) args.content = contentMatch[1]
+
+      // 提取 old_string 参数
+      const oldStringMatch = argsContent.match(/"old_string"\s*:\s*"([\s\S]*?)(?:"\s*,\s*"|"\s*})/)
+      if (oldStringMatch) args.old_string = oldStringMatch[1]
+
+      // 提取 new_string 参数（可能被截断，尝试提取已有部分）
+      const newStringMatch = argsContent.match(/"new_string"\s*:\s*"([\s\S]*?)$/)
+      if (newStringMatch) {
+        // 如果被截断，尝试清理未闭合的转义字符
+        let newString = newStringMatch[1]
+        // 移除末尾未闭合的转义序列
+        newString = newString.replace(/\\$/, '')
+        args.new_string = newString
+      }
+
+      // 提取其他常见参数
+      const paramMatches = argsContent.matchAll(/"(\w+)"\s*:\s*(?:"([^"]*)"|true|false|null|\d+)/g)
+      for (const match of paramMatches) {
+        const key = match[1]
+        const value = match[2]
+        if (!(key in args)) {
+          if (value === undefined) {
+            // 可能是布尔值或数字
+            if (match[0].includes('true')) args[key] = true
+            else if (match[0].includes('false')) args[key] = false
+            else if (match[0].includes('null')) args[key] = null
+            else {
+              const numMatch = match[0].match(/:\s*(\d+)/)
+              if (numMatch) args[key] = parseInt(numMatch[1], 10)
+            }
+          } else {
+            args[key] = value
+          }
+        }
+      }
+
+      if (Object.keys(args).length > 0) {
+        console.log('[extractToolCallFromTruncatedContent] Extracted args:', Object.keys(args))
+        toolCalls.push({ tool: toolName, arguments: args })
+      }
     }
+    
+    return toolCalls
   } catch (e) {
     console.log('[extractToolCallFromTruncatedContent] Extraction failed:', e)
+    return []
   }
-  return null
 }
 
 interface AgentModeResult {
@@ -120,9 +180,13 @@ export function useAgentMode() {
    * 支持在一次回复中解析多个工具调用（包括代码块中的多行 JSON）
    */
   const parseToolCalls = useCallback((text: string): ToolCall[] | null => {
+    console.log('[parseToolCalls] ========== Starting Tool Call Parsing ==========')
+    console.log('[parseToolCalls] Input text length:', text.length)
+    
     const toolCalls: ToolCall[] = []
 
     // Method 1: Parse MiniMax XML format tool calls
+    console.log('[parseToolCalls] Method 1: Checking for <minimax:tool_call> format')
     // Format: <minimax:tool_call><invoke name="ToolName"><parameter name="arg">value</parameter></invoke></minimax:tool_call>
     const xmlToolCallRegex = /<minimax:tool_call>[\s\S]*?<invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/invoke>[\s\S]*?<\/minimax:tool_call>/g
     const xmlMatches = Array.from(text.matchAll(xmlToolCallRegex))
@@ -148,7 +212,33 @@ export function useAgentMode() {
       }
     }
 
+    // Method 1.5: Check for <function_calls> format (Claude-style XML)
+    console.log('[parseToolCalls] Method 1.5: Checking for <function_calls> format (Claude-style)')
+    const functionCallsRegex = /<function_calls>[\s\S]*?<invoke\s+name=["']([^"']+)["'][\s\S]*?<parameter\s+name=["']([^"']+)["'][\s\S]*?<\/parameter>[\s\S]*?<\/invoke>[\s\S]*?<\/function_calls>/gi
+    const functionCallsMatches = text.matchAll(functionCallsRegex)
+    
+    for (const match of functionCallsMatches) {
+      try {
+        const toolName = match[1]
+        const paramName = match[2]
+        
+        // Extract parameter value from the full match
+        const fullMatch = match[0]
+        const paramMatch = fullMatch.match(new RegExp(`<parameter\\s+name=["']${paramName}["']>([\\s\\S]*?)<\\/parameter>`))
+        const paramValue = paramMatch ? paramMatch[1].trim() : ''
+        
+        toolCalls.push({ 
+          tool: toolName, 
+          arguments: { [paramName]: paramValue }
+        })
+        console.log('[parseToolCalls] Parsed Claude-style function call:', toolName, { [paramName]: paramValue })
+      } catch (e) {
+        console.log('[parseToolCalls] Failed to parse Claude-style function call:', e)
+      }
+    }
+
     // Method 2: Parse <tool_code> XML format tool calls
+    console.log('[parseToolCalls] Method 2: Checking for <tool_code> format')
     // Format: <tool_code> <tool name="ToolName" param1="value1" param2="value2"/> </tool_code>
     // Also handles incomplete/truncated tool_code blocks
     // Use [\s\S]*? to match any content including newlines, non-greedy
@@ -187,6 +277,7 @@ export function useAgentMode() {
     }
 
     // Method 3: Parse JSON format tool calls from code blocks
+    console.log('[parseToolCalls] Method 3: Checking for JSON code blocks')
     const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
     const matches = Array.from(text.matchAll(codeBlockRegex))
     console.log(`[parseToolCalls] Found ${matches.length} code blocks`)
@@ -198,6 +289,40 @@ export function useAgentMode() {
       // Check for tool call pattern (support both "tool" and 'tool')
       const hasToolPattern = blockContent.includes('"tool"') || blockContent.includes("'tool'") || blockContent.includes('tool')
       const hasArgumentsPattern = blockContent.includes('"arguments"') || blockContent.includes("'arguments'") || blockContent.includes('arguments')
+      const hasToolCallsArray = blockContent.includes('"tool_calls"') || blockContent.includes("'tool_calls'")
+
+      if (hasToolCallsArray) {
+        // PRIORITY 3a: Parse tool_calls array format (OpenAI standard)
+        console.log('[parseToolCalls] Detected tool_calls array format')
+        
+        try {
+          // Try to fix incomplete JSON
+          const openBraces = (blockContent.match(/\{/g) || []).length
+          const closeBraces = (blockContent.match(/\}/g) || []).length
+          if (openBraces > closeBraces) {
+            console.log(`[parseToolCalls] JSON appears incomplete, adding ${openBraces - closeBraces} closing braces`)
+            blockContent += '}'.repeat(openBraces - closeBraces)
+          }
+          
+          const parsed = JSON.parse(blockContent)
+          if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
+            console.log('[parseToolCalls] Parsing tool_calls array with', parsed.tool_calls.length, 'items')
+            for (const tc of parsed.tool_calls) {
+              // Support both {name, arguments} and {tool, arguments} formats
+              const toolName = tc.name || tc.tool || tc.function?.name
+              const toolArgs = tc.arguments || tc.function?.arguments || {}
+              
+              if (toolName && typeof toolArgs === 'object') {
+                toolCalls.push({ tool: toolName, arguments: toolArgs })
+                console.log('[parseToolCalls] Parsed tool_call from array:', toolName)
+              }
+            }
+            continue
+          }
+        } catch (e) {
+          console.log('[parseToolCalls] Failed to parse tool_calls array:', e)
+        }
+      }
 
       if (hasToolPattern && hasArgumentsPattern) {
         console.log('[parseToolCalls] Detected tool call pattern in code block')
@@ -241,10 +366,10 @@ export function useAgentMode() {
         // 如果上述方法都失败了，尝试提取关键信息构建工具调用
         if (!toolCalls.length) {
           console.log('[parseToolCalls] Trying to extract tool call from truncated content')
-          const extractedToolCall = extractToolCallFromTruncatedContent(blockContent)
-          if (extractedToolCall) {
-            toolCalls.push(extractedToolCall)
-            console.log('[parseToolCalls] Extracted tool call from truncated content:', extractedToolCall.tool)
+          const extractedToolCalls = extractToolCallFromTruncatedContent(blockContent)
+          if (extractedToolCalls.length > 0) {
+            toolCalls.push(...extractedToolCalls)
+            console.log('[parseToolCalls] Extracted tool calls from truncated content:', extractedToolCalls.length, extractedToolCalls.map(tc => tc.tool))
           }
         }
       } else {
@@ -252,6 +377,18 @@ export function useAgentMode() {
       }
     }
 
+    // Method 4: DISABLED - Parsing HTML tool execution cards causes issues
+    // The HTML cards are generated by frontend, not returned by AI
+    // Parsing them leads to incorrect parameter extraction (e.g., SVG paths)
+    // TODO: Re-enable only if AI actually returns HTML format tool calls
+    /*
+    console.log('[parseToolCalls] Method 4: DISABLED - HTML parsing causes parameter extraction errors')
+    */
+
+    console.log('[parseToolCalls] ========== Parsing Complete ==========')
+    console.log('[parseToolCalls] Total tool calls found:', toolCalls.length)
+    console.log('[parseToolCalls] Tool calls:', toolCalls.map(tc => ({ tool: tc.tool, args: Object.keys(tc.arguments) })))
+    
     return toolCalls.length > 0 ? toolCalls : null
   }, [])
 
@@ -290,32 +427,22 @@ export function useAgentMode() {
   }, [])
 
   /**
-   * 执行单个工具调用
+   * 执行单个工具调用 - 使用新的工具客户端
    */
-  const executeTool = useCallback(async (
+  const executeToolCall = useCallback(async (
     toolCall: ToolCall,
     cwd: string
   ): Promise<{ success: boolean; result: string }> => {
     try {
-      const execRes = await fetch(`${API_BASE}/tools/execute-direct`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tool: toolCall.tool,
-          arguments: toolCall.arguments,
-          cwd
-        })
-      })
+      // Use tool-client.ts to execute tool (this will properly record in store)
+      const result = await executeTool(toolCall.tool, toolCall.arguments, { cwd })
 
-      if (!execRes.ok) {
-        const errorText = await execRes.text()
-        return { success: false, result: `Tool execution failed: ${execRes.status} - ${errorText}` }
+      return {
+        success: result.success,
+        result: result.output || result.error || 'No output'
       }
-
-      const execData = await execRes.json()
-      const result = execData.result
-      return { success: true, result: result.output || result }
     } catch (error) {
+      console.error(`[useAgentMode] Tool execution error:`, toolCall.tool, error)
       return { success: false, result: String(error) }
     }
   }, [])
@@ -392,6 +519,22 @@ export function useAgentMode() {
         console.log(`[useAgentMode] Compressed to ${compressedMessages.length} messages`)
 
         // Call API with streaming
+        // CRITICAL: Pass tools definition to enable OpenAI standard tool calling
+        const toolsForAPI = tools.map(tool => ({
+          type: 'function',
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: {
+              type: 'object',
+              properties: tool.parameters || {},
+              required: tool.required || []
+            }
+          }
+        }))
+        
+        console.log('[useAgentMode] 🛠️ Sending tools to API:', toolsForAPI.map(t => t.function.name))
+        
         const res = await fetch(`${API_BASE}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -399,6 +542,7 @@ export function useAgentMode() {
             apiKey: providerApiKey,
             model,
             messages: compressedMessages,
+            tools: toolsForAPI,
             stream: true,
             apiUrl: providerApiUrl
           }),
@@ -416,6 +560,7 @@ export function useAgentMode() {
         const reader = res.body?.getReader()
         const decoder = new TextDecoder()
         let iterationContent = ''
+        let streamToolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
 
         if (!reader) {
           fullContent += '\n\n**错误：** 无法读取响应内容'
@@ -439,11 +584,42 @@ export function useAgentMode() {
                 try {
                   const parsed = JSON.parse(data)
                   let delta = ''
+                  
+                  // CRITICAL: Extract tool_calls from stream chunk (OpenAI standard)
+                  // This is how VSCode and Claude Code handle tool calls
+                  if (parsed.choices?.[0]?.delta?.tool_calls) {
+                    const toolCallsDelta = parsed.choices[0].delta.tool_calls
+                    console.log('[useAgentMode] 🛠️ Detected tool_calls in stream:', toolCallsDelta)
+                    
+                    // Parse tool calls from the delta
+                    // tool_calls can be an array of tool call objects
+                    for (const tc of toolCallsDelta) {
+                      if (tc.function?.name) {
+                        const toolName = tc.function.name
+                        let toolArgs = {}
+                        
+                        // Arguments may come as a string that needs parsing
+                        if (tc.function.arguments) {
+                          try {
+                            toolArgs = JSON.parse(tc.function.arguments)
+                          } catch (e) {
+                            // Arguments might be streamed in chunks, handle partial JSON
+                            console.log('[useAgentMode] Partial tool arguments received, will parse later')
+                          }
+                        }
+                        
+                        streamToolCalls.push({ tool: toolName, arguments: toolArgs })
+                        console.log('[useAgentMode] Extracted tool call:', toolName, toolArgs)
+                      }
+                    }
+                  }
+                  
                   if (parsed.delta?.text) {
                     delta = parsed.delta.text
                   } else if (parsed.choices?.[0]?.delta?.content) {
                     delta = parsed.choices[0].delta.content
                   }
+                  
                   if (delta) {
                     iterationContent += delta
                     fullContent += delta
@@ -479,142 +655,168 @@ export function useAgentMode() {
         }
 
         // Check for tool calls
-        console.log('[useAgentMode] Checking for tool calls in iteration content, length:', iterationContent.length)
-        console.log('[useAgentMode] Iteration content preview:', iterationContent.substring(0, 200))
-        const toolCalls = parseToolCalls(iterationContent)
+        console.log('[useAgentMode] ========== Checking for Tool Calls ==========')
+        console.log('[useAgentMode] Stream tool calls detected:', streamToolCalls.length)
+        console.log('[useAgentMode] Iteration content length:', iterationContent.length)
+        console.log('[useAgentMode] Iteration content preview (first 500 chars):', iterationContent.substring(0, 500))
+        
+        // PRIORITY 1: Use tool_calls from stream (OpenAI standard, like VSCode/Claude Code)
+        let toolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
+        
+        if (streamToolCalls.length > 0) {
+          console.log('[useAgentMode] ✅ Using tool_calls from stream (OpenAI standard)')
+          toolCalls = streamToolCalls
+        } else {
+          // PRIORITY 2: Fallback to text parsing (legacy support)
+          console.log('[useAgentMode] ⚠️ No stream tool calls, trying text parsing...')
+          console.log('[useAgentMode] Contains minimax:tool_call:', iterationContent.includes('<minimax:tool_call>'))
+          console.log('[useAgentMode] Contains tool_code:', iterationContent.includes('<tool_code>'))
+          console.log('[useAgentMode] Contains ```json:', iterationContent.includes('```json'))
+          console.log('[useAgentMode] Contains ```bash:', iterationContent.includes('```bash'))
+          
+          const parsedCalls = parseToolCalls(iterationContent)
+          toolCalls = parsedCalls || []
+        }
 
         if (!toolCalls || toolCalls.length === 0) {
-          console.log('[useAgentMode] No tool calls detected, conversation complete')
-          console.log('[useAgentMode] Full content preview:', fullContent.substring(fullContent.length - 500))
+          console.log('[useAgentMode] ❌ No tool calls detected, conversation complete')
+          console.log('[useAgentMode] Full content preview (last 500 chars):', fullContent.substring(fullContent.length - 500))
           break
         }
 
-        console.log('[useAgentMode] Detected tool calls:', toolCalls.length, toolCalls.map(tc => tc.tool))
-
-        // Remove tool call blocks from display
-        let cleanedIterationContent = iterationContent
-        const blocksToRemove: string[] = []
-
-        // Remove JSON code block tool calls
-        const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
-        const codeMatches = Array.from(iterationContent.matchAll(codeBlockRegex))
-
-        for (const match of codeMatches) {
-          const blockContent = match[1].trim()
-          if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
-            try {
-              const parsed = JSON.parse(blockContent)
-              if (parsed.tool && typeof parsed.arguments === 'object') {
-                blocksToRemove.push(match[0])
-              }
-            } catch (e) {
-              // Not a tool call block
-            }
-          }
-        }
-
-        // Remove <minimax:tool_call> XML tool calls (handle first as they may be nested)
-        // Match complete or incomplete minimax:tool_call blocks
-        const minimaxToolRegex = /<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/g
-        const minimaxMatches = Array.from(cleanedIterationContent.matchAll(minimaxToolRegex))
-        for (const match of minimaxMatches) {
-          blocksToRemove.push(match[0])
-        }
-
-        // Remove <tool_code> XML tool calls
-        // Use [\s\S]*? to match any content including newlines, non-greedy
-        // Also handles incomplete/truncated tool_code blocks
-        const toolCodeRegex = /<tool_code>[\s\S]*?<tool\s+name="[^"]+"[\s\S]*?(?:\/>|<\/tool>)[\s\S]*?(?:<\/tool_code>|$)/g
-        const toolCodeMatches = Array.from(cleanedIterationContent.matchAll(toolCodeRegex))
-        for (const match of toolCodeMatches) {
-          blocksToRemove.push(match[0])
-        }
-
-        // Remove <think> tags and content
-        const thinkRegex = /<think>[\s\S]*?<\/think>/g
-        const thinkMatches = Array.from(cleanedIterationContent.matchAll(thinkRegex))
-        for (const match of thinkMatches) {
-          blocksToRemove.push(match[0])
-        }
-
-        for (const block of blocksToRemove) {
-          cleanedIterationContent = cleanedIterationContent.replace(block, '')
-        }
-
-        // Trim whitespace after removing blocks
-        cleanedIterationContent = cleanedIterationContent.trim()
-
-        if (blocksToRemove.length > 0) {
-          const iterationStartIndex = fullContent.lastIndexOf(iterationContent)
-          if (iterationStartIndex !== -1) {
-            fullContent = fullContent.slice(0, iterationStartIndex) + cleanedIterationContent
-          }
-
-          // Add visual indicator - 使用科技感样式
-          const pendingTools = toolCalls.map(tc => 
-            `<div class="smp-tool-status-item smp-running">
-              <span class="smp-tool-status-pulse"></span>
-              <span class="smp-tool-status-name">${tc.tool}</span>
-            </div>`
-          ).join('')
-          fullContent += `\n\n<div class="smp-tool-execution-card smp-running">\n  <div class="smp-tool-execution-header">\n    <div class="smp-tool-execution-icon">\n      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">\n        <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>\n      </svg>\n    </div>\n    <span class="smp-tool-execution-title">正在执行工具</span>\n    <span class="smp-tool-execution-badge">${toolCalls.length}</span>\n  </div>\n  <div class="smp-tool-execution-body">\n    ${pendingTools}\n  </div>\n</div>\n\n`
-          updateLastMessage(fullContent)
-        }
-
-        // Execute tools
-        const toolResults: Array<{ tool: string; result: string; success: boolean }> = []
+        console.log('[useAgentMode] ✅ Detected tool calls:', toolCalls.length, toolCalls.map(tc => tc.tool))
+        console.log('[useAgentMode] 🔄 Starting single-tool execution loop')
+        
         let shouldRefreshFileExplorer = false
 
-        for (const toolCall of toolCalls) {
-          console.log(`[useAgentMode] Executing tool:`, toolCall.tool)
-          try {
-            const { success, result } = await executeTool(toolCall, currentCwd)
-            toolResults.push({ tool: toolCall.tool, result, success })
-            // Mark for refresh if file operation was successful
-            const fileOperationTools = ['write_file', 'delete_file', 'edit_file', 'append_file', 'mkdir', 'FileWriteTool', 'FileDeleteTool', 'FileEditTool', 'FileAppendTool', 'MkdirTool']
-            if (success && fileOperationTools.includes(toolCall.tool)) {
-              shouldRefreshFileExplorer = true
+        // CRITICAL: Enforce SINGLE tool execution per iteration
+        // AI should only call ONE tool at a time for proper verification loop
+        if (toolCalls.length > 1) {
+          console.log(`[useAgentMode] ⚠️ AI returned ${toolCalls.length} tools, but we only execute the FIRST one`)
+          console.log(`[useAgentMode] Tools received:`, toolCalls.map(tc => tc.tool))
+          console.log(`[useAgentMode] Executing only: ${toolCalls[0].tool}`)
+        }
+        
+        // Take only the FIRST tool call
+        const toolCall = toolCalls[0]
+        console.log(`[useAgentMode] ━━━ Executing single tool: ${toolCall.tool} ━━━`)
+        
+        try {
+          const { success, result } = await executeToolCall(toolCall, currentCwd)
+          
+          // Mark for refresh if file operation was successful
+          const fileOperationTools = ['write_file', 'delete_file', 'edit_file', 'append_file', 'mkdir', 'FileWriteTool', 'FileDeleteTool', 'FileEditTool', 'FileAppendTool', 'MkdirTool']
+          if (success && fileOperationTools.includes(toolCall.tool)) {
+            shouldRefreshFileExplorer = true
+          }
+          
+          console.log(`[useAgentMode] ✅ Tool ${toolCall.tool} completed: ${success ? 'SUCCESS' : 'FAILED'}`)
+          
+          // CRITICAL: After tool execution, send result to AI immediately
+          console.log(`[useAgentMode] 📤 Sending tool result to AI for verification...`)
+          
+          const verificationPrompt = `工具执行结果：
+
+**工具名称：** ${toolCall.tool}
+**参数：** \`\`\`json\n${JSON.stringify(toolCall.arguments, null, 2)}\n\`\`\`
+**执行状态：** ${success ? '✅ 成功' : '❌ 失败'}
+**结果：**
+\`\`\`
+${result.slice(0, 2000)}${result.length > 2000 ? '\n... (已截断)' : ''}
+\`\`\`
+
+请分析以上结果，然后：
+1. 如果任务已完成，输出最终总结（不要调用工具）
+2. 如果还需要继续，请调用下一个工具（使用 \`\`\`json 代码块，**只调用一个工具**）`          
+          
+          // Add tool result to conversation
+          conversationMessages = [
+            ...conversationMessages,
+            { role: 'assistant' as const, content: iterationContent },
+            { role: 'user' as const, content: verificationPrompt }
+          ]
+          
+          console.log('[useAgentMode] 🔄 Exiting iteration to let outer loop continue with AI response')
+          
+          // CRITICAL: Remove ALL tool call JSON blocks from fullContent
+          // This prevents BuilderMessage from showing tools that weren't executed
+          let cleanedFullContent = fullContent
+          const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
+          const codeMatches = Array.from(fullContent.matchAll(codeBlockRegex))
+          
+          for (const match of codeMatches) {
+            const blockContent = match[1].trim()
+            const fullBlock = match[0]
+            
+            // Remove tool call blocks (both single tool and tool_calls array)
+            const hasToolPattern = blockContent.includes('"tool"') || 
+                                   blockContent.includes("'tool'") ||
+                                   blockContent.includes('"tool_calls"') ||
+                                   blockContent.includes("'tool_calls'") ||
+                                   blockContent.includes('"name"') && blockContent.includes('"arguments"')
+            
+            if (hasToolPattern) {
+              console.log('[useAgentMode] 🧹 Removing tool call JSON block from fullContent')
+              cleanedFullContent = cleanedFullContent.replace(fullBlock, '')
             }
-          } catch (toolError) {
-            console.error(`[useAgentMode] Tool execution error:`, toolCall.tool, toolError)
-            toolResults.push({ tool: toolCall.tool, result: `执行错误: ${String(toolError)}`, success: false })
           }
-        }
+          
+          // Update fullContent with cleaned version
+          fullContent = cleanedFullContent.trim()
+          
+          // Also clean iterationContent for the conversation history
+          iterationContent = iterationContent.replace(/```(?:json)?\s*\n?[\s\S]*?```/g, '').trim()
+          
+          updateLastMessage(fullContent)
+          
+          console.log('[useAgentMode] 🔄 Continuing to next iteration for AI response...')
+          // Continue the while loop to make a new API call with updated conversationMessages
+          continue
+        } catch (toolError) {
+          console.error(`[useAgentMode] ❌ Tool execution error:`, toolCall.tool, toolError)
+          
+          // Still send error result to AI
+          const errorPrompt = `工具执行失败：
 
-        // Trigger file explorer refresh after file operations
-        if (shouldRefreshFileExplorer) {
-          console.log('[useAgentMode] File operation completed, triggering refresh')
-          window.dispatchEvent(new CustomEvent('file-operation-completed'))
-        }
+**工具名称：** ${toolCall.tool}
+**参数：** \`\`\`json\n${JSON.stringify(toolCall.arguments, null, 2)}\n\`\`\`
+**错误信息：** ${String(toolError)}
 
-        // Build tool execution summary - 使用科技感样式
-        const toolSummary = toolResults.map(r => {
-          const statusClass = r.success ? 'smp-success' : 'smp-failed'
-          const statusIcon = r.success 
-            ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
-            : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
-          const statusText = r.success ? '成功' : '失败'
-          return `<div class="smp-tool-status-item ${statusClass}">\n              <span class="smp-tool-status-icon">${statusIcon}</span>\n              <span class="smp-tool-status-name">${r.tool}</span>\n              <span class="smp-tool-status-text">${statusText}</span>\n            </div>`
-        }).join('')
-
-        const allSuccess = toolResults.every(r => r.success)
-        const cardClass = allSuccess ? 'smp-success' : 'smp-partial'
-        const headerIcon = allSuccess
-          ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>'
-          : '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
-
-        fullContent += `\n\n<div class="smp-tool-execution-card ${cardClass}">\n  <div class="smp-tool-execution-header">\n    <div class="smp-tool-execution-icon">${headerIcon}</div>\n    <span class="smp-tool-execution-title">工具执行完成</span>\n    <span class="smp-tool-execution-stats">${toolResults.filter(r => r.success).length}/${toolResults.length}</span>\n  </div>\n  <div class="smp-tool-execution-body">\n    ${toolSummary}\n  </div>\n</div>\n\n`
-        updateLastMessage(fullContent)
-
-        // Update conversation messages
-        conversationMessages = [
-          ...conversationMessages,
-          { role: 'assistant' as const, content: iterationContent },
-          {
-            role: 'user' as const,
-            content: `工具执行结果：\n${toolResults.map(r => `- ${r.tool}: ${r.success ? '成功' : '失败'}\n${r.result}`).join('\n')}\n\n请基于以上工具执行结果，继续分析或执行下一步操作。\n\n重要提示：\n1. 直接输出分析结果，不要使用代码块包裹你的回复\n2. 如果需要展示代码或配置文件内容，请使用正确的代码块格式（如 \`\`\`typescript 或 \`\`\`json）\n3. 目录结构等文本内容直接输出，不要放在代码块中\n4. 如果需要调用更多工具，请使用标准工具调用格式`
+请根据错误信息调整策略，重新调用工具或选择其他方式。`
+          
+          conversationMessages = [
+            ...conversationMessages,
+            { role: 'assistant' as const, content: iterationContent },
+            { role: 'user' as const, content: errorPrompt }
+          ]
+          
+          // Also clean tool call blocks from fullContent on error
+          let cleanedFullContent = fullContent
+          const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
+          const codeMatches = Array.from(fullContent.matchAll(codeBlockRegex))
+          
+          for (const match of codeMatches) {
+            const blockContent = match[1].trim()
+            const fullBlock = match[0]
+            
+            const hasToolPattern = blockContent.includes('"tool"') || 
+                                   blockContent.includes("'tool'") ||
+                                   blockContent.includes('"tool_calls"') ||
+                                   blockContent.includes("'tool_calls'") ||
+                                   blockContent.includes('"name"') && blockContent.includes('"arguments"')
+            
+            if (hasToolPattern) {
+              cleanedFullContent = cleanedFullContent.replace(fullBlock, '')
+            }
           }
-        ]
+          
+          fullContent = cleanedFullContent.trim()
+          iterationContent = iterationContent.replace(/```(?:json)?\s*\n?[\s\S]*?```/g, '').trim()
+          updateLastMessage(fullContent)
+          
+          console.log('[useAgentMode] 🔄 Continuing to next iteration after error...')
+          continue
+        }
       }
 
       // Update tokens

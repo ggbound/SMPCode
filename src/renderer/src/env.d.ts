@@ -1,3 +1,4 @@
+// 全局类型定义文件 - 确保 Window 接口扩展被正确识别
 export {}
 
 interface RunningProcess {
@@ -11,7 +12,7 @@ interface RunningProcess {
 
 declare global {
   interface Window {
-    api: {
+    api?: {
       // Config
       getConfig: () => Promise<{
         apiKey: string
@@ -107,6 +108,33 @@ declare global {
       fsGetGitignore: (dirPath: string) => Promise<string[]>
       onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => () => void
       
+      // File operation notifications from AI tools
+      onFileOperation: (callback: (event: unknown, data: { 
+        operation: 'writing' | 'editing' | 'creating' | 'completed' | 'error'
+        path: string
+        timestamp: number
+        message?: string
+      }) => void) => () => void
+      
+      // Tool executor events
+      onToolStatusChanged: (callback: (event: unknown, data: {
+        type: 'started' | 'completed' | 'failed' | 'cancelled'
+        callId: string
+        toolName: string
+        timestamp: number
+        result?: { success: boolean; output: string; error?: string }
+        error?: string
+      }) => void) => () => void
+
+      // Execute tool via IPC
+      executeTool: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output: string; error?: string }>
+
+      // Get tool records
+      getToolRecords: () => Promise<Array<unknown>>
+
+      // Clear tool history
+      clearToolHistory: () => Promise<void>
+
       // Search API
       executeSearch: (options: {
         query: string

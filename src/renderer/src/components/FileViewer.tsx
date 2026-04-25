@@ -67,14 +67,53 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     }
   }, [tab?.id])
 
+  // Listen for external file content changes from AI operations
+  useEffect(() => {
+    const handleExternalChange = (e: CustomEvent<{ path: string; content: string }>) => {
+      if (!tab || tab.path !== e.detail.path) return
+
+      console.log('[FileViewer] Received external change event for:', tab.path)
+      console.log('[FileViewer] New content length:', e.detail.content.length)
+      console.log('[FileViewer] Current edited content length:', editedContent.length)
+
+      // Only update if content is actually different
+      if (e.detail.content !== editedContent) {
+        console.log('[FileViewer] Updating content from external change event')
+        setEditedContent(e.detail.content)
+        lastSavedContentRef.current = e.detail.content
+        setSaveStatus('saved')
+
+        // Flash the editor to indicate external update
+        const editorContainer = document.querySelector('.file-viewer')
+        if (editorContainer) {
+          editorContainer.classList.add('external-update-flash')
+          setTimeout(() => {
+            editorContainer.classList.remove('external-update-flash')
+          }, 300)
+        }
+      }
+    }
+
+    window.addEventListener('file-content-externally-changed', handleExternalChange as EventListener)
+    return () => {
+      window.removeEventListener('file-content-externally-changed', handleExternalChange as EventListener)
+    }
+  }, [tab?.path, editedContent])
+
   // Update content when tab content changes externally
   useEffect(() => {
-    if (tab && tab.content !== editedContent && tab.content !== lastSavedContentRef.current) {
+    if (tab && tab.content !== lastSavedContentRef.current) {
+      console.log('[FileViewer] External content change detected')
+      console.log('[FileViewer] Tab content length:', tab.content.length)
+      console.log('[FileViewer] Last saved content length:', lastSavedContentRef.current.length)
+      console.log('[FileViewer] Edited content length:', editedContent.length)
+
       setEditedContent(tab.content)
       lastSavedContentRef.current = tab.content
       setSaveStatus(tab.isDirty ? 'unsaved' : 'saved')
+      console.log('[FileViewer] Content updated successfully')
     }
-  }, [tab?.content])
+  }, [tab?.content, tab?.lastModified])
 
   // Perform save
   const performSave = useCallback(async (content: string) => {

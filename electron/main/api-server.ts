@@ -32,12 +32,17 @@ import {
   renderCommandIndex
 } from './services/commands-service'
 import {
-  getToolsService,
-  executeTool as executeMirroredTool,
   findTools,
   getToolNames,
   renderToolIndex
 } from './services/tools-service'
+import { getTools } from './core/tools'
+import {
+  parseToolCallsFromText
+} from './services/tools-core'
+import {
+  executeToolCalls
+} from './services/tools-executor'
 import {
   getExecutionRegistry,
   buildExecutionRegistry,
@@ -52,16 +57,9 @@ import {
   ToolCall,
   ToolResult,
   registerAllTools,
-  executeTool,
   toolRegistry
 } from './services/tools-definitions'
-import {
-  parseToolCallsFromText,
-  createExecutionContext
-} from './services/tools-core'
-import {
-  executeToolCalls
-} from './services/tools-executor'
+import { executeTool } from './services/tool-executor'
 import {
   scanProject,
   getProjectContext,
@@ -71,6 +69,7 @@ import {
   clearProjectContext
 } from './services/project-context-service'
 import { initGit } from './services/git-service'
+import { executeTool as executeToolNew } from './services/tool-executor'
 
 // Import new Port Architecture
 import { PortRuntime, RuntimeSessionImpl } from './core/runtime'
@@ -320,19 +319,19 @@ export async function startApiServer(): Promise<void> {
 
   // Initialize services (they will auto-load their data)
   const commandsService = getCommandsService()
-  const toolsService = getToolsService()
+  const portedTools = getTools()
 
   // Register all tools
   registerAllTools()
 
-  log.info(`API Server initialized: ${commandsService.getCount()} commands, ${toolsService.getCount()} tools, ${toolRegistry.count()} executors`)
+  log.info(`API Server initialized: ${commandsService.getCount()} commands, ${portedTools.length} ported tools, ${toolRegistry.count()} executors`)
 
   // Health check
   expressApp.get('/api/health', (_req: Request, res: Response) => {
     res.json({ 
       status: 'ok',
       commands: commandsService.getCount(),
-      tools: toolsService.getCount()
+      tools: portedTools.length
     })
   })
 
@@ -396,23 +395,28 @@ export async function startApiServer(): Promise<void> {
   // Get all tools
   expressApp.get('/api/tools', (_req: Request, res: Response) => {
     res.json({
-      count: toolsService.getCount(),
-      tools: toolsService.getAll()
+      count: portedTools.length,
+      tools: portedTools
     })
   })
 
   // Search tools
   expressApp.get('/api/tools/search', (req: Request, res: Response) => {
-    const result = toolsService.search({
-      query: req.query.q as string,
-      limit: parseInt(req.query.limit as string) || 20
-    })
-    res.json(result)
+    const query = (req.query.q as string)?.toLowerCase() || ''
+    const limit = parseInt(req.query.limit as string) || 20
+    const results = query
+      ? portedTools.filter(t => 
+          t.name.toLowerCase().includes(query) || 
+          t.sourceHint.toLowerCase().includes(query) ||
+          t.responsibility.toLowerCase().includes(query)
+        )
+      : portedTools
+    res.json({ count: results.length, tools: results.slice(0, limit) })
   })
 
   // Get tool by name
   expressApp.get('/api/tools/:name', (req: Request, res: Response) => {
-    const tool = toolsService.getByName(req.params.name)
+    const tool = portedTools.find(t => t.name.toLowerCase() === req.params.name.toLowerCase())
     if (!tool) {
       res.status(404).json({ error: 'Tool not found' })
       return
@@ -444,12 +448,11 @@ export async function startApiServer(): Promise<void> {
     }
 
     // Check tools - split by camelCase and check each part
-    const tools = toolsService.getAll()
-    for (const tool of tools) {
+    for (const tool of portedTools) {
       const parts = tool.name.toLowerCase().split(/(?=[A-Z])/)
-      const score = parts.filter(part => lowerPrompt.includes(part.toLowerCase())).length
+      const score = parts.filter((part: string) => lowerPrompt.includes(part.toLowerCase())).length
       if (score > 0) {
-        matches.push({ kind: 'tool', name: tool.name, score, source_hint: tool.source_hint })
+        matches.push({ kind: 'tool', name: tool.name, score, source_hint: tool.sourceHint })
       }
     }
 
@@ -625,7 +628,8 @@ export async function startApiServer(): Promise<void> {
       return
     }
 
-    const result = executeMirroredTool(name, payload)
+    // Note: Mirrored tool execution deprecated, use /api/tools/execute-direct
+    const result = { handled: false, message: 'Mirrored tool execution deprecated', name, source_hint: '', payload }
     res.json({ result })
   })
 
@@ -736,7 +740,7 @@ export async function startApiServer(): Promise<void> {
   expressApp.get('/api/subsystems', (_req: Request, res: Response) => {
     res.json([
       { name: 'commands', file_count: commandsService.getCount(), notes: 'Command surface' },
-      { name: 'tools', file_count: toolsService.getCount(), notes: 'Tool surface' },
+      { name: 'tools', file_count: portedTools.length, notes: 'Tool surface' },
       { name: 'runtime', file_count: 1, notes: 'Runtime orchestration' },
       { name: 'query_engine', file_count: 1, notes: 'Query engine' },
       { name: 'session_store', file_count: 1, notes: 'Session storage' },
@@ -844,7 +848,7 @@ export async function startApiServer(): Promise<void> {
 
   // Execute tool directly (simplified format for text-based tool calling)
   expressApp.post('/api/tools/execute-direct', async (req: Request, res: Response) => {
-    const { tool, arguments: args, cwd } = req.body as { tool: string; arguments: Record<string, unknown>; cwd?: string }
+    const { tool, arguments: args, cwd, callId } = req.body as { tool: string; arguments: Record<string, unknown>; cwd?: string; callId?: string }
 
     if (!tool) {
       res.status(400).json({ error: 'tool name is required' })
@@ -859,15 +863,27 @@ export async function startApiServer(): Promise<void> {
         setCurrentWorkingDirectory(cwd)
       }
 
-      log.info(`[API] Executing tool ${tool} with args:`, args, 'in cwd:', workingDir)
-      writeDebugLog(`TOOL_EXECUTE_${tool}`, { args, cwd: workingDir })
+      log.info(`[API] ========== Tool Execution Request ==========`)
+      log.info(`[API] Tool name: ${tool}`)
+      log.info(`[API] Call ID: ${callId || 'auto-generated'}`)
+      log.info(`[API] Arguments:`, JSON.stringify(args, null, 2))
+      log.info(`[API] Working directory: ${workingDir}`)
+      writeDebugLog(`TOOL_EXECUTE_${tool}`, { args, cwd: workingDir, callId })
 
-      const startTime = Date.now()
-      const result = await executeTool(tool, args || {}, workingDir)
-      const duration = Date.now() - startTime
+      // Use new tool executor for execution with event notifications
+      const result = await executeToolNew(callId || `call_${Date.now()}`, tool, args || {}, workingDir)
 
-      log.info(`[API] Tool ${tool} completed in ${duration}ms, success:`, result.success)
-      writeDebugLog(`TOOL_RESULT_${tool}`, { result, duration })
+      log.info(`[API] ========== Tool Execution Result ==========`)
+      log.info(`[API] Tool: ${tool}`)
+      log.info(`[API] Success: ${result.success}`)
+      log.info(`[API] Output length: ${result.output?.length || 0}`)
+      if (result.metadata) {
+        log.info(`[API] Metadata:`, JSON.stringify(result.metadata, null, 2))
+      }
+      if (!result.success && result.error) {
+        log.error(`[API] Error:`, result.error)
+      }
+      writeDebugLog(`TOOL_RESULT_${tool}`, { result })
 
       res.json({ result })
     } catch (error) {
@@ -898,7 +914,7 @@ export async function startApiServer(): Promise<void> {
       }
 
       // Execute parsed tool calls
-      const toolCallArray: ToolCall[] = toolCalls.map((call, index) => ({
+      const toolCallArray: ToolCall[] = toolCalls.map((call: { tool: string; arguments: Record<string, unknown> }, index: number) => ({
         id: `call_${index + 1}_${Date.now()}`,
         type: 'function',
         function: {
@@ -1192,65 +1208,6 @@ export async function startApiServer(): Promise<void> {
       res.json({ success: true, oldPath: resolvedOldPath, newPath: resolvedNewPath })
     } catch (error) {
       log.error('Failed to rename:', error)
-      res.status(500).json({ error: String(error) })
-    }
-  })
-
-  // ========== Legacy Tool Execution Endpoint ==========
-
-  // Note: This endpoint is deprecated, use /api/tools/execute (OpenAI format) instead
-  expressApp.post('/api/tools/execute-legacy', async (req: Request, res: Response) => {
-    const { tool, parameters } = req.body
-
-    try {
-      let result: unknown
-
-      switch (tool) {
-        case 'BashTool': {
-          const { command } = parameters
-          const { exec } = await import('child_process')
-          const util = await import('util')
-          const execPromise = util.promisify(exec)
-
-          try {
-            const { stdout, stderr } = await execPromise(command, { timeout: 60000 })
-            result = { output: stdout || stderr, error: stderr ? true : false }
-          } catch (error) {
-            result = { output: String(error), error: true }
-          }
-          break
-        }
-
-        case 'FileReadTool': {
-          const { file_path } = parameters
-          const content = fs.readFileSync(file_path, 'utf-8')
-          result = { content }
-          break
-        }
-
-        case 'FileEditTool': {
-          const { file_path, old_string, new_string } = parameters
-          let content = fs.readFileSync(file_path, 'utf-8')
-          content = content.replace(old_string, new_string)
-          fs.writeFileSync(file_path, content, 'utf-8')
-          result = { success: true }
-          break
-        }
-
-        case 'FileWriteTool': {
-          const { file_path, content } = parameters
-          fs.writeFileSync(file_path, content, 'utf-8')
-          result = { success: true }
-          break
-        }
-
-        default:
-          result = { error: `Unknown tool: ${tool}` }
-      }
-
-      res.json({ result })
-    } catch (error) {
-      log.error('Tool execution error:', error)
       res.status(500).json({ error: String(error) })
     }
   })

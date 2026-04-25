@@ -40,11 +40,63 @@ const AGENT_MODE_PRINCIPLES = `=== CORE PRINCIPLES ===
 const AGENT_MODE_WORKFLOW = `=== WORKFLOW ===
 For each user request:
 1. **ANALYZE**: Understand what the user wants
-2. **EXPLORE**: Use list_directory, search_code, read_file to gather context
+2. **EXPLORE**: Use list_directory, search_files, read_file to gather context
 3. **PLAN**: Determine the steps needed to complete the task
-4. **EXECUTE**: Use tools to make changes
+4. **EXECUTE**: Use tools to make changes - ALWAYS use JSON code blocks, NEVER use bash code blocks for file operations
 5. **VERIFY**: Check that changes work correctly
 6. **SUMMARIZE**: Explain what was done`
+
+/**
+ * 工具调用强制规则
+ */
+const TOOL_USAGE_MANDATORY = `
+=== MANDATORY TOOL USAGE ===
+CRITICAL: You MUST use tools for ALL file operations, NEVER output bash commands directly.
+
+WHEN TO USE TOOLS (MANDATORY):
+- Reading files: Use read_file tool with JSON format
+- Writing files: Use write_file tool with JSON format
+- Listing directories: Use list_directory tool with JSON format
+- Searching files: Use search_files tool with JSON format
+- Executing commands: Use execute_bash tool with JSON format
+
+FORBIDDEN PATTERNS:
+❌ NEVER output: \`\`\`bash\ncommand\n\`\`\`
+✅ ALWAYS output: \`\`\`json\n{"tool": "execute_bash", "arguments": {"command": "command"}}\n\`\`\`
+
+EXAMPLES:
+
+❌ WRONG (bash code block):
+\`\`\`bash
+cd /path/to/dir && ls
+\`\`\`
+
+✅ CORRECT (tool call):
+\`\`\`json
+{"tool": "list_directory", "arguments": {"path": "/path/to/dir"}}
+\`\`\`
+
+❌ WRONG (bash code block):
+\`\`\`bash
+echo "content" > file.txt
+\`\`\`
+
+✅ CORRECT (tool call):
+\`\`\`json
+{"tool": "write_file", "arguments": {"path": "file.txt", "content": "content"}}
+\`\`\`
+
+❌ WRONG (bash code block):
+\`\`\`bash
+grep -r "pattern" .
+\`\`\`
+
+✅ CORRECT (tool call):
+\`\`\`json
+{"tool": "search_files", "arguments": {"pattern": "pattern", "path": "."}}
+\`\`\`
+
+REMEMBER: ALL file and directory operations MUST use JSON tool calls, NEVER bash code blocks!`
 
 /**
  * 项目上下文使用指南
@@ -106,7 +158,11 @@ export function buildAgentModePrompt(options: PromptBuildOptions): string {
     sections.push('')
   }
   
-  // 6. 可用工具
+  // 6. 强制工具使用规则
+  sections.push(TOOL_USAGE_MANDATORY)
+  sections.push('')
+  
+  // 7. 可用工具
   sections.push('=== AVAILABLE TOOLS ===')
   sections.push('You have access to the following tools. Use them by outputting JSON code blocks:')
   sections.push('')
@@ -124,15 +180,15 @@ export function buildAgentModePrompt(options: PromptBuildOptions): string {
     sections.push('')
   }
   
-  // 7. 工具调用格式
+  // 8. 工具调用格式
   sections.push(TOOL_INVOCATION_FORMAT)
   sections.push('')
   
-  // 8. 关键规则
+  // 9. 关键规则
   sections.push(COMMON_CRITICAL_RULES)
   sections.push('')
   
-  // 9. 最佳实践
+  // 10. 最佳实践
   sections.push(BEST_PRACTICES)
   sections.push('')
   

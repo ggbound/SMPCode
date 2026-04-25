@@ -45,10 +45,10 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
     required: ['path']
   },
   {
-    name: 'search_code',
-    description: 'Search for code patterns. Use when user asks to find specific code.',
+    name: 'search_files',
+    description: 'Search for files by pattern. Use when user asks to find specific files.',
     parameters: {
-      pattern: { type: 'string', description: 'The regex pattern or search query', required: true },
+      pattern: { type: 'string', description: 'The search pattern or query', required: true },
       path: { type: 'string', description: 'The directory path to search in (optional)', required: false }
     },
     required: ['pattern']
@@ -103,28 +103,6 @@ export const AGENT_MODE_TOOLS: PromptTool[] = [
       path: { type: 'string', description: 'The absolute path to the file or directory', required: true }
     },
     required: ['path']
-  },
-  {
-    name: 'get_running_processes',
-    description: 'Get a list of all currently running processes managed by the application.',
-    parameters: {},
-    required: []
-  },
-  {
-    name: 'stop_process',
-    description: 'Stop a running process by its process ID.',
-    parameters: {
-      process_id: { type: 'string', description: 'The process ID to stop', required: true }
-    },
-    required: ['process_id']
-  },
-  {
-    name: 'restart_process',
-    description: 'Restart a running process by its process ID.',
-    parameters: {
-      process_id: { type: 'string', description: 'The process ID to restart', required: true }
-    },
-    required: ['process_id']
   }
 ]
 
@@ -165,8 +143,13 @@ export const COMMON_CRITICAL_RULES = `=== CRITICAL RULES ===
 2. Wait for tool results before proceeding to the next step
 3. If a tool fails, analyze the error and retry with corrections
 4. When task is complete, provide a clear summary of what was accomplished
-5. **ABSOLUTELY FORBIDDEN**: NEVER output text like "正在执行工具", "工具执行完成", "执行中", "成功", "✅", "⏳", "🔧" or any execution status descriptions. The system will handle execution visualization.
-6. **CRITICAL**: Do NOT describe what you are doing or will do. Just output the JSON and wait for results.`
+5. **ABSOLUTELY FORBIDDEN**: NEVER output text like "正在执行工具", "工具执行完成", "执行中", "成功", "✅", "⏳", "" or any execution status descriptions. The system will handle execution visualization.
+6. **CRITICAL**: Do NOT describe what you are doing or will do. Just output the JSON and wait for results.
+7. **NEVER OUTPUT HTML**: Do NOT output any HTML tags like <div>, <span>, <svg>, etc. Only output plain text and JSON code blocks.
+8. **NO VISUAL CARDS**: Do NOT create visual cards or UI elements. Just output the JSON tool calls.
+9. **CONTINUE UNTIL COMPLETE**: After receiving tool results, you MUST continue to analyze and call more tools if needed. Do NOT provide final summary until the user's task is fully completed.
+10. **TOOL CHAINING**: If you need to perform multiple steps (e.g., list directory → read file → analyze), call tools one at a time and wait for results before proceeding to the next step.
+11. **NO TEXT ANALYSIS DURING EXECUTION**: While executing tools, NEVER output analysis text like "我看到...", "让我检查...". ONLY output JSON tool calls. Save all analysis for the final summary after all tools are complete.`
 
 /**
  * 格式化工具列表为提示词文本

@@ -1,15 +1,17 @@
 /**
- * 工具调用核心架构
- * 提供统一的工具接口、执行上下文和结果类型定义
+ * Tools Core - Simplified version
+ * Provides type definitions and utility functions for tool execution
+ * 
+ * Note: This module does NOT export toolRegistry.
+ * - For CLI tool registry, import from './cli/tool-registry'
+ * - For service tool registry, import from './tools-definitions'
+ * - For executor tool registry, use getToolRegistry() from './tool-executor'
  */
 
 import log from 'electron-log'
 
 // ============ 核心类型定义 ============
 
-/**
- * 工具参数定义
- */
 export interface ToolParameter {
   type: string
   description: string
@@ -18,9 +20,6 @@ export interface ToolParameter {
   default?: unknown
 }
 
-/**
- * 工具定义
- */
 export interface ToolDefinition {
   type: 'function'
   function: {
@@ -34,9 +33,6 @@ export interface ToolDefinition {
   }
 }
 
-/**
- * 工具调用
- */
 export interface ToolCall {
   id: string
   type: 'function'
@@ -46,9 +42,6 @@ export interface ToolCall {
   }
 }
 
-/**
- * 工具执行结果
- */
 export interface ToolExecutionResult {
   success: boolean
   output: string
@@ -61,9 +54,6 @@ export interface ToolExecutionResult {
   }
 }
 
-/**
- * 工具结果（返回给 LLM 的格式）
- */
 export interface ToolResult {
   tool_call_id: string
   role: 'tool'
@@ -71,9 +61,6 @@ export interface ToolResult {
   content: string
 }
 
-/**
- * 执行上下文
- */
 export interface ExecutionContext {
   cwd: string
   sessionId?: string
@@ -83,9 +70,6 @@ export interface ExecutionContext {
   metadata?: Record<string, unknown>
 }
 
-/**
- * 工具执行器接口
- */
 export interface ToolExecutor {
   name: string
   description: string
@@ -94,180 +78,8 @@ export interface ToolExecutor {
   execute: (args: Record<string, unknown>, context: ExecutionContext) => Promise<ToolExecutionResult>
 }
 
-// ============ 工具注册表 ============
-
-class ToolRegistry {
-  private tools: Map<string, ToolExecutor> = new Map()
-  private middlewares: ToolMiddleware[] = []
-
-  /**
-   * 注册工具
-   */
-  register(tool: ToolExecutor): void {
-    this.tools.set(tool.name, tool)
-    log.info(`[ToolRegistry] Registered tool: ${tool.name}`)
-  }
-
-  /**
-   * 注销工具
-   */
-  unregister(name: string): void {
-    this.tools.delete(name)
-    log.info(`[ToolRegistry] Unregistered tool: ${name}`)
-  }
-
-  /**
-   * 获取工具
-   */
-  get(name: string): ToolExecutor | undefined {
-    return this.tools.get(name)
-  }
-
-  /**
-   * 获取所有工具
-   */
-  getAll(): ToolExecutor[] {
-    return Array.from(this.tools.values())
-  }
-
-  /**
-   * 检查工具是否存在
-   */
-  has(name: string): boolean {
-    return this.tools.has(name)
-  }
-
-  /**
-   * 获取工具数量
-   */
-  count(): number {
-    return this.tools.size
-  }
-
-  /**
-   * 转换为 OpenAI 格式的工具定义
-   */
-  toOpenAIDefinitions(): ToolDefinition[] {
-    return this.getAll().map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: 'object',
-          properties: tool.parameters,
-          required: tool.required
-        }
-      }
-    }))
-  }
-
-  /**
-   * 添加中间件
-   */
-  use(middleware: ToolMiddleware): void {
-    this.middlewares.push(middleware)
-  }
-
-  /**
-   * 获取中间件
-   */
-  getMiddlewares(): ToolMiddleware[] {
-    return [...this.middlewares]
-  }
-
-  /**
-   * 清空所有工具和中间件
-   */
-  clear(): void {
-    this.tools.clear()
-    this.middlewares = []
-  }
-}
-
-// 全局工具注册表实例
-export const toolRegistry = new ToolRegistry()
-
-// ============ 中间件系统 ============
-
-/**
- * 中间件上下文
- */
-export interface MiddlewareContext {
-  toolName: string
-  args: Record<string, unknown>
-  executionContext: ExecutionContext
-  result?: ToolExecutionResult
-}
-
-/**
- * 工具中间件
- */
-export type ToolMiddleware = (
-  context: MiddlewareContext,
-  next: () => Promise<ToolExecutionResult>
-) => Promise<ToolExecutionResult>
-
-/**
- * 执行工具（带中间件支持）
- */
-export async function executeToolWithMiddleware(
-  toolName: string,
-  args: Record<string, unknown>,
-  context: ExecutionContext
-): Promise<ToolExecutionResult> {
-  const tool = toolRegistry.get(toolName)
-
-  if (!tool) {
-    return {
-      success: false,
-      output: '',
-      error: `Unknown tool: ${toolName}`,
-      metadata: {
-        toolName,
-        timestamp: new Date().toISOString()
-      }
-    }
-  }
-
-  const middlewares = toolRegistry.getMiddlewares()
-  const middlewareContext: MiddlewareContext = {
-    toolName,
-    args,
-    executionContext: context
-  }
-
-  // 构建中间件链
-  let index = 0
-  const executeNext = async (): Promise<ToolExecutionResult> => {
-    if (index < middlewares.length) {
-      const middleware = middlewares[index++]
-      return middleware(middlewareContext, executeNext)
-    }
-    // 执行实际工具
-    const startTime = Date.now()
-    const result = await tool.execute(args, context)
-    const executionTime = Date.now() - startTime
-
-    return {
-      ...result,
-      metadata: {
-        ...result.metadata,
-        executionTime,
-        toolName,
-        timestamp: new Date().toISOString()
-      }
-    }
-  }
-
-  return executeNext()
-}
-
 // ============ 参数验证 ============
 
-/**
- * 验证工具参数
- */
 export function validateToolArgs(
   toolName: string,
   args: Record<string, unknown>,
@@ -277,24 +89,13 @@ export function validateToolArgs(
 
   // 检查必需参数
   for (const required of executor.required) {
-    // Special handling for search_code tool: 'query' can be used instead of 'pattern'
-    if (executor.name === 'search_code' && required === 'pattern') {
-      if (!(('pattern' in args && args.pattern !== undefined && args.pattern !== null) ||
-            ('query' in args && args.query !== undefined && args.query !== null))) {
-        errors.push(`Missing required parameter: pattern (or query)`)
-      }
-    } else if (!(required in args) || args[required] === undefined || args[required] === null) {
+    if (!(required in args) || args[required] === undefined || args[required] === null) {
       errors.push(`Missing required parameter: ${required}`)
     }
   }
 
   // 验证参数类型
   for (const [key, value] of Object.entries(args)) {
-    // Special handling for search_code tool: 'query' is an alias for 'pattern'
-    if (executor.name === 'search_code' && key === 'query') {
-      continue // Skip validation for 'query' parameter, it's handled in execute
-    }
-    
     const paramDef = executor.parameters[key]
     if (!paramDef) {
       errors.push(`Unknown parameter: ${key}`)
@@ -325,9 +126,6 @@ export function validateToolArgs(
 
 // ============ 结果格式化 ============
 
-/**
- * 格式化工具结果为 LLM 可读的格式
- */
 export function formatToolResult(result: ToolExecutionResult): string {
   if (result.success) {
     return result.output
@@ -335,9 +133,6 @@ export function formatToolResult(result: ToolExecutionResult): string {
   return `Error: ${result.error || 'Unknown error'}`
 }
 
-/**
- * 将工具执行结果转换为 ToolResult 格式
- */
 export function toToolResult(toolCallId: string, toolName: string, result: ToolExecutionResult): ToolResult {
   return {
     tool_call_id: toolCallId,
@@ -349,13 +144,6 @@ export function toToolResult(toolCallId: string, toolName: string, result: ToolE
 
 // ============ 工具调用解析 ============
 
-/**
- * 从文本中解析工具调用
- * 支持多种格式：
- * 1. 特殊格式：<|tool_calls_section_begin|>...<|tool_calls_section_end|>
- * 2. JSON 代码块：```json ... ```
- * 3. 内联 JSON：{"tool": "name", "arguments": {...}}
- */
 export function parseToolCallsFromText(text: string): Array<{ tool: string; arguments: Record<string, unknown> }> {
   const toolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
 
@@ -377,9 +165,6 @@ export function parseToolCallsFromText(text: string): Array<{ tool: string; argu
   })
 }
 
-/**
- * 解析 JSON 代码块
- */
 function parseCodeBlocks(text: string): Array<{ tool: string; arguments: Record<string, unknown> }> {
   const calls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
   const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)\s*```/g
@@ -429,9 +214,6 @@ function parseCodeBlocks(text: string): Array<{ tool: string; arguments: Record<
   return calls
 }
 
-/**
- * 解析内联 JSON
- */
 function parseInlineJSON(text: string): Array<{ tool: string; arguments: Record<string, unknown> }> {
   const calls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
   const jsonObjectRegex = /\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/g
@@ -451,9 +233,6 @@ function parseInlineJSON(text: string): Array<{ tool: string; arguments: Record<
   return calls
 }
 
-/**
- * 检查是否为有效的工具调用
- */
 function isValidToolCall(obj: unknown): obj is { tool: string; arguments: Record<string, unknown> } {
   return (
     typeof obj === 'object' &&
@@ -466,36 +245,32 @@ function isValidToolCall(obj: unknown): obj is { tool: string; arguments: Record
   )
 }
 
-/**
- * 提取 JSON 对象字符串（支持嵌套大括号）
- */
 function extractJSONObject(text: string): string | null {
   const jsonStart = text.indexOf('{')
   if (jsonStart === -1) return null
-  
-  // 使用栈来找到匹配的闭括号
+
   let braceCount = 0
   let inString = false
   let escapeNext = false
-  
+
   for (let i = jsonStart; i < text.length; i++) {
     const char = text[i]
-    
+
     if (escapeNext) {
       escapeNext = false
       continue
     }
-    
+
     if (char === '\\') {
       escapeNext = true
       continue
     }
-    
+
     if (char === '"' && !escapeNext) {
       inString = !inString
       continue
     }
-    
+
     if (!inString) {
       if (char === '{') braceCount++
       else if (char === '}') {
@@ -506,56 +281,12 @@ function extractJSONObject(text: string): string | null {
       }
     }
   }
-  
+
   return null
 }
 
-// ============ 工具调用构建器 ============
+// ============ 便捷函数 ============
 
-/**
- * 工具调用构建器
- */
-export class ToolCallBuilder {
-  private toolCalls: ToolCall[] = []
-  private idCounter = 0
-
-  /**
-   * 添加工具调用
-   */
-  add(toolName: string, args: Record<string, unknown>): this {
-    this.toolCalls.push({
-      id: `call_${++this.idCounter}_${Date.now()}`,
-      type: 'function',
-      function: {
-        name: toolName,
-        arguments: JSON.stringify(args)
-      }
-    })
-    return this
-  }
-
-  /**
-   * 构建工具调用数组
-   */
-  build(): ToolCall[] {
-    return [...this.toolCalls]
-  }
-
-  /**
-   * 清空
-   */
-  clear(): this {
-    this.toolCalls = []
-    this.idCounter = 0
-    return this
-  }
-}
-
-// ============ 导出便捷函数 ============
-
-/**
- * 创建执行上下文
- */
 export function createExecutionContext(
   cwd: string,
   options?: { sessionId?: string; userId?: string; metadata?: Record<string, unknown> }
@@ -570,9 +301,6 @@ export function createExecutionContext(
   }
 }
 
-/**
- * 创建工具执行结果
- */
 export function createSuccessResult(output: string, metadata?: Record<string, unknown>): ToolExecutionResult {
   return {
     success: true,
@@ -581,9 +309,6 @@ export function createSuccessResult(output: string, metadata?: Record<string, un
   }
 }
 
-/**
- * 创建工具执行错误结果
- */
 export function createErrorResult(error: string, output = '', metadata?: Record<string, unknown>): ToolExecutionResult {
   return {
     success: false,
@@ -591,4 +316,60 @@ export function createErrorResult(error: string, output = '', metadata?: Record<
     error,
     metadata
   }
+}
+
+// ============ 中间件支持 ============
+
+export interface ToolMiddleware {
+  name: string
+  execute: (
+    toolName: string,
+    args: Record<string, unknown>,
+    context: ExecutionContext,
+    next: () => Promise<ToolExecutionResult>
+  ) => Promise<ToolExecutionResult>
+}
+
+const middlewares: ToolMiddleware[] = []
+
+/**
+ * 注册中间件
+ */
+export function useMiddleware(middleware: ToolMiddleware): void {
+  middlewares.push(middleware)
+  log.info(`[ToolsCore] Registered middleware: ${middleware.name}`)
+}
+
+/**
+ * 执行带中间件的工具调用
+ */
+export async function executeToolWithMiddleware(
+  toolName: string,
+  args: Record<string, unknown>,
+  context: ExecutionContext,
+  executor: (args: Record<string, unknown>, context: ExecutionContext) => Promise<ToolExecutionResult>
+): Promise<ToolExecutionResult> {
+  if (middlewares.length === 0) {
+    return executor(args, context)
+  }
+
+  // 构建中间件链
+  let index = -1
+
+  const dispatch = async (): Promise<ToolExecutionResult> => {
+    index++
+    if (index >= middlewares.length) {
+      return executor(args, context)
+    }
+
+    const middleware = middlewares[index]
+    try {
+      return await middleware.execute(toolName, args, context, dispatch)
+    } catch (error) {
+      log.error(`[ToolsCore] Middleware ${middleware.name} failed:`, error)
+      return createErrorResult(`Middleware ${middleware.name} failed: ${String(error)}`)
+    }
+  }
+
+  return dispatch()
 }

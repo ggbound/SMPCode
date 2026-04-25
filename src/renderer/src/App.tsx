@@ -24,6 +24,8 @@ import {
 } from './prompts'
 import { useCodeCompletion } from './hooks/useCodeCompletion'
 import { useCodeIntelligence } from './hooks/useCodeIntelligence'
+import FileWriteIndicator, { useFileWriteStatus } from './components/FileWriteIndicator'
+import { ToolCallPanel } from './components/ToolCallPanel'
 import './styles/completion.css'
 import { getLanguageFromPath } from './utils/languageMap'
 
@@ -1369,7 +1371,7 @@ function App() {
     // Open File
     const unsubFileOpen = window.api?.onFileOpen?.(async () => {
       try {
-        const filePath = await window.api.openFile()
+        const filePath = await window.api?.openFile()
         if (filePath) {
           const response = await fetch(`http://localhost:3847/api/file/read?path=${encodeURIComponent(filePath)}`)
           if (response.ok) {
@@ -1385,7 +1387,7 @@ function App() {
     // Open Folder
     const unsubFolderOpen = window.api?.onFolderOpen?.(async () => {
       try {
-        const folderPath = await window.api.selectFolder()
+        const folderPath = await window.api?.selectFolder()
         if (folderPath) {
           setProjectPath(folderPath)
         }
@@ -1410,13 +1412,13 @@ function App() {
       
       try {
         // Show save dialog
-        const result = await window.api.showSaveDialog({
+        const result = await window.api?.showSaveDialog({
           defaultPath: activeTab.path,
           title: 'Save As',
           buttonLabel: 'Save'
         })
         
-        if (!result.canceled && result.filePath) {
+        if (result && !result.canceled && result.filePath) {
           // Write to new file
           const res = await fetch(`${API_BASE}/fs/write`, {
             method: 'POST',
@@ -1449,6 +1451,119 @@ function App() {
       setProjectPath(null)
       setTimeout(() => setProjectPath(currentPath), 100)
     })
+    
+    // Listen for file system changes (for auto-refresh opened files)
+    const unsubFileChange = window.api?.onFileChange?.((_event, data: { eventType: string; filename: string; dirPath: string }) => {
+      console.log('[App] === File Change Event Received ===')
+      console.log('[App] Event Type:', data.eventType)
+      console.log('[App] Filename:', data.filename)
+      console.log('[App] DirPath:', data.dirPath)
+      console.log('[App] Current tabs count:', tabs.length)
+      console.log('[App] Current tab paths:', tabs.map(t => t.path))
+
+      // Try both path separators to ensure compatibility
+      const changedFilePathUnix = `${data.dirPath}/${data.filename}`
+      const changedFilePathWin = `${data.dirPath}\\${data.filename}`
+
+      console.log('[App] Looking for file:', changedFilePathUnix)
+
+      // Check if the changed file is currently open in a tab
+      const openTab = tabs.find(tab => {
+        const match = tab.path === changedFilePathUnix || tab.path === changedFilePathWin
+        if (match) {
+          console.log('[App] ✓ Found matching tab:', tab.path)
+        }
+        return match
+      })
+
+      // Handle 'rename' event - new file created
+      if (data.eventType === 'rename') {
+        console.log('[App] File rename/create event detected')
+        // Check if it's a new file (not currently open)
+        if (!openTab) {
+          console.log('[App] New file detected, auto-opening:', changedFilePathUnix)
+          // Auto-open the new file
+          fetch(`http://localhost:3847/api/fs/read?path=${encodeURIComponent(changedFilePathUnix)}`)
+            .then(res => {
+              if (res.ok) return res.json()
+              throw new Error('Failed to read new file')
+            })
+            .then(fileData => {
+              if (fileData.content !== undefined) {
+                console.log('[App] Auto-opening new file with content length:', fileData.content.length)
+                openFile(changedFilePathUnix, fileData.content)
+              }
+            })
+            .catch(err => {
+              console.error('[App] Failed to auto-open new file:', err)
+            })
+        }
+        return
+      }
+
+      // Only handle 'change' events for existing open files
+      if (data.eventType !== 'change') {
+        console.log('[App] Ignoring non-change event:', data.eventType)
+        return
+      }
+
+      if (!openTab) {
+        console.log('[App] ✗ No matching tab found for changed file')
+        return
+      }
+
+      console.log('[App] Opened file changed, refreshing content:', changedFilePathUnix)
+      console.log('[App] Current tab content length:', openTab.content.length)
+
+      // Read the latest content from disk
+      fetch(`http://localhost:3847/api/fs/read?path=${encodeURIComponent(changedFilePathUnix)}`)
+        .then(res => {
+          console.log('[App] Fetch response status:', res.status)
+          return res.json()
+        })
+        .then(fileData => {
+          console.log('[App] File read result:', {
+            hasContent: fileData.content !== undefined,
+            contentLength: fileData.content?.length || 0,
+            currentContentLength: openTab.content.length,
+            isDifferent: fileData.content !== openTab.content
+          })
+
+          if (fileData.content !== undefined && fileData.content !== openTab.content) {
+            console.log('[App] ✓ Content is different, updating tab...')
+
+            // Update the tab content with animation flag
+            setTabs(prev => {
+              console.log('[App] Updating tabs state')
+              return prev.map(tab => {
+                if (tab.id === openTab.id) {
+                  console.log('[App] Updated tab:', {
+                    id: tab.id,
+                    oldContentLength: tab.content.length,
+                    newContentLength: fileData.content.length
+                  })
+                  return { ...tab, content: fileData.content, isDirty: false, lastModified: Date.now() }
+                }
+                return tab
+              })
+            })
+
+            // If this is the active tab, also update the editor
+            if (activeTabId === openTab.id) {
+              console.log('[App] ✓ This is the active tab, editor should auto-update')
+              // Dispatch a custom event to notify FileViewer of external change
+              window.dispatchEvent(new CustomEvent('file-content-externally-changed', {
+                detail: { path: changedFilePathUnix, content: fileData.content }
+              }))
+            }
+          } else {
+            console.log('[App] ✗ Content is the same, no update needed')
+          }
+        })
+        .catch(err => {
+          console.error('[App] ✗ Failed to read updated file:', err)
+        })
+    })
 
     return () => {
       unsubNewSession?.()
@@ -1458,8 +1573,9 @@ function App() {
       unsubFileSave?.()
       unsubFileSaveAs?.()
       unsubFileRefresh?.()
+      unsubFileChange?.()
     }
-  }, [activeTabId, tabs, activeTab, openFile, handleTabSave, handleNewSession, projectPath, setProjectPath])
+  }, [activeTabId, tabs, activeTab, openFile, handleTabSave, handleNewSession, projectPath, setProjectPath, setTabs])
 
   // Handle file renamed from FileExplorer
   const handleFileRenamed = useCallback((oldPath: string, newPath: string, newName: string) => {
@@ -1795,9 +1911,21 @@ function App() {
           onClose={() => setShowCommandPalette(false)}
           commands={paletteCommands}
         />
+
+        {/* File Write Status Indicator */}
+        <FileWriteIndicatorStatus />
+
+        {/* Tool Call Panel */}
+        <ToolCallPanel />
       </div>
     </div>
   )
+}
+
+// File write status indicator component
+function FileWriteIndicatorStatus() {
+  const { status } = useFileWriteStatus()
+  return <FileWriteIndicator status={status} />
 }
 
 export default App

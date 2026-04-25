@@ -9,6 +9,7 @@ export interface Tab {
   isDirty: boolean
   isPreview?: boolean
   language?: string
+  lastModified?: number  // Timestamp for external content changes
 }
 
 interface FileTabsProps {

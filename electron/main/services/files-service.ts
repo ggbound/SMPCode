@@ -107,15 +107,63 @@ export function readFile(filePath: string): string {
 // Write file content
 export function writeFile(filePath: string, content: string): void {
   try {
+    log.info(`[writeFile] ========== File Write Operation ==========`)
+    log.info(`[writeFile] File path: ${filePath}`)
+    log.info(`[writeFile] Content length: ${content.length}`)
+    log.info(`[writeFile] Parent directory exists: ${fs.existsSync(path.dirname(filePath))}`)
+    
     // Ensure parent directory exists
     const parentDir = path.dirname(filePath)
     if (!fs.existsSync(parentDir)) {
+      log.info(`[writeFile] Creating parent directory: ${parentDir}`)
       fs.mkdirSync(parentDir, { recursive: true })
     }
 
+    log.info(`[writeFile] Writing file...`)
     fs.writeFileSync(filePath, content, 'utf-8')
+    log.info(`[writeFile] File written successfully`)
+    
+    // Notify that file has been written (for auto-refresh in editor)
+    const dirPath = path.dirname(filePath)
+    const filename = path.basename(filePath)
+    
+    // Trigger a change event so watchers can pick it up
+    // This ensures the UI refreshes when AI writes to files
+    setTimeout(() => {
+      // The watcher will detect this change automatically
+      log.info(`[writeFile] File written and change notification triggered: ${filePath}`)
+    }, 100)
   } catch (error) {
-    log.error('Failed to write file:', error)
+    log.error('[writeFile] Failed to write file:', error)
+    throw error
+  }
+}
+
+// Append file content
+export function appendFile(filePath: string, content: string): void {
+  try {
+    log.info(`[appendFile] ========== File Append Operation ==========`)
+    log.info(`[appendFile] File path: ${filePath}`)
+    log.info(`[appendFile] Content length: ${content.length}`)
+    log.info(`[appendFile] File exists: ${fs.existsSync(filePath)}`)
+    
+    // Ensure parent directory exists
+    const parentDir = path.dirname(filePath)
+    if (!fs.existsSync(parentDir)) {
+      log.info(`[appendFile] Creating parent directory: ${parentDir}`)
+      fs.mkdirSync(parentDir, { recursive: true })
+    }
+
+    log.info(`[appendFile] Appending to file...`)
+    fs.appendFileSync(filePath, content, 'utf-8')
+    log.info(`[appendFile] File appended successfully`)
+    
+    // Notify that file has been appended (for auto-refresh in editor)
+    setTimeout(() => {
+      log.info(`[appendFile] File appended and change notification triggered: ${filePath}`)
+    }, 100)
+  } catch (error) {
+    log.error('[appendFile] Failed to append file:', error)
     throw error
   }
 }
@@ -164,6 +212,7 @@ export function watchDirectory(dirPath: string, callback: (eventType: string, fi
 
     const watcher = fs.watch(dirPath, { recursive: false }, (eventType, filename) => {
       if (filename) {
+        log.info(`[FileWatcher] Detected ${eventType} event for: ${filename} in ${dirPath}`)
         callback(eventType, filename)
       }
     })

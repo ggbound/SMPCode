@@ -9,12 +9,21 @@ import {
   CommandExecution,
   getCommandsService
 } from './commands-service'
-import {
-  ToolsService,
-  Tool,
-  ToolExecution,
-  getToolsService
-} from './tools-service'
+// Note: Tools service deprecated, using core/tools instead
+import { getTools, PORTED_TOOLS } from '../core/tools'
+
+// Simplified Tool interface for registry
+interface Tool {
+  name: string
+  source_hint: string
+}
+interface ToolExecution {
+  name: string
+  source_hint: string
+  payload: string
+  handled: boolean
+  message: string
+}
 
 // ============ Mirrored Command ============
 
@@ -47,7 +56,14 @@ export function createMirroredTool(tool: Tool): MirroredTool {
     name: tool.name,
     sourceHint: tool.source_hint,
     execute: (payload: string): ToolExecution => {
-      return getToolsService().execute(tool.name, payload)
+      // Note: Tool execution now handled by tool-executor
+      return {
+        name: tool.name,
+        source_hint: tool.source_hint,
+        payload,
+        handled: false,
+        message: 'Use /api/tools/execute-direct for tool execution'
+      }
     }
   }
 }
@@ -95,10 +111,13 @@ class ExecutionRegistryImpl implements ExecutionRegistry {
       this._commands.set(cmd.name.toLowerCase(), mirrored)
     }
 
-    // Build tool registry
-    const tools = getToolsService().getAll()
+    // Build tool registry from PORTED_TOOLS
+    const tools = getTools()
     for (const tool of tools) {
-      const mirrored = createMirroredTool(tool)
+      const mirrored = createMirroredTool({
+        name: tool.name,
+        source_hint: tool.sourceHint
+      })
       this._tools.set(tool.name.toLowerCase(), mirrored)
     }
   }

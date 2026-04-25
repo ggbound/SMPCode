@@ -1,6 +1,7 @@
 import { useRef, useCallback } from 'react'
 import { useStore, type Message } from '../store'
 import { CHAT_MODE_TOOLS } from '../prompts/shared'
+import { executeTool } from '../services/tool-client'
 
 const API_BASE = 'http://localhost:3847/api'
 
@@ -177,31 +178,20 @@ export function useChatMode() {
   }, [])
 
   /**
-   * 执行单个工具调用
+   * 执行单个工具调用 - 使用新的工具客户端
    */
-  const executeTool = useCallback(async (
+  const executeToolCall = useCallback(async (
     toolCall: ToolCall,
     cwd: string
   ): Promise<{ success: boolean; result: string }> => {
     try {
-      const execRes = await fetch(`${API_BASE}/tools/execute-direct`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tool: toolCall.tool,
-          arguments: toolCall.arguments,
-          cwd
-        })
-      })
+      // 使用新的工具客户端执行工具（支持事件通知和进度显示）
+      const result = await executeTool(toolCall.tool, toolCall.arguments, { cwd })
 
-      if (!execRes.ok) {
-        const errorText = await execRes.text()
-        return { success: false, result: `Tool execution failed: ${execRes.status} - ${errorText}` }
+      return {
+        success: result.success,
+        result: result.output || result.error || 'No output'
       }
-
-      const execData = await execRes.json()
-      const result = execData.result
-      return { success: true, result: result.output || result }
     } catch (error) {
       return { success: false, result: String(error) }
     }
@@ -422,7 +412,7 @@ export function useChatMode() {
           }
 
           try {
-            const { success, result } = await executeTool(toolCall, currentCwd)
+            const { success, result } = await executeToolCall(toolCall, currentCwd)
             toolResults.push({ tool: toolCall.tool, result, success })
             // Mark for refresh if file operation was successful
             if (success && ['write_file', 'delete_file', 'edit_file', 'append_file', 'mkdir'].includes(toolCall.tool)) {
@@ -460,12 +450,31 @@ export function useChatMode() {
         updateLastMessage(fullContent)
 
         // Update conversation messages
+        // CRITICAL: Provide explicit guidance to continue tool calling
+        const nextStepPrompt = toolResults.every(r => r.success)
+          ? `工具执行成功。基于以上结果，你还需要继续调用工具来完成用户的任务。请立即输出 JSON 格式的工具调用。
+
+**强制要求**：
+1. 不要输出任何分析文本或描述
+2. 直接输出 JSON 工具调用（使用 \`\`\`json 代码块）
+3. 如果需要读取文件，调用 read_file 工具
+4. 如果需要查看目录，调用 list_directory 工具
+5. 只有在任务完全完成后，才能输出最终总结
+
+请继续调用工具：`
+          : `部分工具执行失败。请分析错误原因，修正参数后重新调用工具。
+
+失败的工具：
+${toolResults.filter(r => !r.success).map(r => `- ${r.tool}: ${r.result}`).join('\n')}
+
+请修正后继续调用工具：`
+        
         conversationMessages = [
           ...conversationMessages,
           { role: 'assistant' as const, content: iterationContent },
           {
             role: 'user' as const,
-            content: `工具执行结果：\n${toolResults.map(r => `- ${r.tool}: ${r.success ? '成功' : '失败'}\n${r.result}`).join('\n')}\n\n请基于以上工具执行结果，继续分析或执行下一步操作。\n\n重要提示：\n1. 直接输出分析结果，不要使用代码块包裹你的回复\n2. 如果需要展示代码或配置文件内容，请使用正确的代码块格式（如 \`\`\`typescript 或 \`\`\`json）\n3. 目录结构等文本内容直接输出，不要放在代码块中\n4. 如果需要调用更多工具，请使用标准工具调用格式`
+            content: `工具执行结果：\n${toolResults.map(r => `- ${r.tool}: ${r.success ? '成功' : '失败'}\n${r.result}`).join('\n')}\n\n${nextStepPrompt}`
           }
         ]
       }

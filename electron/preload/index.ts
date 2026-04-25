@@ -169,6 +169,28 @@ const api = {
     return () => ipcRenderer.removeListener('fs:change', callback)
   },
 
+  // File operation notifications from AI tools
+  onFileOperation: (callback: (event: unknown, data: { operation: 'writing' | 'editing' | 'creating'; path: string; timestamp: number }) => void) => {
+    ipcRenderer.on('file-operation-notification', callback)
+    return () => ipcRenderer.removeListener('file-operation-notification', callback)
+  },
+
+  // Tool executor events
+  onToolStatusChanged: (callback: (event: unknown, data: { type: string; callId: string; toolName: string; timestamp: number; result?: unknown; error?: string }) => void) => {
+    ipcRenderer.on('tool-status-changed', callback)
+    return () => ipcRenderer.removeListener('tool-status-changed', callback)
+  },
+
+  // Execute tool via IPC
+  executeTool: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) =>
+    ipcRenderer.invoke('tool:execute', callId, toolName, args, cwd),
+
+  // Get tool records
+  getToolRecords: () => ipcRenderer.invoke('tool:get-records'),
+
+  // Clear tool history
+  clearToolHistory: () => ipcRenderer.invoke('tool:clear-history'),
+
   // Search API
   executeSearch: (options: {
     query: string

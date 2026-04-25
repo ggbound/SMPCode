@@ -53,44 +53,7 @@ interface TerminalSession {
   aiIntent?: AIIntentContext
 }
 
-declare global {
-  interface Window {
-    api: {
-      createTerminal: (options?: { name?: string; cwd?: string; id?: string }) => Promise<{ id: string; name: string }>
-      writeTerminal: (id: string, data: string) => Promise<void>
-      resizeTerminal: (id: string, cols: number, rows: number) => Promise<void>
-      killTerminal: (id: string) => Promise<void>
-      listTerminals: () => Promise<Array<{ id: string; name: string; createdAt: Date }>>
-      onTerminalData: (callback: (event: unknown, data: { id: string; data: string }) => void) => () => void
-      onTerminalExit: (callback: (event: unknown, data: { id: string; exitCode: number }) => void) => () => void
-      // Process management APIs - 更新以支持AI意图
-      startProcessInTerminal: (command: string, cwd: string, terminalId: string, aiPrompt?: string) => Promise<{ 
-        processId: string; 
-        success: boolean; 
-        error?: string;
-        aiIntentId?: string;
-        reused?: boolean;
-      }>
-      stopProcess: (processId: string) => Promise<{ success: boolean; error?: string }>
-      restartProcess: (processId: string) => Promise<{ processId: string; success: boolean; error?: string }>
-      getRunningProcesses: () => Promise<RunningProcess[]>
-      getAIIntentContext: (processId: string) => Promise<AIIntentContext | undefined>
-      getProjectAIHistory: (cwd: string) => Promise<AIIntentContext[]>
-      onProcessStarted: (callback: (event: unknown, data: { 
-        processId: string; 
-        command: string; 
-        cwd: string; 
-        terminalId?: string;
-        aiIntentId?: string;
-        taskType?: string;
-      }) => void) => () => void
-      onProcessData: (callback: (event: unknown, data: { terminalId: string; processId: string; data: string }) => void) => () => void
-      onProcessExit: (callback: (event: unknown, data: { terminalId: string; processId: string; exitCode: number }) => void) => () => void
-      onProcessError: (callback: (event: unknown, data: { terminalId: string; processId: string; error: string }) => void) => () => void
-      onTerminalCreateRequest: (callback: (event: unknown, data: { id: string; cwd?: string; title?: string }) => void) => () => void
-    }
-  }
-}
+// Window API 类型在 env.d.ts 中全局声明
 
 const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPath }, ref) => {
   const [sessions, setSessions] = useState<TerminalSession[]>([])
@@ -129,7 +92,22 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   useEffect(() => {
     if (isVisible && projectPath && window.api?.getProjectAIHistory) {
       window.api.getProjectAIHistory(projectPath).then(history => {
-        setAIHistory(history)
+        // 转换历史记录格式以匹配 AIIntentContext 类型
+        const now = new Date().toISOString()
+        const convertedHistory: AIIntentContext[] = history.map((h, index) => ({
+          intentId: `history-${index}`,
+          originalPrompt: h.prompt,
+          taskType: h.taskType,
+          projectContext: {
+            name: projectPath.split('/').pop() || '',
+            path: projectPath
+          },
+          expectedOutcome: '',
+          createdAt: h.timestamp,
+          lastAccessedAt: now,
+          accessCount: 1
+        }))
+        setAIHistory(convertedHistory)
       })
     }
   }, [isVisible, projectPath])
@@ -560,7 +538,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     try {
       const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId, aiPrompt)
       if (result.success) {
-        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`, 'reused:', result.reused)
+        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`)
         // Command will be written by onProcessStarted listener, no need to write here
       } else {
         console.error('[Terminal] Failed to start process:', result.error)
