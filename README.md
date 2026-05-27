@@ -1,4 +1,4 @@
-# SMP Code
+# Claw Code
 
 <div align="center">
 
@@ -16,19 +16,20 @@
 
 ## 📖 项目简介
 
-SMP Code 是一款对标 VSCode 的现代化 AI 辅助代码编辑器，采用 Electron + React 技术栈构建。项目深度融合了 AI 对话、代码智能提示、文件管理、终端等核心功能，为开发者提供一站式编码体验。
+Claw Code 是一款对标 VSCode 的现代化 AI 辅助代码编辑器，采用 Electron + React 技术栈构建。项目深度融合了 AI 对话、代码智能提示、文件管理、终端等核心功能，为开发者提供一站式编码体验。
 
 ### ✨ 核心特色
 
 - 🎨 **VSCode 风格界面**：完整的 ActivityBar、Sidebar、Editor、StatusBar 布局
-- 🤖 **AI 智能助手**：集成 Anthropic Claude 等大语言模型，支持 Agent 和 Chat 双模式
+- 🤖 **AI 智能助手**：集成 Anthropic Claude 等大语言模型，支持 Kilo Code 风格的对话式 AI 交互
 - 💻 **专业代码编辑**：基于 Monaco Editor，支持语法高亮、代码补全、多语言
 - 🔍 **全局搜索**：文件内容搜索、替换、结果高亮、一键跳转
--  **文件资源管理器**：树形结构展示、拖拽操作、隐藏文件显示
+- 📁 **文件资源管理器**：树形结构展示、拖拽操作、隐藏文件显示
 - 🖥️ **集成终端**：原生 PTY 终端，支持 zsh/bash，自动切换项目目录
 - ⌨️ **命令面板**：Ctrl+Shift+P 快速访问所有命令
 - 🔀 **编辑器分屏**：支持水平和垂直分屏，可拖拽调整大小
-- 🎯 **会话管理**：多会话支持，可创建、切换、重命名、删除
+- 💬 **会话管理**：多会话支持，按项目隔离，可创建、切换、重命名、删除
+- 🎯 **Kilo Code 风格**：现代化的消息展示、内联工具调用、流式响应
 
 ---
 
@@ -119,37 +120,41 @@ claw-code-web/
 │   ├── src/
 │   │   ├── components/         # React 组件
 │   │   │   ├── ActivityBar.tsx         # 活动栏
-│   │   │   ├── ChatArea.tsx            # 聊天区域
 │   │   │   ├── CommandPalette.tsx      # 命令面板
 │   │   │   ├── FileExplorer.tsx        # 文件浏览器
 │   │   │   ├── FileTabs.tsx            # 文件标签页
-│   │   │   ├── FileViewer.tsx          # 文件查看器
-│   │   │   ├── MonacoEditor.tsx        # Monaco 编辑器
+│   │   │   ├── FileViewer.tsx          # 文件查看器（Monaco Editor）
+│   │   │   ├── GitPanel.tsx            # Git 面板
+│   │   │   ├── KiloChatMessage.tsx     # Kilo 风格聊天消息
+│   │   │   ├── KiloMessageInline.tsx   # Kilo 内联消息
+│   │   │   ├── MarkdownRenderer.tsx    # Markdown 渲染器
+│   │   │   ├── ModeSelector.tsx        # AI 模式选择器
+│   │   │   ├── ModelSelector.tsx       # 模型选择器
 │   │   │   ├── SearchPanel.tsx         # 搜索面板
-│   │   │   ├── SessionBar.tsx          # 会话栏
 │   │   │   ├── SessionSidebar.tsx      # 会话侧边栏
-│   │   │   ├── StatusBar.tsx           # 状态栏
 │   │   │   ├── Terminal.tsx            # 终端组件
 │   │   │   └── ...
 │   │   ├── hooks/              # 自定义 Hooks
 │   │   │   ├── useAgentMode.ts         # Agent 模式 Hook
 │   │   │   ├── useChatMode.ts          # Chat 模式 Hook
+│   │   │   ├── useKiloConversation.ts  # Kilo 对话管理
+│   │   │   ├── useUnifiedConversation.ts # 统一对话管理
 │   │   │   ├── useCodeCompletion.ts    # 代码补全 Hook
 │   │   │   └── useCodeIntelligence.ts  # 代码智能 Hook
+│   │   ├── pages/              # 页面组件
+│   │   │   └── KiloPage.tsx            # Kilo 主页面
 │   │   ├── prompts/            # AI 提示词模块
 │   │   │   ├── agent-prompt.ts         # Agent 模式提示词
 │   │   │   ├── chat-prompt.ts          # Chat 模式提示词
-│   │   │   ├── copilot-prompts.ts      # Copilot 提示词
 │   │   │   ├── shared.ts               # 共享提示词
 │   │   │   └── types.ts                # 提示词类型
 │   │   ├── store/              # 全局状态（Zustand）
-│   │   │   └── index.ts
-│   │   ├── stores/             # 其他 Store
-│   │   │   └── searchStore.ts
+│   │   │   └── kiloStore.ts            # Kilo 状态管理
 │   │   ├── styles/             # CSS 样式
 │   │   │   ├── index.css               # 主样式
 │   │   │   ├── builder.css             # 构建器样式
 │   │   │   ├── completion.css          # 代码补全样式
+│   │   │   ├── kilo.css                # Kilo 风格样式
 │   │   │   └── ...
 │   │   ├── utils/              # 工具函数
 │   │   │   ├── fileIconTheme.ts        # 文件图标主题
@@ -207,6 +212,8 @@ npm install
 npm run dev
 ```
 
+应用将在开发模式下启动，支持热重载。
+
 ### 构建项目
 
 ```bash
@@ -233,7 +240,7 @@ npm run build:unpack
 npm run dev
 
 # 运行打包后的应用 (macOS)
-open dist/mac-arm64/SMP\ Code.app
+open dist/mac-arm64/Claw\ Code.app
 ```
 
 ---
@@ -246,7 +253,14 @@ open dist/mac-arm64/SMP\ Code.app
 - ✅ **Sidebar（侧边栏）**：可切换的文件浏览器和搜索面板
 - ✅ **FileTabs（文件标签页）**：支持拖拽排序、预览模式、多标签管理
 - ✅ **StatusBar（状态栏）**：Git 分支、错误/警告、Token 使用、光标位置、语言模式
-- ✅ **SessionBar（会话栏）**：顶部横向会话管理，支持创建、切换、重命名、删除
+### 会话管理
+
+- ✅ **项目隔离**：每个项目的会话独立存储和管理
+- ✅ **会话列表**：侧边栏显示当前项目的所有会话
+- ✅ **时间排序**：按最后更新时间降序排列
+- ✅ **自动清理**：自动删除空会话和无用数据
+- ✅ **会话切换**：快速切换不同会话继续对话
+- ✅ **会话创建**：随时创建新会话开始新的对话
 - ✅ **macOS 原生标题栏**：适配交通灯按钮
 
 ### 代码编辑
@@ -274,16 +288,16 @@ open dist/mac-arm64/SMP\ Code.app
 - ✅ **结果高亮**：匹配文本高亮显示
 - ✅ **一键跳转**：点击结果跳转到对应行
 
-### AI 助手
+### AI 助手（Kilo Code 风格）
 
-- ✅ **Chat Mode（智能问答）**：对话式 AI 助手
-- ✅ **Agent Mode（智能体）**：自主执行任务的 AI 代理
-- ✅ **多模型支持**：支持 Claude、OpenAI 等多种模型
-- ✅ **上下文管理**：自动注入项目上下文
-- ✅ **工具调用**：AI 可以调用文件操作、终端等工具
-- ✅ **流式输出**：实时显示 AI 响应
+- ✅ **Kilo 对话系统**：现代化的对话式 AI 交互体验
+- ✅ **内联工具调用**：工具调用与文本内容无缝融合
+- ✅ **流式响应**：实时显示 AI 响应，逐字输出
+- ✅ **多模型支持**：支持 Claude、DeepSeek 等多种模型提供商
+- ✅ **上下文管理**：自动注入项目上下文和文件信息
+- ✅ **会话持久化**：对话历史保存到项目目录，按项目隔离
 - ✅ **图片支持**：支持上传和分析图片
-- ✅ **会话管理**：多会话历史记录
+- ✅ **Markdown 渲染**：完整的 Markdown、代码块、表格支持
 
 ### 终端
 
@@ -317,50 +331,69 @@ open dist/mac-arm64/SMP\ Code.app
 
 - ✅ **设置对话框**：可视化配置界面
 - ✅ **模型配置**：添加、编辑、删除 API 模型
-- ✅ **Provider 管理**：支持多 AI 提供商
+- ✅ **Provider 管理**：支持多 AI 提供商（Anthropic、DeepSeek 等）
 - ✅ **持久化存储**：配置自动保存到本地
 
 ---
 
 ## 🎯 技术亮点
 
-### 1. 模块化架构
+### 1. Kilo Code 架构
 
-项目采用清晰的三层架构：
+采用现代化的对话式 AI 交互模式：
 
 ```
 ┌─────────────────────────────────────┐
-│         Renderer (React)            │
-│  - UI 组件                           │
-│  - 状态管理 (Zustand)                │
-│  - 用户交互                          │
+│         KiloPage                    │
+│  - 会话侧边栏                        │
+│  - 消息列表                          │
+│  - 输入区域（模式选择器 + 模型选择器）│
 ├─────────────────────────────────────┤
-│         IPC Bridge                  │
+│         Zustand Store               │
+│  - kiloStore（会话状态管理）         │
+│  - 按项目隔离的会话数据              │
+├─────────────────────────────────────┤
+│         Hooks Layer                 │
+│  - useKiloConversation（对话管理）   │
+│  - useAgentMode / useChatMode        │
+├─────────────────────────────────────┤
+│         Electron IPC                │
 │  - 主进程与渲染进程通信              │
-│  - 类型安全的 API 调用               │
-├─────────────────────────────────────┤
-│         Main (Node.js)              │
-│  - 文件系统操作                      │
-│  - 终端管理                          │
-│  - AI API 调用                       │
-│  - Git 操作                          │
+│  - 文件读写、AI API 调用             │
 └─────────────────────────────────────┘
 ```
 
-### 2. 提示词工程
-
-采用模块化的提示词系统：
+### 2. 模块化提示词系统
 
 ```typescript
 prompts/
 ├── agent-prompt.ts    # Agent 模式提示词（工具调用、任务执行）
 ├── chat-prompt.ts     # Chat 模式提示词（问答、建议）
-├── copilot-prompts.ts # Copilot 功能提示词
 ├── shared.ts          # 共享提示词（系统信息、规则）
 └── types.ts           # 提示词类型定义
 ```
 
-### 3. 类型安全
+### 3. 会话管理系统
+
+会话数据按项目隔离存储：
+
+```
+project/
+└── .claw-code/
+    └── conversations/
+        ├── session-uuid-1.json  # 会话 1
+        ├── session-uuid-2.json  # 会话 2
+        └── ...
+```
+
+每个会话文件包含：
+- `sessionId`: 唯一标识符
+- `title`: 会话标题
+- `messages`: 消息历史
+- `updatedAt`: 最后更新时间
+- `messageCount`: 消息数量
+
+### 4. 类型安全
 
 全项目采用 TypeScript，确保：
 
@@ -369,7 +402,7 @@ prompts/
 - ✅ 组件 Props 类型检查
 - ✅ 状态管理类型推导
 
-### 4. 性能优化
+### 5. 性能优化
 
 - ✅ **代码分割**：Vite 自动代码分割
 - ✅ **懒加载**：Monaco Editor 按需加载语言包
@@ -377,7 +410,7 @@ prompts/
 - ✅ **防抖节流**：搜索、保存等操作防抖
 - ✅ **透明滚动条**：不占用布局空间的滚动条
 
-### 5. 跨平台支持
+### 6. 跨平台支持
 
 - ✅ **macOS**：原生标题栏、交通灯按钮、签名支持
 - ✅ **Windows**：打包配置完整
@@ -391,20 +424,20 @@ prompts/
 
 | 类别 | 文件数 | 代码行数 |
 |------|--------|----------|
-| TypeScript/React | ~60 | ~8,000 |
-| CSS | ~7 | ~8,000 |
-| 总计 | ~67 | ~16,000 |
+| TypeScript/React | ~50 | ~7,000 |
+| CSS | ~8 | ~8,500 |
+| 总计 | ~58 | ~15,500 |
 
 ### 构建产物
 
 | 文件 | 大小 |
 |------|------|
-| Main Process | 261 KB |
-| Preload | 7.7 KB |
-| Renderer JS | 1.75 MB |
-| Renderer CSS | 199 KB |
-| ASAR 包 | ~158 MB |
-| 完整应用 | ~407 MB |
+| Main Process | ~305 KB |
+| Preload | ~11 KB |
+| Renderer JS | ~1.8 MB |
+| Renderer CSS | ~200 KB |
+| ASAR 包 | ~160 MB |
+| 完整应用 | ~410 MB |
 
 ---
 
@@ -414,8 +447,8 @@ prompts/
 
 ```json
 {
-  "appId": "com.smpcode.app",
-  "productName": "SMP Code",
+  "appId": "com.clawcode.app",
+  "productName": "Claw Code",
   "mac": {
     "category": "public.app-category.developer-tools",
     "target": ["dir"],
@@ -480,7 +513,7 @@ npm install
 **解决**:
 ```bash
 # 查看日志 (macOS)
-log stream --predicate 'process == "SMP Code"' --info
+log stream --predicate 'process == "Claw Code"' --info
 ```
 
 ---
@@ -563,14 +596,14 @@ chore: 构建/工具
 - [React](https://react.dev/) - 前端 UI 框架
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) - VSCode 同款编辑器
 - [VSCode](https://github.com/microsoft/vscode) - 设计参考
-- [Trae](https://www.trae.ai/) - UI 风格参考
+- [Kilo Code](https://github.com/kilocode/kilo-code) - UI 风格和交互参考
 - [Shiki](https://shiki.style/) - 语法高亮引擎
 
 ---
 
 <div align="center">
 
-**Made with ❤️ by SMP Code Team**
+**Made with ❤️ by Claw Code Team**
 
 ⭐ 如果这个项目对你有帮助，请给个 Star 支持一下！
 

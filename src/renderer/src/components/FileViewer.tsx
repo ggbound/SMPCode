@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { Tab } from './FileTabs'
 import { t } from '../i18n'
-import { useCodeCompletion } from '../hooks/useCodeCompletion'
-import { useCodeIntelligence } from '../hooks/useCodeIntelligence'
-import { CodeCompletion } from './CodeCompletion'
-import { InlineEdit } from './InlineEdit'
 import MonacoEditor from './MonacoEditor'
 import Breadcrumbs from './Breadcrumbs'
 import { File } from 'lucide-react'
@@ -29,34 +25,8 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContentRef = useRef('')
   const editorRef = useRef<HTMLDivElement>(null)
-  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 })
-  const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null)
-  const [showInlineEdit, setShowInlineEdit] = useState(false)
-  const [inlineEditCode, setInlineEditCode] = useState('')
 
-  // VS Code Copilot integration hooks
-  const {
-    isLoading: completionLoading,
-    completions,
-    activeIndex,
-    visible: completionVisible,
-    triggerCompletion,
-    acceptCompletion,
-    rejectCompletion,
-    nextCompletion,
-    prevCompletion,
-    getActiveCompletion
-  } = useCodeCompletion()
 
-  const {
-    explanation,
-    refactoring,
-    inlineEdit,
-    explainCode,
-    refactorCode,
-    getInlineEdit,
-    clearResults
-  } = useCodeIntelligence()
 
   // Reset content when tab changes
   useEffect(() => {
@@ -335,74 +305,6 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     return mappedLang || 'text'
   }, [tab?.path, editedContent])
 
-  // Handle editor selection change for Monaco
-  const handleEditorSelectionChange = useCallback((selection: any) => {
-    if (selection && selection.startLineNumber && selection.endLineNumber) {
-      setSelectionRange({
-        start: selection.startLineNumber,
-        end: selection.endLineNumber
-      })
-      // Get selected text
-      if (selection.startLineNumber !== selection.endLineNumber || 
-          selection.startColumn !== selection.endColumn) {
-        // Calculate selected text - would need editor instance
-        setInlineEditCode('')
-      }
-    } else {
-      setSelectionRange(null)
-    }
-  }, [])
-
-  // Handle editor cursor activity for completions
-  const handleEditorCursorChange = useCallback((position: any) => {
-    // Update cursor position for UI
-    setCursorPosition({ x: position.column, y: position.lineNumber })
-  }, [])
-
-  // Handle code explanation
-  const handleExplainCode = useCallback(async () => {
-    if (!tab || !selectionRange) return
-    const code = inlineEditCode
-    await explainCode(code, language, tab.path, selectionRange)
-  }, [tab, language, selectionRange, inlineEditCode, explainCode])
-
-  // Handle inline edit trigger
-  const handleInlineEdit = useCallback(async (instruction: string) => {
-    if (!tab || !selectionRange) return
-    await getInlineEdit(inlineEditCode, instruction, language, tab.path, selectionRange)
-    setShowInlineEdit(true)
-  }, [tab, language, selectionRange, inlineEditCode, getInlineEdit])
-
-  // Handle inline edit accept
-  const handleInlineEditAccept = useCallback(() => {
-    if (inlineEdit?.editedCode) {
-      handleContentChange(inlineEdit.editedCode)
-    }
-    setShowInlineEdit(false)
-    clearResults()
-  }, [inlineEdit, handleContentChange, clearResults])
-
-  // Handle inline edit reject
-  const handleInlineEditReject = useCallback(() => {
-    setShowInlineEdit(false)
-    clearResults()
-  }, [clearResults])
-
-  // Handle completion accept
-  const handleCompletionAccept = useCallback((index?: number) => {
-    const completion = acceptCompletion(index)
-    if (completion) {
-      // Insert completion at cursor position
-      // This would need to be integrated with the editor instance
-      console.log('Accepted completion:', completion)
-    }
-  }, [acceptCompletion])
-
-  // Handle completion reject
-  const handleCompletionReject = useCallback(() => {
-    rejectCompletion()
-  }, [rejectCompletion])
-
   if (!tab) {
     return (
       <div className="file-viewer file-viewer-empty">
@@ -449,7 +351,7 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
             <img src={`file://${tab.path}`} alt={fileName} />
           </div>
         ) : (
-          <div className="code-editor-container" ref={editorRef} style={{ position: 'relative' }}>
+          <div className="code-editor-container" ref={editorRef}>
             <MonacoEditor
               value={editedContent}
               language={language}
@@ -458,41 +360,10 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
               onCursorPositionChange={onCursorPositionChange}
               onMount={onEditorMount}
             />
-
-            {/* Copilot Code Completion Overlay */}
-            <CodeCompletion
-              visible={completionVisible}
-              completions={completions}
-              activeIndex={activeIndex}
-              cursorPosition={cursorPosition}
-              ghostText={getActiveCompletion()}
-              onAccept={handleCompletionAccept}
-              onReject={handleCompletionReject}
-              onNext={nextCompletion}
-              onPrev={prevCompletion}
-            />
           </div>
         )}
       </div>
 
-      {/* Inline Edit Modal */}
-      <InlineEdit
-        visible={showInlineEdit}
-        originalCode={inlineEditCode}
-        editedCode={inlineEdit?.editedCode || ''}
-        explanation={inlineEdit?.explanation || ''}
-        diff={inlineEdit?.diff || ''}
-        loading={inlineEdit?.loading || false}
-        error={inlineEdit?.error}
-        onAccept={handleInlineEditAccept}
-        onReject={handleInlineEditReject}
-        onModify={(newCode) => {
-          handleContentChange(newCode)
-          setShowInlineEdit(false)
-          clearResults()
-        }}
-        language={language}
-      />
     </div>
   )
 }

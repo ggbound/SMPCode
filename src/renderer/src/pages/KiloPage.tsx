@@ -167,27 +167,16 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
       return
     }
     
-    const sessionId = uuidv4()
-    const sessionTitle = title || '新对话'
+    // 不立即创建会话，而是标记为“准备创建”
+    // 只有当用户发送第一条消息时，才真正创建并保存会话
+    // 这样可以避免产生无用的空会话
     
-    const session: KiloSession = {
-      id: sessionId,
-      title: sessionTitle,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messageCount: 0,
-      mode: store.currentMode
-    }
-    
-    store.addSession(session)
-    store.setCurrentSession(sessionId)
+    // 清空当前消息，准备开始新对话
     store.clearMessages()
+    store.setCurrentSession(null)
     
-    // 不立即保存，只有当用户发送第一条消息时才保存
-    // 这样可以避免产生无用的空会话文件
-    // useKiloConversation 会在对话完成时自动保存
-    
-    return sessionId
+    // 返回 null 表示尚未创建会话
+    return null
   }, [store, projectPath])
   
   // 删除会话

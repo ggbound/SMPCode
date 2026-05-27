@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react'
-import { useKiloStore, KiloMessage, KiloToolCall, TextBlock, ToolCallBlock } from '../store/kiloStore'
+import { useKiloStore, KiloMessage, KiloSession, KiloToolCall, TextBlock, ToolCallBlock } from '../store/kiloStore'
 import { AgentMode, AGENT_MODE_CONFIGS } from '../types/agent'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -91,6 +91,25 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     if (!content.trim() || store.isGenerating) return
     
     setError(null)
+    
+    // 如果当前没有会话，创建一个新会话（在发送第一条消息时）
+    if (!store.currentSession && projectPath) {
+      const sessionId = uuidv4()
+      const sessionTitle = content.trim().slice(0, 50) // 使用用户输入的前50个字符作为标题
+      
+      const session: KiloSession = {
+        id: sessionId,
+        title: sessionTitle,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: 0,
+        mode: store.currentMode
+      }
+      
+      store.addSession(session)
+      store.setCurrentSession(sessionId)
+      console.log('[useKiloConversation] Created new session on first message:', sessionId)
+    }
     
     // 创建用户消息
     const userMessage: KiloMessage = {
