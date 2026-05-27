@@ -1,16 +1,14 @@
 /**
  * 消息项组件 - 优化版本
  * 使用 React.memo 避免不必要的重渲染
+ * 参考 Kilo Code 设计风格
  */
 
-import { memo, useState, useCallback } from 'react'
+import { memo } from 'react'
 import type { Message, ImageContent } from '../store'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
-import { CodeBlock } from './CodeBlock'
+import { MarkdownRenderer } from './MarkdownRenderer'
 import { t } from '../i18n'
-import BuilderMessage from './BuilderMessage'
+import { KiloChatMessage } from './KiloChatMessage'
 
 // 图片画廊组件
 const ImageGallery = memo(function ImageGallery({ images }: { images: ImageContent[] }) {
@@ -93,20 +91,6 @@ export const MessageItem = memo(function MessageItem({
   onStopTimeout,
   isTimeoutMessage
 }: MessageItemProps) {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
-
-  const copyToClipboard = useCallback(async (text: string, id?: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      if (id) {
-        setCopiedId(id)
-        setTimeout(() => setCopiedId(null), 2000)
-      }
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }, [])
-
   // 用户消息
   if (msg.role === 'user') {
     return (
@@ -119,11 +103,11 @@ export const MessageItem = memo(function MessageItem({
     )
   }
 
-  // Builder 模式消息
+  // Builder 模式消息 - 使用 Kilo 风格组件
   if (msg.isBuilder) {
     return (
       <div className="assistant-message-wrapper">
-        <BuilderMessage
+        <KiloChatMessage
           message={msg}
           onContinue={isTimeoutMessage ? onContinueTimeout : undefined}
           onStop={isTimeoutMessage ? onStopTimeout : undefined}
@@ -136,134 +120,7 @@ export const MessageItem = memo(function MessageItem({
   return (
     <div className="assistant-message-wrapper">
       <div className="assistant-message-content">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]}
-          components={{
-            pre: ({ children }) => {
-              const codeElement = children as React.ReactElement<{
-                className?: string
-                children?: React.ReactNode
-              }>
-              const className = codeElement?.props?.className || ''
-              const languageMatch = /language-(\w+)/.exec(className || '')
-              // MonacoCodeHighlight 内部会处理语言标准化
-              const language = languageMatch ? languageMatch[1] : 'text'
-              const codeContent = codeElement?.props?.children || ''
-              const codeId = `${index}-${language}-${String(codeContent).slice(0, 20)}`
-              const isCopied = copiedId === codeId
-
-              if (!codeContent || String(codeContent).trim().length === 0) {
-                return null
-              }
-
-              const contentStr = String(codeContent)
-
-              // 检查是否是目录树
-              const isDirectoryTree =
-                /[├└│─]/.test(contentStr) ||
-                /^\s*├──|^\s*└──|^\s*│/.test(contentStr)
-
-              // 检查是否是 Markdown
-              const looksLikeMarkdown =
-                /^\s*#{1,6}\s+/.test(contentStr) ||
-                /^\s*[-*+]\s+/.test(contentStr) ||
-                /^\s*\d+\.\s+/.test(contentStr) ||
-                /^\s*\[.+\]\(.+\)/.test(contentStr) ||
-                /^\s*\*\*.+\*\*/.test(contentStr) ||
-                /^\s*__.+__/.test(contentStr)
-
-              if (looksLikeMarkdown && language === 'text') {
-                return (
-                  <div className="markdown-content-wrapper">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
-                      {contentStr}
-                    </ReactMarkdown>
-                  </div>
-                )
-              }
-
-              if (isDirectoryTree) {
-                return (
-                  <div className="code-block-wrapper">
-                    <div className="code-block-header">
-                      <span className="code-language">目录结构</span>
-                      <button
-                        onClick={() => copyToClipboard(contentStr, codeId)}
-                        className={`copy-button ${isCopied ? 'copied' : ''}`}
-                      >
-                        {isCopied ? t('copied') : t('copy')}
-                      </button>
-                    </div>
-                    <div className="code-block-content">
-                      <pre
-                        style={{
-                          margin: 0,
-                          padding: '16px',
-                          background: '#1e1e1e',
-                          fontSize: '13px',
-                          lineHeight: '1.6',
-                          overflow: 'auto'
-                        }}
-                      >
-                        {contentStr}
-                      </pre>
-                    </div>
-                  </div>
-                )
-              }
-
-              return (
-                <div className="code-block-wrapper">
-                  <div className="code-block-header">
-                    <span className="code-language">
-                      {language === 'text' ? '代码' : language}
-                    </span>
-                    <button
-                      onClick={() => copyToClipboard(contentStr, codeId)}
-                      className={`copy-button ${isCopied ? 'copied' : ''}`}
-                    >
-                      {isCopied ? t('copied') : t('copy')}
-                    </button>
-                  </div>
-                  <div className="code-block-content">
-                    <CodeBlock
-                      code={contentStr}
-                      language={language}
-                      showLineNumbers={true}
-                      maxHeight={500}
-                    />
-                  </div>
-                </div>
-              )
-            },
-            code: ({ children, className }) => {
-              const languageMatch = /language-(\w+)/.exec(className || '')
-              const language = languageMatch ? languageMatch[1] : ''
-              const isInline = !language
-
-              if (isInline) {
-                return (
-                  <code
-                    style={{
-                      background: 'var(--bg-tertiary)',
-                      padding: '2px 6px',
-                      borderRadius: '4px',
-                      fontSize: '0.9em',
-                      fontFamily: 'monospace'
-                    }}
-                  >
-                    {children}
-                  </code>
-                )
-              }
-
-              return <code className={className}>{children}</code>
-            }
-          }}
-        >
-          {msg.content}
-        </ReactMarkdown>
+        <MarkdownRenderer content={msg.content} />
       </div>
     </div>
   )

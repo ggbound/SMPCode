@@ -1,13 +1,13 @@
 /// <reference types="./env" />
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore, type ProviderConfig, type Session, type Step, type ImageContent } from './store'
-import ChatArea from './components/ChatArea'
+import KiloPage from './pages/KiloPage'
 import SettingsModal from './components/SettingsModal'
-import StatusBar from './components/StatusBar'
 import TitleBar from './components/TitleBar'
 import ActivityBar, { type ActivityBarItem } from './components/ActivityBar'
 import FileExplorer from './components/FileExplorer'
 import SearchPanel from './components/SearchPanel'
+import GitPanel from './components/GitPanel'
 import FileViewer from './components/FileViewer'
 import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
@@ -15,7 +15,7 @@ import SessionSidebar from './components/SessionSidebar'
 import SessionBar from './components/SessionBar'
 import CommandPalette, { type Command } from './components/CommandPalette'
 import { t } from './i18n'
-import { useChatMode, useAgentMode } from './hooks'
+import { useChatMode, useAgentMode, useUnifiedConversation } from './hooks'
 import {
   buildChatModePrompt,
   buildAgentModePrompt,
@@ -25,11 +25,11 @@ import {
 import { useCodeCompletion } from './hooks/useCodeCompletion'
 import { useCodeIntelligence } from './hooks/useCodeIntelligence'
 import FileWriteIndicator, { useFileWriteStatus } from './components/FileWriteIndicator'
-import { ToolCallPanel } from './components/ToolCallPanel'
 import './styles/completion.css'
 import { getLanguageFromPath } from './utils/languageMap'
 
-const API_BASE = 'http://localhost:3847/api'
+// API_BASE 已移除 - 现在使用 IPC 通信替代 HTTP API
+// const API_BASE = 'http://localhost:3847/api'
 
 // Project context cache
 let cachedProjectContext: string = ''
@@ -150,10 +150,6 @@ function App() {
   // Monaco Editor cursor position
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 })
 
-  // Initialize mode-specific hooks
-  const { processChatMessage, stopGeneration: stopChatGeneration } = useChatMode()
-  const { processAgentMessage, stopGeneration: stopAgentGeneration, buildSystemPrompt: buildAgentSystemPrompt } = useAgentMode()
-
   // VS Code Copilot integration hooks
   const codeCompletion = useCodeCompletion()
   const codeIntelligence = useCodeIntelligence()
@@ -196,16 +192,42 @@ function App() {
     updateStepStatus
   } = useStore()
 
-  // Load commands and tools on mount
+  // Initialize mode-specific hooks
+  const { processChatMessage, stopGeneration: stopChatGeneration } = useChatMode()
+  const { processAgentMessage, stopGeneration: stopAgentGeneration, buildSystemPrompt: buildAgentSystemPrompt } = useAgentMode()
+
+  // 新的统一对话 Hook（基于 claw-code 架构）
+  const {
+    sendMessage: sendUnifiedMessage,
+    stopGeneration: stopUnifiedGeneration,
+    isRunning: isUnifiedRunning
+  } = useUnifiedConversation({
+    cwd: projectPath || '/',
+    projectPath,
+    currentSession,
+    localSessions,
+    chatMode,
+    commands,
+    tools,
+    systemPrompt: '', // 将在发送时动态构建
+    maxIterations: 16
+  })
+
+  // Load commands and tools on mount via IPC
   useEffect(() => {
     const loadData = async () => {
       try {
-        // Try IPC first, fallback to HTTP API
-        let commands = []
-        let tools = []
+        // 使用 IPC 加载命令和工具
+        type CommandData = { name: string; responsibility: string; source_hint?: string; description?: string }
+        type ToolData = { name: string; responsibility: string; source_hint?: string; description?: string }
+        let commands: CommandData[] = []
+        let tools: ToolData[] = []
         
-        // Try IPC
-        const api = window.api as unknown as { getCommands?: () => Promise<Array<{ name: string; responsibility: string }>>; getTools?: () => Promise<Array<{ name: string; responsibility: string }>> }
+        const api = window.api as unknown as { 
+          getCommands?: () => Promise<CommandData[]>
+          getTools?: () => Promise<ToolData[]>
+        }
+        
         if (api?.getCommands) {
           console.log('Loading commands via IPC...')
           commands = await api.getCommands()
@@ -218,73 +240,24 @@ function App() {
           console.log('Loaded tools via IPC:', tools.length)
         }
         
-        // Fallback to HTTP API if IPC not available or returned empty
-        if (commands.length === 0) {
-          console.log('Loading commands via HTTP API...')
-          // Try new Port Architecture API first
-          try {
-            const portCommandsRes = await fetch(`${API_BASE}/port/commands`)
-            if (portCommandsRes.ok) {
-              const commandsData = await portCommandsRes.json()
-              commands = commandsData.commands || []
-              console.log('Loaded commands via Port API:', commands.length)
-            }
-          } catch (portError) {
-            console.log('Port API not available, falling back to legacy API')
-            const commandsRes = await fetch(`${API_BASE}/commands`)
-            if (commandsRes.ok) {
-              const commandsData = await commandsRes.json()
-              commands = commandsData.commands || []
-              console.log('Loaded commands via HTTP:', commands.length)
-            }
-          }
-        }
+        // 添加 source_hint 字段以匹配类型要求
+        const commandsWithSourceHint: import('./store').Command[] = commands.map(cmd => ({
+          name: cmd.name,
+          responsibility: cmd.responsibility,
+          source_hint: cmd.source_hint || cmd.description || 'builtin'
+        }))
         
-        // Try to load tools with definitions (OpenAI format with parameters)
-        if (tools.length === 0) {
-          console.log('Loading tools via HTTP API...')
-          try {
-            // Use /api/tools/definitions for OpenAI format with parameters
-            const definitionsRes = await fetch(`${API_BASE}/tools/definitions`)
-            if (definitionsRes.ok) {
-              const definitionsData = await definitionsRes.json()
-              // Convert OpenAI format to internal format
-              tools = (definitionsData.tools || []).map((tool: { type: string; function: { name: string; description: string; parameters: { properties: Record<string, unknown>; required: string[] } } }) => ({
-                name: tool.function.name,
-                responsibility: tool.function.description,
-                source_hint: `tools/${tool.function.name}`,
-                parameters: tool.function.parameters?.properties || {},
-                required: tool.function.parameters?.required || []
-              }))
-              console.log('Loaded tools via definitions API:', tools.length)
-            }
-          } catch (defError) {
-            console.log('Definitions API not available, falling back to legacy API')
-            // Fallback to legacy API
-            try {
-              const portToolsRes = await fetch(`${API_BASE}/port/tools`)
-              if (portToolsRes.ok) {
-                const toolsData = await portToolsRes.json()
-                tools = toolsData.tools || []
-                console.log('Loaded tools via Port API:', tools.length)
-              }
-            } catch (portError) {
-              console.log('Port API not available, falling back to basic API')
-              const toolsRes = await fetch(`${API_BASE}/tools`)
-              if (toolsRes.ok) {
-                const toolsData = await toolsRes.json()
-                tools = toolsData.tools || []
-                console.log('Loaded tools via HTTP:', tools.length)
-              }
-            }
-          }
-        }
+        const toolsWithSourceHint: import('./store').Tool[] = tools.map(tool => ({
+          name: tool.name,
+          responsibility: tool.responsibility,
+          source_hint: tool.source_hint || tool.description || 'builtin'
+        }))
         
-        if (commands.length > 0) {
-          setCommands(commands)
+        if (commandsWithSourceHint.length > 0) {
+          setCommands(commandsWithSourceHint)
         }
-        if (tools.length > 0) {
-          setTools(tools)
+        if (toolsWithSourceHint.length > 0) {
+          setTools(toolsWithSourceHint)
         }
         
         setDataLoaded(true)
@@ -345,6 +318,9 @@ function App() {
     stopChatGeneration()
     stopAgentGeneration()
     
+    // Stop unified conversation
+    stopUnifiedGeneration()
+    
     // Clear pending continuation to prevent it from being executed on next message
     if (pendingContinuation) {
       console.log('[handleStopGeneration] Clearing pending continuation due to user stop')
@@ -379,19 +355,9 @@ function App() {
         return
       }
 
-      // Get current working directory
-      let currentCwd = projectPath || '/'
-      if (!currentCwd || currentCwd === '/') {
-        try {
-          const cwdRes = await fetch(`${API_BASE}/cwd`)
-          if (cwdRes.ok) {
-            const cwdData = await cwdRes.json()
-            currentCwd = cwdData.cwd || '/'
-          }
-        } catch (e) {
-          console.error('Failed to get cwd:', e)
-        }
-      }
+      // Get current working directory from projectPath
+      const currentCwd = projectPath || '/'
+      console.log('[handleContinueExecution] Current working directory:', currentCwd)
 
       // Clear pending continuation
       setPendingContinuation(null)
@@ -426,17 +392,16 @@ function App() {
       // 如果没有当前会话，自动创建一个新会话
       if (!currentSession) {
         try {
-          // 使用旧的 API 创建会话（与消息保存 API 兼容）
-          const res = await fetch(`${API_BASE}/sessions`, { method: 'POST' })
-          const session = await res.json()
-          
-          const sessionId = session.id
-          if (sessionId) {
-            addSession({ id: sessionId, createdAt: new Date().toISOString(), messageCount: 0 })
-            selectSession(sessionId)
-            clearMessages()
-            console.log('Created session via legacy API:', sessionId)
+          const newSessionId = `session-${Date.now()}`
+          const newSession = {
+            id: newSessionId,
+            createdAt: new Date().toISOString(),
+            messageCount: 0
           }
+          addSession(newSession)
+          selectSession(newSessionId)
+          clearMessages()
+          console.log('Created session via IPC:', newSessionId)
         } catch (error) {
           console.error('Failed to create initial session:', error)
         }
@@ -466,14 +431,24 @@ function App() {
     // Update tokens (estimate)
     updateTokens(userContent.length / 4, result.content.length / 4)
 
-    // Auto-open written files
+    // Auto-open written files via IPC
     if (result.writtenFiles.length > 0) {
       const lastFile = result.writtenFiles[result.writtenFiles.length - 1]
       try {
-        const readRes = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(lastFile)}`)
-        if (readRes.ok) {
-          const fileData = await readRes.json() as { content?: string }
-          openFile(lastFile, fileData.content || '')
+        // 使用 IPC 读取文件
+        const api = window.api as unknown as { 
+          executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+        }
+        if (api?.executeTool) {
+          const fileResult = await api.executeTool(
+            `auto-open-${Date.now()}`,
+            'read_file',
+            { path: lastFile },
+            projectPath || '/'
+          )
+          if (fileResult.success && fileResult.output) {
+            openFile(lastFile, fileResult.output)
+          }
         }
       } catch (readError) {
         console.error('Failed to auto-open file:', readError)
@@ -484,7 +459,7 @@ function App() {
     // 不需要再手动调用 HTTP API
   }
 
-  // Fetch project context from main process
+  // Fetch project context from main process via IPC
   const fetchProjectContext = useCallback(async (projectPath: string): Promise<string> => {
     // Return cached context if path hasn't changed
     if (cachedProjectContext && cachedProjectPath === projectPath) {
@@ -494,14 +469,23 @@ function App() {
 
     try {
       console.log('[ProjectContext] Fetching context for:', projectPath)
-      const res = await fetch(`${API_BASE}/project-context?path=${encodeURIComponent(projectPath)}`)
-      if (res.ok) {
-        const data = await res.json()
-        if (data.context) {
-          cachedProjectContext = data.context
+      // 使用 IPC 调用获取项目上下文
+      const api = window.api as unknown as { 
+        executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+      }
+      if (api?.executeTool) {
+        const result = await api.executeTool(
+          `project-context-${Date.now()}`,
+          'list_directory',
+          { path: projectPath, recursive: false },
+          projectPath
+        )
+        if (result.success && result.output) {
+          const context = `Project structure:\n${result.output}`
+          cachedProjectContext = context
           cachedProjectPath = projectPath
-          console.log('[ProjectContext] Context fetched successfully, length:', data.context.length)
-          return data.context
+          console.log('[ProjectContext] Context fetched successfully, length:', context.length)
+          return context
         }
       }
     } catch (error) {
@@ -530,22 +514,8 @@ function App() {
       return
     }
 
-    // Sync working directory with backend
-    try {
-      const res = await fetch(`${API_BASE}/cwd`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cwd: newPath })
-      })
-      if (res.ok) {
-        const data = await res.json()
-        console.log('[handleProjectPathChange] Working directory synced:', data.cwd)
-      } else {
-        console.error('[handleProjectPathChange] Failed to sync working directory')
-      }
-    } catch (error) {
-      console.error('[handleProjectPathChange] Error syncing working directory:', error)
-    }
+    // Working directory is now managed by projectPath, no need to sync with backend
+    console.log('[handleProjectPathChange] Working directory set to:', newPath)
 
     try {
       // TRAE风格：从本地存储加载会话列表
@@ -698,18 +668,18 @@ function App() {
   }, [messages, projectPath, currentSession, localSessions])
 
   const handleNewSession = useCallback(async () => {
-    // Always create a new session using legacy API (compatible with messages API)
+    // Create a new session via IPC
     try {
-      const res = await fetch(`${API_BASE}/sessions`, { method: 'POST' })
-      const session = await res.json()
-      
-      const sessionId = session.id
-      if (sessionId) {
-        addSession({ id: sessionId, createdAt: new Date().toISOString(), messageCount: 0 })
-        selectSession(sessionId)
-        clearMessages()
-        console.log('Created new session:', sessionId)
+      const newSessionId = `session-${Date.now()}`
+      const newSession = {
+        id: newSessionId,
+        createdAt: new Date().toISOString(),
+        messageCount: 0
       }
+      addSession(newSession)
+      selectSession(newSessionId)
+      clearMessages()
+      console.log('Created new session:', newSessionId)
     } catch (error) {
       console.error('Failed to create new session:', error)
     }
@@ -931,36 +901,18 @@ function App() {
       const command = commands.find(cmd => cmd.name.toLowerCase() === commandName.toLowerCase())
       if (command) {
         try {
-          // Try new Port Architecture API first
-          let execData
-          try {
-            const portExecRes = await fetch(`${API_BASE}/port/exec-command`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: command.name, prompt: content })
-            })
-            if (portExecRes.ok) {
-              execData = await portExecRes.json()
-              console.log('Executed command via Port API:', command.name)
-            }
-          } catch (portError) {
-            console.log('Port API not available, falling back to legacy API')
-          }
-          
-          // Fallback to legacy API
-          if (!execData) {
-            const execRes = await fetch(`${API_BASE}/commands/execute`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ command: command.name, prompt: content })
-            })
-            if (execRes.ok) {
-              execData = await execRes.json()
+          // 使用 IPC 执行命令
+          const api = window.api as unknown as { 
+            cliChat?: {
+              executeCommand?: (name: string, prompt: string, cwd: string) => Promise<{ success: boolean; result?: { success: boolean; output: string; error?: string; cwd: string } }>
             }
           }
-          
-          if (execData?.result) {
-            commandResult = execData.result
+          if (api?.cliChat?.executeCommand) {
+            const execResult = await api.cliChat.executeCommand(command.name, content, projectPath || '/')
+            if (execResult.success && execResult.result) {
+              commandResult = execResult.result
+              console.log('Executed command via IPC:', command.name)
+            }
           }
         } catch (error) {
           console.error('Failed to execute command:', error)
@@ -993,23 +945,8 @@ function App() {
 
     try {
       // Get current working directory for system prompt
-      let currentCwd = projectPath || '/'
-      console.log('[handleSendMessage] Initial currentCwd from projectPath:', currentCwd)
-
-      if (!currentCwd || currentCwd === '/') {
-        try {
-          const cwdRes = await fetch(`${API_BASE}/cwd`)
-          if (cwdRes.ok) {
-            const cwdData = await cwdRes.json()
-            currentCwd = cwdData.cwd || '/'
-            console.log('[handleSendMessage] currentCwd from API:', currentCwd)
-          }
-        } catch (e) {
-          console.error('Failed to get cwd:', e)
-        }
-      }
-
-      console.log('[handleSendMessage] Final currentCwd:', currentCwd)
+      const currentCwd = projectPath || '/'
+      console.log('[handleSendMessage] Current working directory:', currentCwd)
 
       // Fetch project context if available
       let projectContextStr = ''
@@ -1044,41 +981,14 @@ function App() {
       // Add the user message (with images if provided)
       apiMessages.push({ role: 'user', content: buildMultimodalContent(content, images) })
 
-      if (isAgentMode) {
-        // Agent mode: Use useAgentMode hook
-        console.log('[handleSendMessage] Agent mode - using useAgentMode hook')
-
-        // Simply call processAgentMessage - same as chat mode but with more tools
-        await processAgentMessage(content, apiMessages as import('./store').Message[], {
-          providerApiKey,
-          providerApiUrl,
-          model,
-          currentCwd,
-          projectPath,
-          currentSession,
-          localSessions,
-          commands: commands.map(c => ({ name: c.name, description: c.responsibility })),
-          tools: tools.map(t => ({
-            name: t.name,
-            description: t.responsibility,
-            parameters: t.parameters,
-            required: t.required
-          }))
-        })
-      } else {
-        // Chat mode: Use useChatMode hook
-        console.log('[handleSendMessage] Chat mode - using useChatMode hook')
-        
-        await processChatMessage(content, apiMessages as import('./store').Message[], {
-          providerApiKey,
-          providerApiUrl,
-          model,
-          currentCwd,
-          projectPath,
-          currentSession,
-          localSessions
-        })
-      }
+      // 使用新的统一对话 Hook（基于 claw-code 架构）
+      console.log(`[handleSendMessage] ${isAgentMode ? 'Agent' : 'Chat'} mode - using useUnifiedConversation hook`)
+      
+      await sendUnifiedMessage(content, apiMessages as import('./store').Message[], {
+        providerApiKey,
+        providerApiUrl,
+        model
+      })
 
     } catch (error) {
       console.error('[handleSendMessage] Error caught:', error)
@@ -1328,29 +1238,35 @@ function App() {
     ))
   }, [])
 
-  // Handle tab save
+  // Handle tab save via IPC
   const handleTabSave = useCallback(async (tabId: string, content: string): Promise<boolean> => {
     const tab = tabs.find(t => t.id === tabId)
     if (!tab) return false
 
     try {
-      const res = await fetch(`${API_BASE}/fs/write`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: tab.path, content })
-      })
-
-      if (res.ok) {
-        setTabs(prev => prev.map(t => 
-          t.id === tabId ? { ...t, content, isDirty: false } : t
-        ))
-        return true
+      // 使用 IPC 写入文件
+      const api = window.api as unknown as { 
+        executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+      }
+      if (api?.executeTool) {
+        const result = await api.executeTool(
+          `save-file-${Date.now()}`,
+          'write_file',
+          { path: tab.path, content },
+          projectPath || '/'
+        )
+        if (result.success) {
+          setTabs(prev => prev.map(t => 
+            t.id === tabId ? { ...t, content, isDirty: false } : t
+          ))
+          return true
+        }
       }
     } catch (error) {
       console.error('Failed to save file:', error)
     }
     return false
-  }, [tabs])
+  }, [tabs, projectPath])
 
   // Get active tab - must be before file menu event listeners
   const activeTab = tabs.find(t => t.id === activeTabId) || null
@@ -1373,10 +1289,20 @@ function App() {
       try {
         const filePath = await window.api?.openFile()
         if (filePath) {
-          const response = await fetch(`http://localhost:3847/api/file/read?path=${encodeURIComponent(filePath)}`)
-          if (response.ok) {
-            const data = await response.json()
-            openFile(filePath, data.content || '')
+          // 使用 IPC 读取文件
+          const api = window.api as unknown as { 
+            executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+          }
+          if (api?.executeTool) {
+            const result = await api.executeTool(
+              `open-file-${Date.now()}`,
+              'read_file',
+              { path: filePath },
+              projectPath || '/'
+            )
+            if (result.success) {
+              openFile(filePath, result.output || '')
+            }
           }
         }
       } catch (error) {
@@ -1419,24 +1345,30 @@ function App() {
         })
         
         if (result && !result.canceled && result.filePath) {
-          // Write to new file
-          const res = await fetch(`${API_BASE}/fs/write`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: result.filePath, content: activeTab.content })
-          })
-          
-          if (res.ok) {
-            // Update tab with new path
-            setTabs(prev => prev.map(t => 
-              t.id === activeTabId ? { 
-                ...t, 
-                path: result.filePath!, 
-                name: result.filePath!.split('/').pop()!,
-                isDirty: false 
-              } : t
-            ))
-            setSelectedFilePath(result.filePath!)
+          // Write to new file via IPC
+          const api = window.api as unknown as { 
+            executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+          }
+          if (api?.executeTool) {
+            const writeResult = await api.executeTool(
+              `save-as-${Date.now()}`,
+              'write_file',
+              { path: result.filePath, content: activeTab.content },
+              projectPath || '/'
+            )
+            
+            if (writeResult.success) {
+              // Update tab with new path
+              setTabs(prev => prev.map(t => 
+                t.id === activeTabId ? { 
+                  ...t, 
+                  path: result.filePath!, 
+                  name: result.filePath!.split('/').pop()!,
+                  isDirty: false 
+                } : t
+              ))
+              setSelectedFilePath(result.filePath!)
+            }
           }
         }
       } catch (error) {
@@ -1482,21 +1414,25 @@ function App() {
         // Check if it's a new file (not currently open)
         if (!openTab) {
           console.log('[App] New file detected, auto-opening:', changedFilePathUnix)
-          // Auto-open the new file
-          fetch(`http://localhost:3847/api/fs/read?path=${encodeURIComponent(changedFilePathUnix)}`)
-            .then(res => {
-              if (res.ok) return res.json()
-              throw new Error('Failed to read new file')
-            })
-            .then(fileData => {
-              if (fileData.content !== undefined) {
-                console.log('[App] Auto-opening new file with content length:', fileData.content.length)
-                openFile(changedFilePathUnix, fileData.content)
+          // Auto-open the new file via IPC
+          const api = window.api as unknown as { 
+            executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+          }
+          if (api?.executeTool) {
+            api.executeTool(
+              `auto-open-${Date.now()}`,
+              'read_file',
+              { path: changedFilePathUnix },
+              projectPath || '/'
+            ).then(fileData => {
+              if (fileData.success && fileData.output !== undefined) {
+                console.log('[App] Auto-opening new file with content length:', fileData.output.length)
+                openFile(changedFilePathUnix, fileData.output)
               }
-            })
-            .catch(err => {
+            }).catch((err: Error) => {
               console.error('[App] Failed to auto-open new file:', err)
             })
+          }
         }
         return
       }
@@ -1515,21 +1451,26 @@ function App() {
       console.log('[App] Opened file changed, refreshing content:', changedFilePathUnix)
       console.log('[App] Current tab content length:', openTab.content.length)
 
-      // Read the latest content from disk
-      fetch(`http://localhost:3847/api/fs/read?path=${encodeURIComponent(changedFilePathUnix)}`)
-        .then(res => {
-          console.log('[App] Fetch response status:', res.status)
-          return res.json()
-        })
-        .then(fileData => {
+      // Read the latest content from disk via IPC
+      const api = window.api as unknown as { 
+        executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+      }
+      if (api?.executeTool) {
+        api.executeTool(
+          `refresh-file-${Date.now()}`,
+          'read_file',
+          { path: changedFilePathUnix },
+          projectPath || '/'
+        ).then(fileData => {
+          console.log('[App] File read result via IPC:', fileData.success)
+          const fileContent = fileData.output
           console.log('[App] File read result:', {
-            hasContent: fileData.content !== undefined,
-            contentLength: fileData.content?.length || 0,
+            hasContent: fileContent !== undefined,
+            contentLength: fileContent?.length || 0,
             currentContentLength: openTab.content.length,
-            isDifferent: fileData.content !== openTab.content
+            isDifferent: fileContent !== openTab.content
           })
-
-          if (fileData.content !== undefined && fileData.content !== openTab.content) {
+          if (fileContent !== undefined && fileContent !== openTab.content) {
             console.log('[App] ✓ Content is different, updating tab...')
 
             // Update the tab content with animation flag
@@ -1540,9 +1481,9 @@ function App() {
                   console.log('[App] Updated tab:', {
                     id: tab.id,
                     oldContentLength: tab.content.length,
-                    newContentLength: fileData.content.length
+                    newContentLength: fileContent.length
                   })
-                  return { ...tab, content: fileData.content, isDirty: false, lastModified: Date.now() }
+                  return { ...tab, content: fileContent, isDirty: false, lastModified: Date.now() }
                 }
                 return tab
               })
@@ -1553,16 +1494,16 @@ function App() {
               console.log('[App] ✓ This is the active tab, editor should auto-update')
               // Dispatch a custom event to notify FileViewer of external change
               window.dispatchEvent(new CustomEvent('file-content-externally-changed', {
-                detail: { path: changedFilePathUnix, content: fileData.content }
+                detail: { path: changedFilePathUnix, content: fileContent }
               }))
             }
           } else {
             console.log('[App] ✗ Content is the same, no update needed')
           }
-        })
-        .catch(err => {
+        }).catch((err: Error) => {
           console.error('[App] ✗ Failed to read updated file:', err)
         })
+      }
     })
 
     return () => {
@@ -1796,18 +1737,25 @@ function App() {
                     setTimeout(() => goToLine(line), 100)
                   } else {
                     console.log('[App] Opening new file')
-                    // 读取文件内容
-                    fetch(`http://localhost:3847/api/fs/read?path=${encodeURIComponent(filePath)}`)
-                      .then(res => res.json())
-                      .then(data => {
-                        if (data.content !== undefined) {
+                    // 读取文件内容 via IPC
+                    const api = window.api as unknown as { 
+                      executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+                    }
+                    if (api?.executeTool) {
+                      api.executeTool(
+                        `open-search-result-${Date.now()}`,
+                        'read_file',
+                        { path: filePath },
+                        projectPath || '/'
+                      ).then(data => {
+                        if (data.success && data.output !== undefined) {
                           console.log('[App] File loaded, opening in editor')
-                          openFile(filePath, data.content)
+                          openFile(filePath, data.output)
                           // 延迟跳转，等待编辑器渲染完成
                           setTimeout(() => goToLine(line), 200)
                         }
-                      })
-                      .catch(err => console.error('Failed to read file:', err))
+                      }).catch((err: Error) => console.error('Failed to read file:', err))
+                    }
                   }
                 }}
               />
@@ -1844,54 +1792,20 @@ function App() {
               <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />
             </div>
 
-            {/* Right: Chat Area with Session Bar */}
+            {/* Right: Chat Area - Kilo Style */}
             <div className="right-column">
-              {/* Session Bar - 顶部横向会话管理 */}
-              <SessionBar
-                sessions={localSessions}
-                currentSession={currentSession}
-                projectPath={projectPath}
-                onSelectSession={handleSelectSessionFromSidebar}
-                onCreateSession={handleCreateSessionFromSidebar}
-                onDeleteSession={handleDeleteSessionFromSidebar}
-                onRenameSession={handleRenameSessionFromSidebar}
-              />
-              
-              {/* Chat Area */}
-              <ChatArea
-                messages={messages}
-                isLoading={isLoading}
-                onSendMessage={handleSendMessage}
-                onStopGeneration={handleStopGeneration}
-                messagesEndRef={messagesEndRef}
-                commands={commands}
-                permissionMode={permissionMode}
-                inputTokens={inputTokens}
-                outputTokens={outputTokens}
-                providers={providers}
+              <KiloPage 
+                apiKey={apiKey}
                 model={model}
+                providers={providers}
+                projectPath={projectPath || undefined}
                 onModelChange={setModel}
-                onContinueExecution={handleContinueExecution}
-                showContinueButton={!!pendingContinuation}
-                chatMode={chatMode}
-                onChatModeChange={setChatMode}
               />
             </div>
           </main>
         </div>
 
-        {/* Status Bar - VSCode style bottom status bar */}
-        <StatusBar
-          permissionMode={permissionMode}
-          inputTokens={inputTokens}
-          outputTokens={outputTokens}
-          activeTabPath={activeTab?.path}
-          activeTabLanguage={activeTab?.language}
-          cursorLine={cursorPosition.line}
-          cursorColumn={cursorPosition.column}
-          projectPath={projectPath}
-          onOpenSettings={() => setShowSettings(true)}
-        />
+
 
         {showSettings && (
           <SettingsModal
@@ -1915,8 +1829,7 @@ function App() {
         {/* File Write Status Indicator */}
         <FileWriteIndicatorStatus />
 
-        {/* Tool Call Panel */}
-        <ToolCallPanel />
+
       </div>
     </div>
   )

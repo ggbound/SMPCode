@@ -12,7 +12,10 @@ import {
   executeBash,
   executeListDirectory,
   executeSearchFiles,
-  executeDeleteFile
+  executeDeleteFile,
+  executeCheckPort,
+  executeKillProcess,
+  executeFindProcess
 } from './tool-implementations'
 
 // 统一的工具处理器类型
@@ -73,6 +76,9 @@ class ToolManager {
     this.register('list_directory', executeListDirectory)
     this.register('search_files', executeSearchFiles)
     this.register('delete_file', executeDeleteFile)
+    this.register('check_port', executeCheckPort)
+    this.register('kill_process', executeKillProcess)
+    this.register('find_process', executeFindProcess)
 
     this.isInitialized = true
     log.info(`[ToolManager] Initialized with ${this.tools.size} tools`)

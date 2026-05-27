@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react'
-import { File, Search, Settings } from 'lucide-react'
+import { File, Search, Settings, GitBranch } from 'lucide-react'
 import { t } from '../i18n'
 
-export type ActivityBarItem = 
+export type ActivityBarItem =
   | 'explorer'
   | 'search'
+  | 'git'
   | 'settings'
 
 interface ActivityBarProps {
@@ -18,6 +19,7 @@ function ActivityBar({ activeItem, onItemClick }: ActivityBarProps) {
   const activities: { id: ActivityBarItem; icon: ReactNode; label: string }[] = [
     { id: 'explorer', icon: <File size={24} />, label: t('explorer') || 'Explorer' },
     { id: 'search', icon: <Search size={24} />, label: 'Search' },
+    { id: 'git', icon: <GitBranch size={24} />, label: 'Git' },
     { id: 'settings', icon: <Settings size={24} />, label: t('settings') || 'Settings' },
   ]
 

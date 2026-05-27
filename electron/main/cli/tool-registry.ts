@@ -244,6 +244,8 @@ class ToolRegistry {
 
   /**
    * 转换为 OpenAI 格式
+   * 注意：OpenAI API 要求 properties 中的参数不包含 required 字段
+   * required 字段必须在 parameters 级别，是一个字符串数组
    */
   toOpenAIDefinitions(): Array<{
     type: 'function'
@@ -252,23 +254,36 @@ class ToolRegistry {
       description: string
       parameters: {
         type: 'object'
-        properties: Record<string, ToolParameter>
+        properties: Record<string, Omit<ToolParameter, 'required'>>
         required: string[]
       }
     }
   }> {
-    return this.getAll().map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.responsibility,
-        parameters: {
-          type: 'object',
-          properties: tool.parameters,
-          required: tool.required
+    return this.getAll().map(tool => {
+      // 移除 parameters 中的 required 字段，只保留 type、description、enum 等
+      const properties: Record<string, Omit<ToolParameter, 'required'>> = {}
+      for (const [key, param] of Object.entries(tool.parameters)) {
+        properties[key] = {
+          type: param.type,
+          description: param.description,
+          ...(param.enum && { enum: param.enum }),
+          ...(param.default !== undefined && { default: param.default })
         }
       }
-    }))
+      
+      return {
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.responsibility,
+          parameters: {
+            type: 'object',
+            properties,
+            required: tool.required
+          }
+        }
+      }
+    })
   }
 }
 

@@ -24,6 +24,14 @@ export function initializeToolClient(): void {
 
   console.log('[ToolClient] Initializing tool client...')
   console.log('[ToolClient] window.api:', window.api)
+  
+  if (!window.api) {
+    console.error('[ToolClient] ERROR: window.api is undefined!')
+    console.error('[ToolClient] This usually means the preload script was not loaded correctly.')
+    console.error('[ToolClient] Check if the preload script path is correct in BrowserWindow configuration.')
+    return
+  }
+  
   console.log('[ToolClient] onToolStatusChanged available:', !!window.api?.onToolStatusChanged)
 
   // 监听工具状态变化事件
@@ -47,7 +55,7 @@ export function initializeToolClient(): void {
     console.log('[ToolClient] Tool client initialized successfully')
   } else {
     console.error('[ToolClient] ERROR: onToolStatusChanged not available!')
-    console.error('[ToolClient] window.api keys:', window.api ? Object.keys(window.api) : 'window.api is undefined')
+    console.error('[ToolClient] window.api keys:', Object.keys(window.api))
   }
 }
 
@@ -69,6 +77,24 @@ export async function executeTool(
 
   const callId = uuidv4()
   const cwd = options.cwd || '/'
+
+  // CRITICAL: Log tool call details
+  console.log(`[ToolClient] ========== Tool Call Start ==========`)
+  console.log(`[ToolClient] Tool name: ${toolName}`)
+  console.log(`[ToolClient] Arguments type:`, typeof args)
+  console.log(`[ToolClient] Arguments keys:`, args ? Object.keys(args) : 'null')
+  console.log(`[ToolClient] Arguments:`, JSON.stringify(args, null, 2))
+  console.log(`[ToolClient] Working directory: ${cwd}`)
+  
+  // Validate execute_bash arguments
+  if (toolName === 'execute_bash') {
+    if (!args || !args.command) {
+      const errorMsg = `Command is required for execute_bash tool. Received args: ${JSON.stringify(args)}`
+      console.error(`[ToolClient] ${errorMsg}`)
+      return { success: false, output: '', error: errorMsg }
+    }
+    console.log(`[ToolClient] ✅ execute_bash command validated:`, args.command)
+  }
 
   // 在 store 中添加调用记录
   const store = getToolStore()

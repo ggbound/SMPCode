@@ -756,6 +756,10 @@ export async function startApiServer(): Promise<void> {
     try {
       const { apiKey, model, messages, tools, stream = false, apiUrl } = req.body
       log.info('[API] /api/chat called with', messages?.length, 'messages', 'apiUrl:', apiUrl || 'default')
+      log.info('[API] Tools received:', tools?.length || 0, 'tools')
+      if (tools && tools.length > 0) {
+        log.info('[API] Tool names:', tools.map((t: any) => t.function?.name || t.name))
+      }
 
       if (!apiKey) {
         res.status(400).json({ error: 'API key is required' })

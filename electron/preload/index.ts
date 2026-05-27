@@ -157,6 +157,19 @@ const api = {
   gitFileStatus: (repoPath: string, filePath: string) => ipcRenderer.invoke('git:file-status', { repoPath, filePath }),
   gitCommits: (repoPath: string, count?: number) => ipcRenderer.invoke('git:commits', { repoPath, count }),
   gitBranches: (repoPath: string) => ipcRenderer.invoke('git:branches', repoPath),
+  gitStage: (repoPath: string, files: string[]) => ipcRenderer.invoke('git:stage', { repoPath, files }),
+  gitUnstage: (repoPath: string, files: string[]) => ipcRenderer.invoke('git:unstage', { repoPath, files }),
+  gitCommit: (repoPath: string, message: string, files?: string[]) => ipcRenderer.invoke('git:commit', { repoPath, message, files }),
+  gitDiscard: (repoPath: string, files: string[]) => ipcRenderer.invoke('git:discard', { repoPath, files }),
+  gitCreateBranch: (repoPath: string, branchName: string, checkout?: boolean) => ipcRenderer.invoke('git:create-branch', { repoPath, branchName, checkout }),
+  gitCheckoutBranch: (repoPath: string, branchName: string) => ipcRenderer.invoke('git:checkout-branch', { repoPath, branchName }),
+  gitDeleteBranch: (repoPath: string, branchName: string, force?: boolean) => ipcRenderer.invoke('git:delete-branch', { repoPath, branchName, force }),
+  gitPush: (repoPath: string, remote?: string, branch?: string) => ipcRenderer.invoke('git:push', { repoPath, remote, branch }),
+  gitPull: (repoPath: string, remote?: string, branch?: string) => ipcRenderer.invoke('git:pull', { repoPath, remote, branch }),
+  gitDiff: (repoPath: string, filePath: string, staged?: boolean) => ipcRenderer.invoke('git:diff', { repoPath, filePath, staged }),
+  gitStashList: (repoPath: string) => ipcRenderer.invoke('git:stash-list', repoPath),
+  gitStash: (repoPath: string, message?: string) => ipcRenderer.invoke('git:stash', { repoPath, message }),
+  gitStashPop: (repoPath: string, index?: number) => ipcRenderer.invoke('git:stash-pop', { repoPath, index }),
 
   // File watching
   fsWatch: (dirPath: string) => ipcRenderer.invoke('fs:watch', dirPath),
@@ -202,7 +215,28 @@ const api = {
     isWholeWords?: boolean
     maxResults?: number
     useIgnoreFiles?: boolean
-  }) => ipcRenderer.invoke('search:execute', options)
+  }) => ipcRenderer.invoke('search:execute', options),
+
+  // CLI Chat API - 替代 HTTP API 模式
+  cliChat: {
+    // 创建会话
+    createSession: (mode: 'chat' | 'agent', cwd: string, initialPrompt?: string) =>
+      ipcRenderer.invoke('cli-chat:create-session', { mode, cwd, initialPrompt }),
+    // 发送消息（流式）
+    sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>, model?: string) =>
+      ipcRenderer.invoke('cli-chat:send-message', { sessionId, message, messages, model }),
+    // 停止会话
+    stopSession: (sessionId: string) =>
+      ipcRenderer.invoke('cli-chat:stop-session', { sessionId }),
+    // 删除会话
+    deleteSession: (sessionId: string) =>
+      ipcRenderer.invoke('cli-chat:delete-session', { sessionId }),
+    // 监听流式数据
+    onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => {
+      ipcRenderer.on('cli-chat:stream', callback)
+      return () => ipcRenderer.removeListener('cli-chat:stream', callback)
+    }
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

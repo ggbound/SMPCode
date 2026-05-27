@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeRaw from 'rehype-raw'
 import type { Message, ToolCall } from '../store'
-import { CodeBlock } from './CodeBlock'
 import { ThinkingPanel } from './ThinkingPanel'
 import { TimeoutPrompt } from './TimeoutPrompt'
 import { IterationMessage } from './IterationMessage'
+import { MessageStepList } from './MessageStep'
+import { MarkdownRenderer } from './MarkdownRenderer'
 import { Loader2, CheckCircle, XCircle, FileText, Edit3, PlusCircle, FolderOpen, FileSearch, Terminal, Trash2 } from 'lucide-react'
 
 interface BuilderMessageProps {
@@ -183,6 +181,89 @@ function parseIterationMessage(content: string) {
   }
 }
 
+/**
+ * 检测是否为工具调用 JSON
+ */
+function isToolCallJSON(code: string): boolean {
+  const trimmed = code.trim()
+  if (trimmed.startsWith('{"tool"') || trimmed.startsWith('"tool"')) {
+    return true
+  }
+  if (trimmed.includes('"tool"') && trimmed.includes('"arguments"')) {
+    return true
+  }
+  return false
+}
+
+/**
+ * 清理内容中的内部数据和工具调用标记
+ * 这是关键函数，用于过滤掉不应该显示给用户的内容
+ * 
+ * 注意：保留 thinking 标签内容，因为用户希望看到 AI 的思考过程
+ */
+function cleanInternalContent(content: string): string {
+  if (!content) return ''
+  
+  let cleaned = content
+  
+  // 1. 提取 thinking 标签内容并保留（不移除，因为用户希望看到思考过程）
+  // 只移除 thinking 标签本身，保留内容
+  cleaned = cleaned.replace(/<think>/gi, '')
+  cleaned = cleaned.replace(/<\/think>/gi, '')
+  
+  // 2. 移除工具调用 JSON 代码块（包括嵌套的情况）
+  // 匹配 ```json\n{"tool": "...", ...}\n``` 包括嵌套的 ```json
+  cleaned = cleaned.replace(/```json\s*\n?\s*\{\s*"tool"\s*:\s*"[^"]+"[\s\S]*?```\s*\n?/gi, '')
+  
+  // 3. 移除更复杂的嵌套工具调用 JSON 代码块
+  // 处理截图中看到的嵌套情况：```json\n{"tool":...}\n```json\n{...}
+  const nestedToolCallPattern = /```json\s*\n\s*\{\s*"tool"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}\s*\n```json\s*\n\s*\{\s*"tool"[\s\S]*?\n```/gi
+  cleaned = cleaned.replace(nestedToolCallPattern, '')
+  
+  // 4. 移除内联的工具调用 JSON（包括多行的情况）
+  // 匹配 {"tool": "...", "arguments": {...}} 包括跨行的情况
+  cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/gi, '')
+  
+  // 5. 移除工具调用标记
+  cleaned = cleaned.replace(/\*\*正在调用工具：\*\*\s*\w+\n?/gi, '')
+  cleaned = cleaned.replace(/\*\*工具执行结果：\*\*[\s\S]*?(?=\n\n|$)/gi, '')
+  cleaned = cleaned.replace(/\*\*工具执行失败：\*\*[\s\S]*?(?=\n\n|$)/gi, '')
+  
+  // 6. 移除重复的 "工具执行结果:" 标题
+  cleaned = cleaned.replace(/工具执行结果：\s*\n/gi, '')
+  
+  // 7. 清理多余的空行
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+  
+  // 8. 移除首尾空白
+  cleaned = cleaned.trim()
+  
+  return cleaned
+}
+
+/**
+ * 解析内容中的 thinking 标签
+ * 返回提取的思考内容和清理后的内容
+ */
+function parseThinkingTags(content: string): { thinking: string | null; cleaned: string } {
+  // 匹配 <thinking>内容</think> 格式
+  const thinkingRegex = /<thinking>([\s\S]*?)<\/think>/gi
+  const matches: string[] = []
+  
+  let match
+  while ((match = thinkingRegex.exec(content)) !== null) {
+    matches.push(match[1].trim())
+  }
+  
+  // 使用新的清理函数
+  const cleaned = cleanInternalContent(content)
+  
+  return {
+    thinking: matches.length > 0 ? matches.join('\n\n') : null,
+    cleaned
+  }
+}
+
 // 解析消息内容，提取思考过程和代码块
 function parseMessageContent(content: string) {
   const thinkingSteps: Array<{
@@ -194,33 +275,29 @@ function parseMessageContent(content: string) {
     lineNumbers?: boolean
   }> = []
   
-  let mainContent = content
+  // 首先清理内部数据（保留 thinking 内容，移除工具调用 JSON）
+  const cleaned = cleanInternalContent(content)
   
-  // 提取代码块
-  const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
-  let match
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    const language = match[1] || 'text'
-    const code = match[2]
-    
-    // 尝试提取文件路径（通常在代码块前的注释或文本中）
-    const beforeText = content.substring(Math.max(0, match.index - 200), match.index)
-    const filePathMatch = beforeText.match(/([\w\-]+\/)+[\w\-]+\.\w+/)
-    const filePath = filePathMatch ? filePathMatch[0] : undefined
-    
+  // 提取 thinking 内容（从原始内容）
+  const { thinking } = parseThinkingTags(content)
+  
+  // 如果存在 thinking 内容，添加为分析步骤
+  if (thinking) {
     thinkingSteps.push({
-      type: 'code',
-      title: filePath ? `问题找到了！在 ${filePath}` : '代码',
-      content: code,
-      filePath,
-      language,
-      lineNumbers: true
+      type: 'analysis',
+      title: 'AI 思考过程',
+      content: thinking
     })
   }
   
+  // 注意：不再从 mainContent 中提取代码块
+  // 代码块应该由 MarkdownRenderer 正常渲染
+  // 我们只提取特殊的操作步骤（搜索、命令等）用于展示
+  
   // 提取搜索操作
   const searchRegex = /在工作区搜索 ['"]([^'"]+)['"]/g
-  while ((match = searchRegex.exec(content)) !== null) {
+  let match
+  while ((match = searchRegex.exec(cleaned)) !== null) {
     thinkingSteps.push({
       type: 'search',
       title: `在工作区搜索 '${match[1]}'`,
@@ -229,7 +306,7 @@ function parseMessageContent(content: string) {
   
   // 提取终端命令
   const commandRegex = /\$ (.+)/g
-  while ((match = commandRegex.exec(content)) !== null) {
+  while ((match = commandRegex.exec(cleaned)) !== null) {
     thinkingSteps.push({
       type: 'command',
       title: '执行命令',
@@ -237,7 +314,9 @@ function parseMessageContent(content: string) {
     })
   }
   
-  return { thinkingSteps, mainContent }
+  // mainContent 保持完整，让 MarkdownRenderer 正常渲染
+  // 包括标题、列表、代码块等所有 Markdown 语法
+  return { thinkingSteps, mainContent: cleaned }
 }
 
 // 工具调用链组件
@@ -289,36 +368,9 @@ function ToolCallChain({ toolCalls }: { toolCalls: ToolCall[] }) {
 
 // 流式内容显示组件
 function StreamingContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
-  const [displayContent, setDisplayContent] = useState(content)
-  
-  useEffect(() => {
-    setDisplayContent(content)
-  }, [content])
-  
   return (
     <div className={`streaming-content ${isStreaming ? 'streaming' : ''}`}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-        components={{
-          p: ({ children }) => <p>{children}</p>,
-          pre: ({ children }) => <>{children}</>,
-          code: ({ children, className }) => {
-            const match = /language-(\w+)/.exec(className || '')
-            const language = match ? match[1] : 'text'
-            const code = String(children).replace(/\n$/, '')
-            return (
-              <CodeBlock
-                code={code}
-                language={language}
-                showLineNumbers={true}
-              />
-            )
-          }
-        }}
-      >
-        {displayContent}
-      </ReactMarkdown>
+      <MarkdownRenderer content={content} />
       {isStreaming && (
         <span className="streaming-cursor">▊</span>
       )}
@@ -338,8 +390,11 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
   const isIteration = isIterationMessage(message.content)
   const hasToolCalls = message.toolCalls && message.toolCalls.length > 0
   
+  // 检查是否有消息步骤（新的步骤化展示）
+  const hasMessageSteps = message.messageSteps && message.messageSteps.length > 0
+  
   // 检查是否有实际内容（去除空白后）
-  const hasContent = message.content.trim().length > 0 || hasThinkingSteps || hasToolCalls
+  const hasContent = message.content.trim().length > 0 || hasThinkingSteps || hasToolCalls || hasMessageSteps
   
   // 如果没有内容，渲染最小化的占位符
   if (!hasContent) {
@@ -383,8 +438,18 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
         )}
       </div>
       
-      {/* 工具调用链 - 流式模式下显示 */}
-      {hasToolCalls && (
+      {/* 新的步骤化展示 */}
+      {hasMessageSteps && (
+        <div className="builder-steps-section">
+          <MessageStepList 
+            steps={message.messageSteps!} 
+            executionPhase={message.executionPhase}
+          />
+        </div>
+      )}
+      
+      {/* 工具调用链 - 流式模式下显示（向后兼容） */}
+      {hasToolCalls && !hasMessageSteps && (
         <div className="builder-toolchain-section">
           <div 
             className="builder-toolchain-toggle"
@@ -413,8 +478,8 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
         </div>
       )}
       
-      {/* 思考过程面板 */}
-      {hasThinkingSteps && (
+      {/* 思考过程面板（向后兼容） */}
+      {hasThinkingSteps && !hasMessageSteps && (
         <div className="builder-thinking-section">
           <div 
             className="builder-thinking-toggle"
@@ -445,73 +510,13 @@ export function BuilderMessage({ message, onContinue, onStop }: BuilderMessagePr
       
       {/* 消息内容 */}
       <div className="builder-message-content">
-        {/* 流式内容显示 */}
+        {/* 流式内容显示 - 使用清理后的 mainContent */}
         {message.isStreaming ? (
-          <StreamingContent content={message.content} isStreaming={message.isStreaming} />
+          <StreamingContent content={mainContent} isStreaming={message.isStreaming} />
         ) : (
-          /* 渲染内容（使用 ReactMarkdown 渲染 Markdown，包括代码块） */
+          /* 渲染内容（使用 MarkdownRenderer 渲染 Markdown，包括代码块） */
           <div className="builder-text-content markdown-body">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeRaw]}
-              components={{
-                p: ({ children }) => {
-                  // 高亮文件路径
-                  const text = String(children)
-                  const filePathRegex = /([\w\-]+\/)+[\w\-]+\.\w+/g
-                  const parts = text.split(filePathRegex)
-                  const matches = text.match(filePathRegex) || []
-                  
-                  if (matches.length === 0) {
-                    return <p>{children}</p>
-                  }
-                  
-                  return (
-                    <p>
-                      {parts.map((part, i) => (
-                        <span key={i}>
-                          {part}
-                          {matches[i] && (
-                            <span className="file-path-highlight">{matches[i]}</span>
-                          )}
-                        </span>
-                      ))}
-                    </p>
-                  )
-                },
-                // 代码块使用 CodeBlock 组件渲染
-                pre: ({ children }) => {
-                  return <>{children}</>
-                },
-                code: ({ children, className }) => {
-                  const match = /language-(\w+)/.exec(className || '')
-                  const language = match ? match[1] : 'text'
-                  const code = String(children).replace(/\n$/, '')
-                  
-                  return (
-                    <CodeBlock
-                      code={code}
-                      language={language}
-                      showLineNumbers={true}
-                    />
-                  )
-                },
-                table: ({ children }) => (
-                  <div className="markdown-table-wrapper">
-                    <table className="markdown-table">{children}</table>
-                  </div>
-                ),
-                thead: ({ children }) => <thead className="markdown-table-head">{children}</thead>,
-                tbody: ({ children }) => <tbody className="markdown-table-body">{children}</tbody>,
-                tr: ({ children }) => <tr className="markdown-table-row">{children}</tr>,
-                th: ({ children }) => <th className="markdown-table-header">{children}</th>,
-                td: ({ children }) => <td className="markdown-table-cell">{children}</td>,
-                details: ({ children }) => <details className="markdown-details">{children}</details>,
-                summary: ({ children }) => <summary className="markdown-summary">{children}</summary>
-              }}
-            >
-              {mainContent}
-            </ReactMarkdown>
+            <MarkdownRenderer content={mainContent} />
           </div>
         )}
       </div>

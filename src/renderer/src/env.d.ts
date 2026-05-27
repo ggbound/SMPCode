@@ -147,6 +147,15 @@ declare global {
         maxResults?: number
         useIgnoreFiles?: boolean
       }) => Promise<{ success: boolean; data?: { matches: Array<{ file: string; line: number; column: number; content: string; match: string }>; totalFiles: number; limitHit: boolean }; error?: string }>
+      
+      // CLI Chat API - 替代 HTTP API 模式
+      cliChat: {
+        createSession: (mode: 'chat' | 'agent', cwd: string, initialPrompt?: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+        sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>, model?: string) => Promise<{ success: boolean; error?: string }>
+        stopSession: (sessionId: string) => Promise<{ success: boolean }>
+        deleteSession: (sessionId: string) => Promise<{ success: boolean }>
+        onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
+      }
     }
   }
 }

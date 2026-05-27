@@ -7,6 +7,14 @@ export interface Message {
   content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>
   name?: string
   tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: string
+    }
+  }>
 }
 
 export interface ChatRequest {
@@ -133,6 +141,14 @@ async function sendOpenAIMessage(
 
   // Check if this is DeepSeek API (based on URL or model name)
   const isDeepSeek = apiUrl?.includes('deepseek') || model.toLowerCase().includes('deepseek')
+  
+  // CRITICAL: For kimi-k2.5, ALWAYS use temperature=0.3 (aggressive fix for loop issue)
+  // temperature=0.7 still caused loops in some cases, 0.3 is more conservative
+  if (model.toLowerCase().includes('kimi-k2.5') || model.toLowerCase().includes('kimi-k2')) {
+    requestBody.temperature = 0.3
+    requestBody.top_p = 0.9  // Add top_p constraint for more focused output
+    log.info('[LLM] Set temperature=0.3 and top_p=0.9 for kimi-k2.5 (aggressive loop prevention)')
+  }
 
   // Enable tools if provided (but not for DeepSeek as it may not support function calling)
   if (tools && tools.length > 0 && !isDeepSeek) {
@@ -142,7 +158,17 @@ async function sendOpenAIMessage(
 
   const url = getApiUrl(apiUrl, false)
 
-  log.info(`[LLM] Sending request to: ${url}, model: ${model}, isDeepSeek: ${isDeepSeek}`)
+  // CRITICAL: Log the complete request for debugging
+  log.info(`[LLM] ========== API Request Details ==========`)
+  log.info(`[LLM] URL: ${url}`)
+  log.info(`[LLM] Model: ${model}`)
+  log.info(`[LLM] Messages count: ${messages.length}`)
+  log.info(`[LLM] Tools count: ${tools ? tools.length : 0}`)
+  if (tools && tools.length > 0) {
+    log.info(`[LLM] First 3 tool names:`, tools.slice(0, 3).map((t: any) => t.function?.name || t.name))
+  }
+  log.info(`[LLM] Request body keys:`, Object.keys(requestBody))
+  log.info(`[LLM] =========================================`)
 
   try {
     const response = await fetch(url, {
@@ -291,12 +317,21 @@ async function* streamOpenAIMessage(
     max_tokens: 16384,  // Increased for large file operations
     stream: true
   }
-
+    
+  // CRITICAL: For kimi-k2.5, ALWAYS use temperature=0.3 (aggressive fix for loop issue)
+  // temperature=0.7 still caused loops in some cases, 0.3 is more conservative
+  if (model.toLowerCase().includes('kimi-k2.5') || model.toLowerCase().includes('kimi-k2')) {
+    requestBody.temperature = 0.3
+    requestBody.top_p = 0.9  // Add top_p constraint for more focused output
+    log.info('[LLM Stream] Set temperature=0.3 and top_p=0.9 for kimi-k2.5 (aggressive loop prevention)')
+  }
+  
   // CRITICAL: Pass tools to enable OpenAI standard tool calling (like VSCode/Claude Code)
   if (tools && tools.length > 0) {
     requestBody.tools = tools
     requestBody.tool_choice = 'auto'
-    log.info(`[LLM] Stream: Sending ${tools.length} tools to API`)
+      
+    log.info(`[LLM Stream] Sending ${tools.length} tools to API`)
   }
 
   const url = getApiUrl(apiUrl, false)
@@ -313,6 +348,7 @@ async function* streamOpenAIMessage(
 
     if (!response.ok) {
       const errorText = await response.text()
+      log.error(`[LLM] API Error: ${response.status} - ${errorText}`)
       throw new Error(`API error: ${response.status} - ${errorText}`)
     }
 

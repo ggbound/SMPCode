@@ -24,7 +24,20 @@ import {
   findGitRoot,
   getFileStatus,
   getRecentCommits,
-  getBranches
+  getBranches,
+  stageFiles,
+  unstageFiles,
+  commitChanges,
+  discardChanges,
+  createBranch,
+  checkoutBranch,
+  deleteBranch,
+  push,
+  pull,
+  getFileDiff,
+  getStashList,
+  stashChanges,
+  popStash
 } from './services/git-service'
 import { 
   watchDirectory,
@@ -35,6 +48,15 @@ import {
 } from './services/files-service'
 import { searchFiles } from './services/search-service'
 import { initializeToolExecutor } from './services/tool-executor'
+import {
+  createCLISession,
+  getCLISession,
+  deleteCLISession,
+  stopCLISession,
+  sendCLIMessageStream,
+  cleanupCLISessions,
+  type StreamChunk
+} from './services/cli-chat-service'
 
 // Configure logging
 log.transports.file.level = 'info'
@@ -521,6 +543,59 @@ function setupIpcHandlers(): void {
     return await getBranches(repoPath)
   })
 
+  // Enhanced Git operations
+  ipcMain.handle('git:stage', async (_event, { repoPath, files }: { repoPath: string; files: string[] }) => {
+    return await stageFiles(repoPath, files)
+  })
+
+  ipcMain.handle('git:unstage', async (_event, { repoPath, files }: { repoPath: string; files: string[] }) => {
+    return await unstageFiles(repoPath, files)
+  })
+
+  ipcMain.handle('git:commit', async (_event, { repoPath, message, files }: { repoPath: string; message: string; files?: string[] }) => {
+    return await commitChanges(repoPath, message, files)
+  })
+
+  ipcMain.handle('git:discard', async (_event, { repoPath, files }: { repoPath: string; files: string[] }) => {
+    return await discardChanges(repoPath, files)
+  })
+
+  ipcMain.handle('git:create-branch', async (_event, { repoPath, branchName, checkout }: { repoPath: string; branchName: string; checkout?: boolean }) => {
+    return await createBranch(repoPath, branchName, checkout)
+  })
+
+  ipcMain.handle('git:checkout-branch', async (_event, { repoPath, branchName }: { repoPath: string; branchName: string }) => {
+    return await checkoutBranch(repoPath, branchName)
+  })
+
+  ipcMain.handle('git:delete-branch', async (_event, { repoPath, branchName, force }: { repoPath: string; branchName: string; force?: boolean }) => {
+    return await deleteBranch(repoPath, branchName, force)
+  })
+
+  ipcMain.handle('git:push', async (_event, { repoPath, remote, branch }: { repoPath: string; remote?: string; branch?: string }) => {
+    return await push(repoPath, remote, branch)
+  })
+
+  ipcMain.handle('git:pull', async (_event, { repoPath, remote, branch }: { repoPath: string; remote?: string; branch?: string }) => {
+    return await pull(repoPath, remote, branch)
+  })
+
+  ipcMain.handle('git:diff', async (_event, { repoPath, filePath, staged }: { repoPath: string; filePath: string; staged?: boolean }) => {
+    return await getFileDiff(repoPath, filePath, staged)
+  })
+
+  ipcMain.handle('git:stash-list', async (_event, repoPath: string) => {
+    return await getStashList(repoPath)
+  })
+
+  ipcMain.handle('git:stash', async (_event, { repoPath, message }: { repoPath: string; message?: string }) => {
+    return await stashChanges(repoPath, message)
+  })
+
+  ipcMain.handle('git:stash-pop', async (_event, { repoPath, index }: { repoPath: string; index?: number }) => {
+    return await popStash(repoPath, index)
+  })
+
   // File watching handlers
   ipcMain.handle('fs:watch', (_event, dirPath: string) => {
     log.info(`[IPC] Starting to watch directory: ${dirPath}`)
@@ -578,6 +653,60 @@ function setupIpcHandlers(): void {
   ipcMain.handle('show-save-dialog', async (_event, options) => {
     if (!mainWindow) return { canceled: true, filePath: undefined }
     return dialog.showSaveDialog(mainWindow, options)
+  })
+
+  // CLI Chat IPC handlers
+  ipcMain.handle('cli-chat:create-session', (_event, { mode, cwd, initialPrompt }: { mode: 'chat' | 'agent'; cwd: string; initialPrompt?: string }) => {
+    try {
+      const sessionId = createCLISession(mode, cwd, initialPrompt)
+      log.info(`[IPC] CLI chat session created: ${sessionId}`)
+      return { success: true, sessionId }
+    } catch (error) {
+      log.error('[IPC] Failed to create CLI chat session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('cli-chat:send-message', async (_event, { sessionId, message, messages, model }: { sessionId: string; message: string; messages?: Array<{ role: string; content: string }>; model?: string }) => {
+    try {
+      const session = getCLISession(sessionId)
+      if (!session) {
+        return { success: false, error: 'Session not found' }
+      }
+
+      // 使用流式发送，通过事件将数据发送回渲染进程
+      // 如果提供了完整消息历史，则传递给后端
+      await sendCLIMessageStream(sessionId, message, (chunk: StreamChunk) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('cli-chat:stream', { sessionId, chunk })
+        }
+      }, messages, model)
+
+      return { success: true }
+    } catch (error) {
+      log.error('[IPC] Failed to send CLI chat message:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('cli-chat:stop-session', (_event, { sessionId }: { sessionId: string }) => {
+    try {
+      const stopped = stopCLISession(sessionId)
+      return { success: stopped }
+    } catch (error) {
+      log.error('[IPC] Failed to stop CLI chat session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('cli-chat:delete-session', (_event, { sessionId }: { sessionId: string }) => {
+    try {
+      const deleted = deleteCLISession(sessionId)
+      return { success: deleted }
+    } catch (error) {
+      log.error('[IPC] Failed to delete CLI chat session:', error)
+      return { success: false, error: String(error) }
+    }
   })
 
   log.info('IPC handlers registered')
@@ -1028,6 +1157,48 @@ function initializeCLIRegistries(): void {
   })
 
   toolRegistry.register({
+    name: 'list_directory',
+    description: 'List files and directories in a given path',
+    sourceHint: 'builtin',
+    responsibility: 'List the contents of a directory, including files and subdirectories',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The directory path to list (default: current directory)',
+        required: false
+      }
+    },
+    required: [],
+    execute: async (args, context) => {
+      try {
+        const fs = require('fs')
+        const path = require('path')
+        const dirPath = args.path ? path.resolve(context.cwd, String(args.path)) : context.cwd
+        
+        const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+        const result = entries.map((entry: { name: string; isDirectory: () => boolean; isFile: () => boolean }) => ({
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : 'file',
+          isFile: entry.isFile(),
+          isDirectory: entry.isDirectory()
+        }))
+        
+        return {
+          success: true,
+          output: JSON.stringify(result, null, 2),
+          data: { path: dirPath, count: result.length }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          output: '',
+          error: String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
     name: 'glob',
     description: 'Find files matching a pattern',
     sourceHint: 'builtin',
@@ -1199,6 +1370,7 @@ app.on('before-quit', () => {
   processBridge.cleanupAll()
   stopApiServer()
   stopAllWatchers()
+  cleanupCLISessions()
   log.info('Application quitting')
 })
 

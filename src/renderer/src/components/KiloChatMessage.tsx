@@ -1,0 +1,304 @@
+/**
+ * KiloChatMessage - 参考 Kilo Code 设计风格的聊天消息组件
+ * 特点：
+ * 1. 极简设计 - 清晰的视觉层次
+ * 2. 工具调用卡片 - 彩色状态指示
+ * 3. 流式打字效果 - 实时响应反馈
+ * 4. 代码块优化 - 语法高亮、行号、复制
+ */
+
+import { useState, useEffect, memo } from 'react'
+import type { Message, ToolCall } from '../store'
+import { MarkdownRenderer } from './MarkdownRenderer'
+import { 
+  Bot,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  FileText,
+  Edit3,
+  PlusCircle,
+  FolderOpen,
+  Search,
+  Terminal,
+  Trash2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Wrench,
+  Zap,
+  Code2,
+  Eye
+} from 'lucide-react'
+
+interface KiloChatMessageProps {
+  message: Message
+  onContinue?: () => void
+  onStop?: () => void
+}
+
+// 工具配置 - Kilo 风格配色
+const toolConfig: Record<string, { 
+  icon: React.ReactNode
+  label: string
+  color: string
+  bgColor: string
+}> = {
+  'read_file': { 
+    icon: <Eye size={14} />, 
+    label: '查看',
+    color: '#3b82f6',
+    bgColor: 'rgba(59, 130, 246, 0.1)'
+  },
+  'write_file': { 
+    icon: <PlusCircle size={14} />, 
+    label: '创建',
+    color: '#22c55e',
+    bgColor: 'rgba(34, 197, 94, 0.1)'
+  },
+  'edit_file': { 
+    icon: <Edit3 size={14} />, 
+    label: '编辑',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)'
+  },
+  'delete_file': { 
+    icon: <Trash2 size={14} />, 
+    label: '删除',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)'
+  },
+  'list_directory': { 
+    icon: <FolderOpen size={14} />, 
+    label: '列出',
+    color: '#8b5cf6',
+    bgColor: 'rgba(139, 92, 246, 0.1)'
+  },
+  'search_code': { 
+    icon: <Search size={14} />, 
+    label: '搜索',
+    color: '#06b6d4',
+    bgColor: 'rgba(6, 182, 212, 0.1)'
+  },
+  'execute_bash': { 
+    icon: <Terminal size={14} />, 
+    label: '执行',
+    color: '#ec4899',
+    bgColor: 'rgba(236, 72, 153, 0.1)'
+  },
+  'append_file': { 
+    icon: <Edit3 size={14} />, 
+    label: '追加',
+    color: '#f97316',
+    bgColor: 'rgba(249, 115, 22, 0.1)'
+  }
+}
+
+// 获取工具信息
+function getToolInfo(toolName: string) {
+  return toolConfig[toolName] || { 
+    icon: <Wrench size={14} />, 
+    label: toolName,
+    color: '#6b7280',
+    bgColor: 'rgba(107, 114, 128, 0.1)'
+  }
+}
+
+// 格式化路径
+function formatPath(path: string): string {
+  if (!path) return ''
+  const parts = path.split('/')
+  if (parts.length > 4) {
+    return parts.slice(-4).join('/')
+  }
+  return path
+}
+
+// 工具调用卡片 - Kilo 风格
+const ToolCallCard = memo(function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
+  const config = getToolInfo(toolCall.name)
+  const path = toolCall.args?.path || toolCall.args?.file_path || toolCall.args?.directory || toolCall.args?.command || ''
+  
+  return (
+    <div 
+      className="kilo-tool-card"
+      style={{ 
+        borderColor: config.color,
+        backgroundColor: config.bgColor
+      }}
+    >
+      <div className="kilo-tool-card-left">
+        <div 
+          className="kilo-tool-icon"
+          style={{ color: config.color }}
+        >
+          {config.icon}
+        </div>
+        <div className="kilo-tool-info">
+          <span 
+            className="kilo-tool-label"
+            style={{ color: config.color }}
+          >
+            {config.label}
+          </span>
+          {path && (
+            <span className="kilo-tool-path">
+              {formatPath(path)}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="kilo-tool-status">
+        {toolCall.status === 'running' && (
+          <Loader2 size={14} className="kilo-spin" style={{ color: config.color }} />
+        )}
+        {toolCall.status === 'completed' && (
+          <CheckCircle2 size={14} style={{ color: '#22c55e' }} />
+        )}
+        {toolCall.status === 'failed' && (
+          <XCircle size={14} style={{ color: '#ef4444' }} />
+        )}
+      </div>
+    </div>
+  )
+})
+
+// 工具调用面板
+const ToolCallPanel = memo(function ToolCallPanel({ toolCalls }: { toolCalls: ToolCall[] }) {
+  if (!toolCalls || toolCalls.length === 0) return null
+
+  const [isExpanded, setIsExpanded] = useState(true)
+
+  return (
+    <div className="kilo-tool-panel">
+      <button 
+        className="kilo-tool-panel-header"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="kilo-tool-panel-title">
+          <Zap size={14} />
+          <span>工具调用</span>
+          <span className="kilo-tool-count">{toolCalls.length}</span>
+        </div>
+        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {isExpanded && (
+        <div className="kilo-tool-panel-content">
+          {toolCalls.map((toolCall) => (
+            <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+})
+
+// 打字机效果 Hook
+function useTypewriter(content: string, isStreaming: boolean, speed: number = 10) {
+  const [displayed, setDisplayed] = useState('')
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setDisplayed(content)
+      return
+    }
+
+    if (index < content.length) {
+      const timer = setTimeout(() => {
+        setDisplayed(content.slice(0, index + 1))
+        setIndex(index + 1)
+      }, speed)
+      return () => clearTimeout(timer)
+    }
+  }, [content, isStreaming, index, speed])
+
+  useEffect(() => {
+    if (content !== displayed && !isStreaming) {
+      setDisplayed(content)
+      setIndex(content.length)
+    }
+  }, [content])
+
+  return displayed
+}
+
+// 清理内容
+function cleanContent(content: string): string {
+  if (!content) return ''
+  
+  let cleaned = content
+  
+  // 移除 thinking 标签
+  cleaned = cleaned.replace(/<thinking>[\s\S]*?<\/think>/g, '')
+  
+  // 移除工具调用 JSON
+  cleaned = cleaned.replace(/```json\s*\n?\s*\{\s*"tool"[\s\S]*?```/gi, '')
+  cleaned = cleaned.replace(/\{\s*"tool"\s*:\s*"[^"]+"\s*,\s*"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/gi, '')
+  
+  // 移除工具调用标记
+  cleaned = cleaned.replace(/\*\*正在调用工具：\*\*\s*\w+\n?/gi, '')
+  cleaned = cleaned.replace(/\*\*工具执行结果：\*\*[\s\S]*?(?=\n\n|$)/gi, '')
+  cleaned = cleaned.replace(/\*\*工具执行失败：\*\*[\s\S]*?(?=\n\n|$)/gi, '')
+  
+  // 清理多余空行
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+  
+  return cleaned.trim()
+}
+
+// 主组件
+export const KiloChatMessage = memo(function KiloChatMessage({ 
+  message, 
+  onContinue, 
+  onStop 
+}: KiloChatMessageProps) {
+  const cleaned = cleanContent(message.content)
+  const hasTools = message.toolCalls && message.toolCalls.length > 0
+  
+  // 打字机效果
+  const displayedContent = useTypewriter(cleaned, message.isStreaming ?? false, 5)
+
+  return (
+    <div className={`kilo-message ${message.isStreaming ? 'streaming' : ''}`}>
+      {/* 头部 - AI 标识 */}
+      <div className="kilo-message-header">
+        <div className="kilo-avatar">
+          <Bot size={16} />
+        </div>
+        <span className="kilo-author">AI</span>
+        {message.isStreaming && (
+          <span className="kilo-typing">
+            <span className="kilo-dot" />
+            <span className="kilo-dot" />
+            <span className="kilo-dot" />
+          </span>
+        )}
+      </div>
+
+      {/* 工具调用面板 */}
+      {hasTools && (
+        <ToolCallPanel toolCalls={message.toolCalls || []} />
+      )}
+
+      {/* 消息内容 */}
+      <div className="kilo-message-content">
+        {displayedContent ? (
+          <MarkdownRenderer content={displayedContent} />
+        ) : message.isStreaming ? (
+          <div className="kilo-thinking">
+            <Loader2 size={16} className="kilo-spin" />
+            <span>思考中...</span>
+          </div>
+        ) : null}
+      </div>
+
+      {/* 流式光标 */}
+      {message.isStreaming && (
+        <span className="kilo-cursor">▋</span>
+      )}
+    </div>
+  )
+})
+
+export default KiloChatMessage

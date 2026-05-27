@@ -214,3 +214,223 @@ export async function getBranches(repoPath: string): Promise<{
     return { current: '', all: [], branches: {} }
   }
 }
+
+// Stage files
+export async function stageFiles(repoPath: string, files: string[]): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.add(files)
+    log.info(`Staged files: ${files.join(', ')}`)
+    return true
+  } catch (error) {
+    log.error('Failed to stage files:', error)
+    return false
+  }
+}
+
+// Unstage files
+export async function unstageFiles(repoPath: string, files: string[]): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.reset(files)
+    log.info(`Unstaged files: ${files.join(', ')}`)
+    return true
+  } catch (error) {
+    log.error('Failed to unstage files:', error)
+    return false
+  }
+}
+
+// Commit changes
+export async function commitChanges(repoPath: string, message: string, files?: string[]): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    // If specific files are provided, stage them first
+    if (files && files.length > 0) {
+      await git.add(files)
+    }
+
+    await git.commit(message)
+    log.info(`Committed with message: ${message}`)
+    return true
+  } catch (error) {
+    log.error('Failed to commit changes:', error)
+    return false
+  }
+}
+
+// Discard changes (checkout)
+export async function discardChanges(repoPath: string, files: string[]): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.checkout(files)
+    log.info(`Discarded changes in: ${files.join(', ')}`)
+    return true
+  } catch (error) {
+    log.error('Failed to discard changes:', error)
+    return false
+  }
+}
+
+// Create branch
+export async function createBranch(repoPath: string, branchName: string, checkout = true): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.checkoutLocalBranch(branchName)
+    log.info(`Created branch: ${branchName}`)
+    return true
+  } catch (error) {
+    log.error('Failed to create branch:', error)
+    return false
+  }
+}
+
+// Checkout branch
+export async function checkoutBranch(repoPath: string, branchName: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.checkout(branchName)
+    log.info(`Checked out branch: ${branchName}`)
+    return true
+  } catch (error) {
+    log.error('Failed to checkout branch:', error)
+    return false
+  }
+}
+
+// Delete branch
+export async function deleteBranch(repoPath: string, branchName: string, force = false): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (force) {
+      await git.deleteLocalBranch(branchName, true)
+    } else {
+      await git.deleteLocalBranch(branchName, false)
+    }
+    log.info(`Deleted branch: ${branchName}`)
+    return true
+  } catch (error) {
+    log.error('Failed to delete branch:', error)
+    return false
+  }
+}
+
+// Push to remote
+export async function push(repoPath: string, remote = 'origin', branch?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    const currentBranch = branch || (await git.status()).current
+    await git.push(remote, currentBranch)
+    log.info(`Pushed to ${remote}/${currentBranch}`)
+    return true
+  } catch (error) {
+    log.error('Failed to push:', error)
+    return false
+  }
+}
+
+// Pull from remote
+export async function pull(repoPath: string, remote = 'origin', branch?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    const currentBranch = branch || (await git.status()).current
+    await git.pull(remote, currentBranch)
+    log.info(`Pulled from ${remote}/${currentBranch}`)
+    return true
+  } catch (error) {
+    log.error('Failed to pull:', error)
+    return false
+  }
+}
+
+// Get file diff
+export async function getFileDiff(repoPath: string, filePath: string, staged = false): Promise<string> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return ''
+
+    const diff = await git.diff([staged ? '--cached' : '', '--', filePath])
+    return diff || ''
+  } catch (error) {
+    log.error('Failed to get file diff:', error)
+    return ''
+  }
+}
+
+// Get stash list
+export async function getStashList(repoPath: string): Promise<Array<{
+  index: number
+  hash: string
+  message: string
+}>> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return []
+
+    const stashList = await git.stashList()
+    return stashList.all.map((stash, index) => ({
+      index,
+      hash: stash.hash.substring(0, 7),
+      message: stash.message
+    }))
+  } catch (error) {
+    log.error('Failed to get stash list:', error)
+    return []
+  }
+}
+
+// Stash changes
+export async function stashChanges(repoPath: string, message?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (message) {
+      await git.stash(['push', '-m', message])
+    } else {
+      await git.stash(['push'])
+    }
+    log.info(`Stashed changes${message ? `: ${message}` : ''}`)
+    return true
+  } catch (error) {
+    log.error('Failed to stash changes:', error)
+    return false
+  }
+}
+
+// Pop stash
+export async function popStash(repoPath: string, index = 0): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (index === 0) {
+      await git.stash(['pop'])
+    } else {
+      await git.stash(['pop', `stash@{${index}}`])
+    }
+    log.info(`Popped stash at index ${index}`)
+    return true
+  } catch (error) {
+    log.error('Failed to pop stash:', error)
+    return false
+  }
+}

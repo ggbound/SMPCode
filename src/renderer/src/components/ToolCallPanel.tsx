@@ -4,6 +4,9 @@
  */
 
 import React, { useEffect, useState, useRef } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import {
   FileText,
   FilePlus,
@@ -23,6 +26,7 @@ import {
 } from 'lucide-react'
 import { useToolStore } from '../store/toolStore'
 import type { ToolCallRecord } from '../../../shared/types/tool-call'
+import { CodeBlock } from './CodeBlock'
 import './ToolCallPanel.css'
 
 // 工具图标映射
@@ -145,10 +149,32 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ record, isExpanded, onToggl
                 <span className="detail-label">结果</span>
                 <span className="detail-size">{record.result.length} 字符</span>
               </div>
-              <pre className="detail-code success">
-                {record.result.slice(0, 1000)}
-                {record.result.length > 1000 && '\n... (已截断)'}
-              </pre>
+              <div className="detail-result-content">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                  components={{
+                    pre: ({ children }) => <>{children}</>,
+                    code: ({ children, className }) => {
+                      const match = /language-(\w+)/.exec(className || '')
+                      const language = match ? match[1] : 'text'
+                      const code = String(children).replace(/\n$/, '')
+                      return (
+                        <CodeBlock
+                          code={code}
+                          language={language}
+                          showLineNumbers={true}
+                        />
+                      )
+                    }
+                  }}
+                >
+                  {record.result.slice(0, 5000)}
+                </ReactMarkdown>
+                {record.result.length > 5000 && (
+                  <div className="detail-truncated">... (内容已截断，共 {record.result.length} 字符)</div>
+                )}
+              </div>
             </div>
           )}
 

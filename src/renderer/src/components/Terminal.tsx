@@ -374,25 +374,33 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
               // Use a closure to capture current runningProcesses value
               // We need to get the latest state from the DOM or use a ref
               // For now, query the process panel if visible or use IPC to check
-              window.api.getRunningProcesses().then(processes => {
-                // Get all running processes - 'any' means broadcast to all terminals
-                const processesForThisTerminal = processes.filter(
-                  (p: RunningProcess) => p.isRunning && (!p.terminalId || p.terminalId === 'any' || p.terminalId === session.id)
-                )
-                if (processesForThisTerminal.length > 0) {
-                  // Stop the most recent process
-                  const processToStop = processesForThisTerminal[processesForThisTerminal.length - 1]
-                  console.log('[Terminal] Stopping process:', processToStop.id, processToStop.command)
-                  window.api.stopProcess(processToStop.id)
-                  xterm.write('\r\n^C\r\n')
-                } else {
-                  // No running process, send Ctrl+C to PTY normally
-                  window.api.writeTerminal(session.id, data)
-                }
-              })
+              if (window.api?.getRunningProcesses) {
+                window.api.getRunningProcesses().then(processes => {
+                  // Get all running processes - 'any' means broadcast to all terminals
+                  const processesForThisTerminal = processes.filter(
+                    (p: RunningProcess) => p.isRunning && (!p.terminalId || p.terminalId === 'any' || p.terminalId === session.id)
+                  )
+                  if (processesForThisTerminal.length > 0) {
+                    // Stop the most recent process
+                    const processToStop = processesForThisTerminal[processesForThisTerminal.length - 1]
+                    console.log('[Terminal] Stopping process:', processToStop.id, processToStop.command)
+                    if (window.api?.stopProcess) {
+                      window.api.stopProcess(processToStop.id)
+                    }
+                    xterm.write('\r\n^C\r\n')
+                  } else {
+                    // No running process, send Ctrl+C to PTY normally
+                    if (window.api?.writeTerminal) {
+                      window.api.writeTerminal(session.id, data)
+                    }
+                  }
+                })
+              }
               return
             }
-            window.api.writeTerminal(session.id, data)
+            if (window.api?.writeTerminal) {
+              window.api.writeTerminal(session.id, data)
+            }
           })
 
           // Update session with xterm instance
@@ -401,7 +409,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           ))
 
           // Initial resize to sync with PTY - use xterm's actual dimensions after fit
-          window.api.resizeTerminal(session.id, xterm.cols, xterm.rows)
+          if (window.api?.resizeTerminal) {
+            window.api.resizeTerminal(session.id, xterm.cols, xterm.rows)
+          }
 
           // Focus the terminal
           xterm.focus()
@@ -417,6 +427,11 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Handle terminal data from main process
   useEffect(() => {
     console.log('[Terminal] Setting up terminal data listener')
+    if (!window.api?.onTerminalData) {
+      console.warn('[Terminal] window.api.onTerminalData is not available')
+      return
+    }
+    
     const removeListener = window.api.onTerminalData((_, { id, data }) => {
       const session = sessionsRef.current.find(s => s.id === id)
       if (session?.xterm) {
@@ -433,6 +448,11 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Handle terminal exit
   useEffect(() => {
     console.log('[Terminal] Setting up terminal exit listener')
+    if (!window.api?.onTerminalExit) {
+      console.warn('[Terminal] window.api.onTerminalExit is not available')
+      return
+    }
+    
     const removeListener = window.api.onTerminalExit((_, { id }) => {
       setSessions(prev => prev.filter(s => s.id !== id))
       if (activeSessionId === id) {
@@ -454,7 +474,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       if (activeSession?.xterm && activeSession?.fitAddon) {
         activeSession.fitAddon.fit()
         // Use xterm's actual dimensions after fit
-        window.api.resizeTerminal(activeSession.id, activeSession.xterm.cols, activeSession.xterm.rows)
+        if (window.api?.resizeTerminal) {
+          window.api.resizeTerminal(activeSession.id, activeSession.xterm.cols, activeSession.xterm.rows)
+        }
       }
     }
 
@@ -488,11 +510,13 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     if (isVisible && projectPath && initializedRef.current) {
       console.log('[Terminal] Project path changed to:', projectPath)
       // Close all existing terminals
-      sessions.forEach(session => {
-        window.api.killTerminal(session.id).catch((err: Error) => {
-          console.error('[Terminal] Failed to kill terminal:', err)
+      if (window.api?.killTerminal) {
+        sessions.forEach(session => {
+          window.api.killTerminal(session.id).catch((err: Error) => {
+            console.error('[Terminal] Failed to kill terminal:', err)
+          })
         })
-      })
+      }
       // Clear sessions and create new terminal with new path
       setSessions([])
       setActiveSessionId(null)
@@ -507,7 +531,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
 
   const closeTerminal = async (id: string) => {
     try {
-      await window.api.killTerminal(id)
+      if (window.api?.killTerminal) {
+        await window.api.killTerminal(id)
+      }
     } catch (error) {
       console.error('[Terminal] Failed to kill terminal:', error)
     }
@@ -536,6 +562,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
 
     try {
+      if (!window.api?.startProcessInTerminal) {
+        throw new Error('startProcessInTerminal API not available')
+      }
       const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId, aiPrompt)
       if (result.success) {
         console.log(`[Terminal] Started process ${result.processId} for command: ${command}`)
@@ -551,6 +580,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Stop a process
   const stopProcess = async (processId: string) => {
     try {
+      if (!window.api?.stopProcess) {
+        throw new Error('stopProcess API not available')
+      }
       const result = await window.api.stopProcess(processId)
       if (result.success) {
         setRunningProcesses(prev => prev.map(p =>

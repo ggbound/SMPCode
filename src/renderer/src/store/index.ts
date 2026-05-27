@@ -37,6 +37,30 @@ export interface ToolCall {
   duration?: number
 }
 
+// 消息步骤类型 - 用于步骤化展示
+export interface MessageStep {
+  id: string
+  type: 'thinking' | 'tool_call' | 'tool_result' | 'analysis' | 'summary'
+  title: string
+  content?: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  timestamp: number
+  duration?: number
+  // 工具调用相关信息
+  toolName?: string
+  toolArgs?: Record<string, any>
+  toolResult?: {
+    success: boolean
+    output?: string
+    error?: string
+  }
+  // 文件路径（如果是文件操作）
+  filePath?: string
+}
+
+// 执行阶段
+export type ExecutionPhase = 'thinking' | 'executing_tool' | 'analyzing' | 'completed' | 'error'
+
 // 图片内容项
 export interface ImageContent {
   type: 'image'
@@ -46,7 +70,7 @@ export interface ImageContent {
 }
 
 export interface Message {
-  role: 'user' | 'assistant' | 'system'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
   timestamp?: number
   needsAction?: 'continue' // 标记消息需要用户操作（如继续执行）
@@ -63,6 +87,17 @@ export interface Message {
     status?: 'pending' | 'running' | 'completed' | 'failed'
   }>
   images?: ImageContent[]  // 图片内容数组
+  name?: string            // tool角色时的工具名称
+  // 新增：消息步骤（用于步骤化展示）
+  messageSteps?: MessageStep[]
+  // 新增：执行阶段
+  executionPhase?: ExecutionPhase
+  // 新增：进度信息
+  progress?: {
+    current: number
+    total: number
+    description?: string
+  }
 }
 
 export interface Command {

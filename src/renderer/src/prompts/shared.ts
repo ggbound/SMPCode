@@ -149,7 +149,8 @@ export const COMMON_CRITICAL_RULES = `=== CRITICAL RULES ===
 8. **NO VISUAL CARDS**: Do NOT create visual cards or UI elements. Just output the JSON tool calls.
 9. **CONTINUE UNTIL COMPLETE**: After receiving tool results, you MUST continue to analyze and call more tools if needed. Do NOT provide final summary until the user's task is fully completed.
 10. **TOOL CHAINING**: If you need to perform multiple steps (e.g., list directory → read file → analyze), call tools one at a time and wait for results before proceeding to the next step.
-11. **NO TEXT ANALYSIS DURING EXECUTION**: While executing tools, NEVER output analysis text like "我看到...", "让我检查...". ONLY output JSON tool calls. Save all analysis for the final summary after all tools are complete.`
+11. **NO TEXT ANALYSIS DURING EXECUTION**: While executing tools, NEVER output analysis text like "我看到...", "让我检查...". ONLY output JSON tool calls. Save all analysis for the final summary after all tools are complete.
+12. **NEVER STOP AFTER ONE TOOL**: A task is NOT complete after executing just one tool. You MUST continue until you have fully addressed the user's request.`
 
 /**
  * 格式化工具列表为提示词文本
@@ -251,34 +252,43 @@ Provide a clear summary of what was accomplished and any next steps.
 IMPORTANT: Use this format consistently so the user can track your progress.`
 
 /**
- * 任务规划协议
+ * 任务规划协议 - 参考 Cursor 模式重构
  */
 export const TASK_PLANNING_PROTOCOL = `=== TASK PLANNING PROTOCOL ===
-CRITICAL: Before executing any tools, you MUST create a clear task plan:
+CRITICAL: For EVERY user request, you MUST follow this protocol:
 
-Step 1 - ANALYZE THE REQUEST:
+Step 1 - INITIAL ANALYSIS (MANDATORY):
+Before calling ANY tools, analyze the request:
 - What is the user asking for?
+- What information do you need?
 - What files/components are likely involved?
-- What is the scope of changes needed?
+- How many steps will this take?
 
-Step 2 - CREATE EXECUTION PLAN:
-- List ALL files you need to read
-- Identify dependencies between files
-- Plan the order of modifications
-- Estimate number of steps needed
+Step 2 - OUTPUT TASK PLAN (MANDATORY):
+In your FIRST response, you MUST output a task plan:
 
-Step 3 - EXECUTE WITH TRACKING:
-- Read all necessary files FIRST before making changes
-- After reading, analyze what you learned
-- Make changes based on your analysis
-- DO NOT read the same file twice unless necessary
+## 📋 任务计划
+1. [步骤1]: 探索项目结构 (使用 list_directory)
+2. [步骤2]: 读取关键文件 (使用 read_file)
+3. [步骤3]: 分析代码逻辑
+4. [步骤4]: 提供总结
 
-Step 4 - AVOID INFINITE LOOPS:
+Step 3 - EXECUTE AND TRACK PROGRESS:
+After each tool execution, update the task status:
+- ✅ 已完成: [what was done]
+- ⏳ 进行中: [current step]
+- 📌 待处理: [remaining steps]
+
+Step 4 - NEVER STOP PREMATURELY:
+You MUST complete ALL steps in your plan before providing final summary.
+If you stop after step 1, you have FAILED the task.
+
+Step 5 - AVOID INFINITE LOOPS:
 - If you find yourself reading files repeatedly, STOP and reassess
 - Ask yourself: "What am I trying to find?"
 - If stuck, summarize findings and ask user for clarification
 
-Step 5 - MEMORY MANAGEMENT:
+Step 6 - MEMORY MANAGEMENT:
 When context is compressed, maintain task memory by explicitly stating:
 - 【问题分析】: What is the problem you're solving
 - 【根本原因】: Root cause of the issue

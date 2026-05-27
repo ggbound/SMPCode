@@ -36,18 +36,31 @@ class ToolRegistry {
   }
 
   toOpenAIDefinitions(): ToolDefinition[] {
-    return this.getAll().map(tool => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: 'object',
-          properties: tool.parameters,
-          required: tool.required
+    return this.getAll().map(tool => {
+      // 清理参数定义，移除 required 字段（OpenAI API 要求 required 在 parameters 级别）
+      const properties: Record<string, Omit<ToolParameter, 'required'>> = {}
+      for (const [key, param] of Object.entries(tool.parameters)) {
+        properties[key] = {
+          type: param.type,
+          description: param.description,
+          ...(param.enum && { enum: param.enum }),
+          ...(param.default !== undefined && { default: param.default })
         }
       }
-    }))
+      
+      return {
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: 'object',
+            properties,
+            required: tool.required
+          }
+        }
+      }
+    })
   }
 }
 
@@ -63,7 +76,7 @@ import { processBridge } from './process-terminal-bridge'
 import { writeFile, appendFile } from './files-service'  // Import unified file functions
 import { BrowserWindow } from 'electron'
 
-const execPromise = promisify(exec)
+const execAsync = promisify(exec)
 
 /**
  * 发送文件操作事件到前端
@@ -88,11 +101,12 @@ function notifyFileOperation(operation: 'writing' | 'editing' | 'creating', file
  */
 function spawnPromise(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
-    // 使用 shell 执行命令，确保管道和重定向正常工作
+    // 使用用户的 shell 执行命令，确保环境变量正确
+    const userShell = process.env.SHELL || '/bin/zsh'
     const child = spawn(command, [], {
       cwd,
-      env,
-      shell: true,  // 使用 shell 执行，支持管道、重定向等
+      env: { ...process.env, ...env },  // 合并系统环境变量和传入的环境变量
+      shell: userShell,  // 使用用户的 shell（如 zsh）
       stdio: ['pipe', 'pipe', 'pipe']
     })
 
@@ -710,7 +724,7 @@ const searchCodeTool: ToolExecutor = {
       // This handles quotes, backslashes, and other special regex characters
       const escapedPattern = pattern.replace(/'/g, "'\"'\"'").replace(/\\/g, '\\\\')
       
-      const { stdout, stderr } = await execPromise(
+      const { stdout, stderr } = await execAsync(
         `grep -r '${escapedPattern}' "${targetPath}" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.py" --include="*.java" --include="*.go" --include="*.rs" -l 2>/dev/null || true`,
         { timeout: 30000 }
       )
@@ -832,6 +846,246 @@ const restartProcessTool: ToolExecutor = {
   }
 }
 
+// ============ 端口和进程管理工具 ============
+
+/**
+ * Check Port Tool
+ */
+const checkPortTool: ToolExecutor = {
+  name: 'check_port',
+  description: 'Check if a network port is occupied by any process. Returns process information if occupied, or indicates availability if free. Use this before starting services to avoid port conflicts.',
+  parameters: {
+    port: {
+      type: 'number',
+      description: 'The port number to check (e.g., 3000, 5173, 8080)'
+    }
+  },
+  required: ['port'],
+  execute: async (args): Promise<ToolExecutionResult> => {
+    try {
+      const port = args.port as number
+
+      if (!port || typeof port !== 'number') {
+        return createErrorResult('Port number is required')
+      }
+
+      let stdout = ''
+      try {
+        // 先尝试获取所有使用端口的进程
+        const result = await execAsync(
+          `lsof -i :${port} -P -n 2>/dev/null || true`,
+          { timeout: 10000 }
+        )
+        stdout = result.stdout
+      } catch (execError) {
+        // lsof 可能不存在或需要权限，尝试使用 netstat
+        try {
+          const result = await execAsync(
+            `netstat -anv 2>/dev/null | grep ".${port} " | grep LISTEN || true`,
+            { timeout: 10000 }
+          )
+          stdout = result.stdout
+        } catch (netstatError) {
+          // 如果都失败了，假设端口可用
+          return createSuccessResult(
+            JSON.stringify({
+              port,
+              occupied: false,
+              message: `Port ${port} appears to be available (could not verify with lsof/netstat)`
+            }, null, 2),
+            { port, occupied: false }
+          )
+        }
+      }
+
+      // 过滤 LISTEN 状态的进程
+      const lines = stdout.split('\n').filter(line => line.includes('LISTEN'))
+
+      if (lines.length === 0) {
+        return createSuccessResult(
+          JSON.stringify({
+            port,
+            occupied: false,
+            message: `Port ${port} is available`
+          }, null, 2),
+          { port, occupied: false }
+        )
+      }
+
+      // 解析进程信息
+      const processes = lines.map(line => {
+        const parts = line.trim().split(/\s+/)
+        // lsof 格式: COMMAND PID USER FD TYPE DEVICE SIZE/OFF NODE NAME
+        if (parts.length >= 9) {
+          return {
+            command: parts[0],
+            pid: parseInt(parts[1], 10) || 0,
+            user: parts[2],
+            fd: parts[3],
+            type: parts[4],
+            device: parts[5],
+            size: parts[6],
+            node: parts[7],
+            name: parts[8]
+          }
+        }
+        return null
+      }).filter(Boolean)
+
+      if (processes.length === 0) {
+        return createSuccessResult(
+          JSON.stringify({
+            port,
+            occupied: false,
+            message: `Port ${port} is available`
+          }, null, 2),
+          { port, occupied: false }
+        )
+      }
+
+      return createSuccessResult(
+        JSON.stringify({
+          port,
+          occupied: true,
+          processes,
+          message: `Port ${port} is occupied by ${processes.length} process(es)`
+        }, null, 2),
+        { port, occupied: true, processCount: processes.length }
+      )
+    } catch (error) {
+      // 即使出错也返回成功，但标记为无法验证
+      return createSuccessResult(
+        JSON.stringify({
+          port: args.port,
+          occupied: false,
+          message: `Port ${args.port} appears to be available (check failed: ${String(error)})`
+        }, null, 2),
+        { port: args.port, occupied: false, error: String(error) }
+      )
+    }
+  }
+}
+
+/**
+ * Kill Process Tool
+ */
+const killProcessTool: ToolExecutor = {
+  name: 'kill_process',
+  description: 'Terminate a process by its PID (Process ID). Use SIGTERM for graceful shutdown or SIGKILL for force kill. Use this after finding a process with find_process or check_port.',
+  parameters: {
+    pid: {
+      type: 'number',
+      description: 'The process ID (PID) to terminate'
+    },
+    signal: {
+      type: 'string',
+      description: 'Signal to send: SIGTERM (graceful, default) or SIGKILL (force)',
+      enum: ['SIGTERM', 'SIGKILL']
+    }
+  },
+  required: ['pid'],
+  execute: async (args): Promise<ToolExecutionResult> => {
+    try {
+      const pid = args.pid as number
+      const signal = (args.signal as string) || 'SIGTERM'
+
+      if (!pid || typeof pid !== 'number') {
+        return createErrorResult('PID is required')
+      }
+
+      process.kill(pid, signal as NodeJS.Signals)
+
+      return createSuccessResult(
+        `Process ${pid} killed successfully with signal ${signal}`,
+        { pid, signal }
+      )
+    } catch (error) {
+      return createErrorResult(String(error))
+    }
+  }
+}
+
+/**
+ * Find Process Tool
+ */
+const findProcessTool: ToolExecutor = {
+  name: 'find_process',
+  description: 'Find processes by name or port. Returns process details including PID, command, and arguments. Use this to locate processes before killing them.',
+  parameters: {
+    name: {
+      type: 'string',
+      description: 'Process name to search for (e.g., "node", "python")'
+    },
+    port: {
+      type: 'number',
+      description: 'Port number to search for'
+    }
+  },
+  required: [],
+  execute: async (args): Promise<ToolExecutionResult> => {
+    try {
+      const name = args.name as string
+      const port = args.port as number
+
+      if (!name && !port) {
+        return createErrorResult('Name or port is required')
+      }
+
+      let command: string
+
+      if (port) {
+        command = `lsof -i :${port} -P -n -t || true`
+      } else {
+        command = `pgrep -f "${name.replace(/"/g, '\\"')}" || true`
+      }
+
+      const { stdout } = await execAsync(command, { timeout: 10000 })
+      const pids = stdout.trim().split('\n').filter(Boolean).map(Number)
+
+      if (pids.length === 0) {
+        return createSuccessResult(
+          JSON.stringify({
+            found: false,
+            message: name ? `No process found with name: ${name}` : `No process found using port: ${port}`
+          }, null, 2),
+          { found: false }
+        )
+      }
+
+      const processes = await Promise.all(
+        pids.map(async (pid) => {
+          try {
+            const { stdout: psOutput } = await execAsync(
+              `ps -p ${pid} -o pid,ppid,comm,args | tail -n 1`,
+              { timeout: 5000 }
+            )
+            const parts = psOutput.trim().split(/\s+/)
+            return {
+              pid,
+              ppid: parseInt(parts[1], 10),
+              command: parts[2],
+              args: parts.slice(3).join(' ')
+            }
+          } catch {
+            return { pid, command: 'unknown', args: '' }
+          }
+        })
+      )
+
+      return createSuccessResult(
+        JSON.stringify({
+          found: true,
+          processes,
+          message: `Found ${processes.length} process(es)`
+        }, null, 2),
+        { found: true, count: processes.length }
+      )
+    } catch (error) {
+      return createErrorResult(String(error))
+    }
+  }
+}
+
 // ============ 注册所有工具 ============
 
 export function registerAllTools(): void {
@@ -846,6 +1100,9 @@ export function registerAllTools(): void {
   toolRegistry.register(getRunningProcessesTool)
   toolRegistry.register(stopProcessTool)
   toolRegistry.register(restartProcessTool)
+  toolRegistry.register(checkPortTool)
+  toolRegistry.register(killProcessTool)
+  toolRegistry.register(findProcessTool)
 
   log.info(`[ToolDefinitions] Registered ${toolRegistry.count()} tools`)
 }

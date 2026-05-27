@@ -84,8 +84,20 @@ export async function executeTool(
   log.info(`[ToolExecutor] ========== Tool Execution Start ==========`)
   log.info(`[ToolExecutor] Call ID: ${callId}`)
   log.info(`[ToolExecutor] Tool name: ${toolName}`)
+  log.info(`[ToolExecutor] Arguments type:`, typeof args)
+  log.info(`[ToolExecutor] Arguments keys:`, args ? Object.keys(args) : 'null')
   log.info(`[ToolExecutor] Arguments:`, JSON.stringify(args, null, 2))
   log.info(`[ToolExecutor] Working directory: ${cwd}`)
+  
+  // CRITICAL: Validate arguments for execute_bash
+  if (toolName === 'execute_bash') {
+    if (!args || !args.command) {
+      const errorMsg = `Command is required for execute_bash tool. Received args: ${JSON.stringify(args)}`
+      log.error(`[ToolExecutor] ${errorMsg}`)
+      return { success: false, output: '', error: errorMsg }
+    }
+    log.info(`[ToolExecutor] ✅ execute_bash command validated:`, args.command)
+  }
   
   // 创建执行记录
   createCallRecord(callId, toolName, args)

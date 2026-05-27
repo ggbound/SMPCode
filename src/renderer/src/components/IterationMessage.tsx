@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight, ChevronDown, CheckCircle, XCircle, Loader2, FileText, Edit3, PlusCircle, FolderOpen, FileSearch, Terminal, Trash2, Check, X } from 'lucide-react'
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 interface ToolResult {
   tool: string
@@ -210,7 +211,12 @@ export function IterationMessage({
                     </span>
                   </div>
                   {tr.result.output && (
-                    <pre className="tool-output">{tr.result.output}</pre>
+                    <div className="tool-output">
+                      <MarkdownRenderer content={tr.result.output.slice(0, 3000)} />
+                      {tr.result.output.length > 3000 && (
+                        <div className="output-truncated">... (内容已截断，共 {tr.result.output.length} 字符)</div>
+                      )}
+                    </div>
                   )}
                   {tr.result.error && (
                     <div className="tool-error">{tr.result.error}</div>

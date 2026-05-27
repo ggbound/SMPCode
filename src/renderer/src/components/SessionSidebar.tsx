@@ -132,10 +132,10 @@ export function SessionSidebar({
 
       {/* 侧边栏 */}
       <div className={`session-sidebar ${isOpen ? 'open' : 'closed'}`}>
+        {/* 新建会话按钮 */}
         <div className="session-sidebar-header">
-          <span className="session-sidebar-title">会话历史</span>
           <button 
-            className="session-new-btn"
+            className="session-new-btn-modern"
             onClick={onCreateSession}
             title="新建会话"
           >
@@ -143,62 +143,75 @@ export function SessionSidebar({
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            新建
+            <span>新对话</span>
           </button>
         </div>
 
         <div className="session-sidebar-content">
           {!projectPath ? (
-            <div className="session-empty">
-              <span className="session-empty-icon">📁</span>
-              <span className="session-empty-text">请先打开一个项目</span>
+            <div className="session-empty-modern">
+              <div className="session-empty-icon-wrapper">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M3 3h18v18H3z"/>
+                  <path d="M9 9h6v6H9z"/>
+                  <path d="M3 9h2v6H3z"/>
+                  <path d="M19 9h2v6h-2z"/>
+                </svg>
+              </div>
+              <h3 className="session-empty-title">与 Agent 协作</h3>
+              <p className="session-empty-desc">端到端执行常规开发任务，支持使用配置的MCP</p>
             </div>
           ) : sessions.length === 0 ? (
-            <div className="session-empty">
-              <span className="session-empty-icon">💬</span>
-              <span className="session-empty-text">暂无会话</span>
-              <span className="session-empty-hint">点击上方"新建"开始对话</span>
+            <div className="session-empty-modern">
+              <div className="session-empty-icon-wrapper">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <h3 className="session-empty-title">暂无对话</h3>
+              <p className="session-empty-desc">点击上方"新对话"开始与 AI 协作</p>
             </div>
           ) : (
-            <div className="session-list">
-              {sessions.map((session) => (
-                <div
-                  key={session.id}
-                  className={`session-item ${currentSession === session.id ? 'active' : ''}`}
-                  onClick={() => onSelectSession(session.id)}
-                  onContextMenu={(e) => handleContextMenu(e, session.id)}
-                >
-                  <div className="session-icon">💬</div>
-                  <div className="session-info">
-                    {editingId === session.id ? (
-                      <input
-                        type="text"
-                        className="session-edit-input"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        onBlur={confirmRename}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') confirmRename()
-                          if (e.key === 'Escape') cancelRename()
-                        }}
-                        autoFocus
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <>
-                        <div className="session-title">
-                          {session.title || `会话 ${session.id.slice(0, 8)}`}
-                        </div>
-                        <div className="session-meta">
-                          <span className="session-date">{formatDate(session.createdAt)}</span>
-                          <span className="session-count">{session.messageCount} 条消息</span>
-                        </div>
-                      </>
-                    )}
+            <>
+              <div className="session-section-title">历史记录</div>
+              <div className="session-list-modern">
+                {sessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`session-item-modern ${currentSession === session.id ? 'active' : ''}`}
+                    onClick={() => onSelectSession(session.id)}
+                    onContextMenu={(e) => handleContextMenu(e, session.id)}
+                  >
+                    <div className="session-item-content">
+                      {editingId === session.id ? (
+                        <input
+                          type="text"
+                          className="session-edit-input-modern"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onBlur={confirmRename}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') confirmRename()
+                            if (e.key === 'Escape') cancelRename()
+                          }}
+                          autoFocus
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <>
+                          <div className="session-item-title">
+                            {session.title || `会话 ${session.id.slice(0, 8)}`}
+                          </div>
+                          <div className="session-item-time">
+                            {formatDate(session.createdAt)}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 

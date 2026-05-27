@@ -204,10 +204,13 @@ export async function executeBash(
   }
 
   return new Promise((resolve) => {
+    // 使用用户的 shell 并继承环境变量
+    const userShell = process.env.SHELL || '/bin/zsh'
     const child = spawn(command, [], {
       cwd,
-      shell: true,
-      stdio: ['pipe', 'pipe', 'pipe']
+      shell: userShell,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin' }
     })
 
     let stdout = ''
@@ -287,6 +290,177 @@ export async function executeSearchFiles(
       success: true,
       output: JSON.stringify(results.slice(0, 50), null, 2),
       metadata: { count: results.length }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: '',
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+// ============ 端口和进程管理工具 ============
+
+export async function executeCheckPort(
+  args: Record<string, unknown>,
+  cwd: string
+): Promise<ToolExecutionResult> {
+  const port = args.port as number
+
+  if (!port || typeof port !== 'number') {
+    return { success: false, output: '', error: 'Port number is required' }
+  }
+
+  try {
+    // 使用 lsof 检查端口
+    const { stdout, stderr } = await execAsync(
+      `lsof -i :${port} -P -n | grep LISTEN || true`,
+      { cwd, timeout: 10000 }
+    )
+
+    const lines = stdout.trim().split('\n').filter(Boolean)
+
+    if (lines.length === 0) {
+      return {
+        success: true,
+        output: JSON.stringify({
+          port,
+          occupied: false,
+          message: `Port ${port} is available`
+        }, null, 2),
+        metadata: { port, occupied: false }
+      }
+    }
+
+    // 解析进程信息
+    const processes = lines.map(line => {
+      const parts = line.trim().split(/\s+/)
+      return {
+        command: parts[0],
+        pid: parseInt(parts[1], 10),
+        user: parts[2],
+        fd: parts[3],
+        type: parts[4],
+        device: parts[5],
+        size: parts[6],
+        node: parts[7],
+        name: parts[8]
+      }
+    })
+
+    return {
+      success: true,
+      output: JSON.stringify({
+        port,
+        occupied: true,
+        processes,
+        message: `Port ${port} is occupied by ${processes.length} process(es)`
+      }, null, 2),
+      metadata: { port, occupied: true, processCount: processes.length }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: '',
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+export async function executeKillProcess(
+  args: Record<string, unknown>,
+  cwd: string
+): Promise<ToolExecutionResult> {
+  const pid = args.pid as number
+  const signal = (args.signal as string) || 'SIGTERM'
+
+  if (!pid || typeof pid !== 'number') {
+    return { success: false, output: '', error: 'PID is required' }
+  }
+
+  try {
+    process.kill(pid, signal as NodeJS.Signals)
+
+    return {
+      success: true,
+      output: `Process ${pid} killed successfully with signal ${signal}`,
+      metadata: { pid, signal }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: '',
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+export async function executeFindProcess(
+  args: Record<string, unknown>,
+  cwd: string
+): Promise<ToolExecutionResult> {
+  const name = args.name as string
+  const port = args.port as number
+
+  if (!name && !port) {
+    return { success: false, output: '', error: 'Name or port is required' }
+  }
+
+  try {
+    let command: string
+
+    if (port) {
+      // 通过端口查找进程
+      command = `lsof -i :${port} -P -n -t || true`
+    } else {
+      // 通过名称查找进程
+      command = `pgrep -f "${name.replace(/"/g, '\\"')}" || true`
+    }
+
+    const { stdout } = await execAsync(command, { cwd, timeout: 10000 })
+    const pids = stdout.trim().split('\n').filter(Boolean).map(Number)
+
+    if (pids.length === 0) {
+      return {
+        success: true,
+        output: JSON.stringify({
+          found: false,
+          message: name ? `No process found with name: ${name}` : `No process found using port: ${port}`
+        }, null, 2),
+        metadata: { found: false }
+      }
+    }
+
+    // 获取进程详细信息
+    const processes = await Promise.all(
+      pids.map(async (pid) => {
+        try {
+          const { stdout: psOutput } = await execAsync(
+            `ps -p ${pid} -o pid,ppid,comm,args | tail -n 1`,
+            { cwd, timeout: 5000 }
+          )
+          const parts = psOutput.trim().split(/\s+/)
+          return {
+            pid,
+            ppid: parseInt(parts[1], 10),
+            command: parts[2],
+            args: parts.slice(3).join(' ')
+          }
+        } catch {
+          return { pid, command: 'unknown', args: '' }
+        }
+      })
+    )
+
+    return {
+      success: true,
+      output: JSON.stringify({
+        found: true,
+        processes,
+        message: `Found ${processes.length} process(es)`
+      }, null, 2),
+      metadata: { found: true, count: processes.length }
     }
   } catch (error) {
     return {
