@@ -24,15 +24,14 @@ export function getVersionString(): string {
 
 /**
  * Chat Mode 可用工具（只读）
+ * 注意：工具名称必须与后端 cli-chat-service.ts 中注册的工具一致
  */
 export const CHAT_MODE_TOOLS: PromptTool[] = [
   {
-    name: 'read_file',
-    description: 'Read file contents. Use when user asks to analyze or view specific files. Supports offset and limit for large files.',
+    name: 'file_read',
+    description: 'Read file contents. Use when user asks to analyze or view specific files.',
     parameters: {
-      path: { type: 'string', description: 'The absolute path to the file', required: true },
-      offset: { type: 'number', description: 'Line offset to start reading from (0-based)', required: false },
-      limit: { type: 'number', description: 'Maximum number of lines to read (default 100)', required: false }
+      path: { type: 'string', description: 'The absolute path to the file', required: true }
     },
     required: ['path']
   },
@@ -40,21 +39,20 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
     name: 'list_directory',
     description: 'List directory contents. Use when user asks to explore project structure.',
     parameters: {
-      path: { type: 'string', description: 'The absolute path to the directory', required: true }
+      path: { type: 'string', description: 'The absolute path to the directory', required: false }
     },
-    required: ['path']
+    required: []
   },
   {
-    name: 'search_files',
-    description: 'Search for files by pattern. Use when user asks to find specific files.',
+    name: 'glob',
+    description: 'Find files matching a pattern. Use when user asks to find specific files.',
     parameters: {
-      pattern: { type: 'string', description: 'The search pattern or query', required: true },
-      path: { type: 'string', description: 'The directory path to search in (optional)', required: false }
+      pattern: { type: 'string', description: 'The glob pattern to match', required: true }
     },
     required: ['pattern']
   },
   {
-    name: 'execute_bash',
+    name: 'bash',
     description: 'Execute shell commands. Use ONLY when user explicitly requests command execution (npm, git, etc.). NEVER use for file operations.',
     parameters: {
       command: { type: 'string', description: 'The bash command to execute', required: true }
@@ -65,75 +63,49 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
 
 /**
  * Agent Mode 可用工具（完整）
+ * 注意：工具名称必须与后端 cli-chat-service.ts 中注册的工具一致
  */
 export const AGENT_MODE_TOOLS: PromptTool[] = [
   ...CHAT_MODE_TOOLS,
   {
-    name: 'write_file',
+    name: 'file_write',
     description: 'Create a new file or overwrite an existing file. Warning: This will overwrite existing files without confirmation.',
     parameters: {
       path: { type: 'string', description: 'The absolute path to the file', required: true },
       content: { type: 'string', description: 'The complete content to write', required: true }
     },
     required: ['path', 'content']
-  },
-  {
-    name: 'edit_file',
-    description: 'Replace specific text in a file. CRITICAL: The old_string must match EXACTLY (including whitespace, indentation, and line breaks).',
-    parameters: {
-      path: { type: 'string', description: 'The absolute path to the file', required: true },
-      old_string: { type: 'string', description: 'The exact text to find and replace', required: true },
-      new_string: { type: 'string', description: 'The new text to replace with', required: true }
-    },
-    required: ['path', 'old_string', 'new_string']
-  },
-  {
-    name: 'append_file',
-    description: 'Append content to the end of a file. Best for adding log entries or building large files incrementally.',
-    parameters: {
-      path: { type: 'string', description: 'The absolute path to the file', required: true },
-      content: { type: 'string', description: 'The content to append', required: true }
-    },
-    required: ['path', 'content']
-  },
-  {
-    name: 'delete_file',
-    description: 'Delete a file or directory. Warning: This action is permanent.',
-    parameters: {
-      path: { type: 'string', description: 'The absolute path to the file or directory', required: true }
-    },
-    required: ['path']
   }
 ]
 
 /**
  * 工具调用格式说明
+ * 注意：必须与后端 cli-chat-service.ts 中的 parseToolCalls 函数兼容
  */
 export const TOOL_INVOCATION_FORMAT = `=== TOOL INVOCATION FORMAT ===
-When you need to use a tool, you MUST output ONLY the JSON code block format:
+When you need to use a tool, you MUST output it in this EXACT format:
 
-\`\`\`json
-{"tool": "tool_name", "arguments": {"arg1": "value1"}}
-\`\`\`
+<tool name="tool_name" param1="value1" param2="value2"/>
 
 CRITICAL RULES:
-1. ALWAYS use JSON code block format (\`\`\`json), NEVER use XML tags like <tool_code> or <tool>
-2. For large content (like file writing), put the entire content in the arguments object
-3. Escape special characters properly in JSON strings
-4. For multiple tool calls, output them sequentially in separate JSON code blocks
+1. ALWAYS use XML-style tag format <tool name="..." .../>, NEVER use JSON code blocks
+2. The tool call MUST be on its own line, without any markdown formatting or code blocks
+3. Parameter values must be in double quotes
+4. Escape special characters in parameter values
 
-Example for writing a file:
-\`\`\`json
-{"tool": "write_file", "arguments": {"path": "/path/to/file.vue", "content": "<template>\\n  <div>Hello</div>\\n</template>"}}
-\`\`\`
+CORRECT examples:
+<tool name="file_read" path="/Users/test/project/README.md"/>
+<tool name="list_directory" path="/Users/test/project/src"/>
+<tool name="bash" command="npm install"/>
+<tool name="file_write" path="/path/to/file.txt" content="file content here"/>
 
-Example for multiple tool calls:
-\`\`\`json
-{"tool": "read_file", "arguments": {"path": "/path/to/file"}}
-\`\`\`
-\`\`\`json
-{"tool": "list_directory", "arguments": {"path": "/path/to/dir"}}
-\`\`\``
+INCORRECT formats (NEVER use these):
+- {"tool": "file_read", "arguments": {"path": "/test"}}  ← WRONG! Don't use JSON
+- file_read: "{\"path\": \"/test\"}"  ← WRONG! Don't use this format
+- - file_read (/path/to/file)  ← WRONG! Don't use list format
+- I'll use file_read to read the file  ← WRONG! Just output the tool call directly
+
+REMEMBER: Output the tool call directly. Do NOT say "I'll use X tool" - just use it.`
 
 /**
  * 通用关键规则

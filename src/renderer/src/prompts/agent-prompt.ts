@@ -77,11 +77,11 @@ CRITICAL: After receiving a tool execution result, you have three options:
 
 OPTION 1 - CONTINUE EXPLORING (Most Common):
 If you need more information, call another tool immediately.
-Example: After list_directory, read important files you discovered.
+Example: After list_directory, use file_read to read important files you discovered.
 
 OPTION 2 - MAKE CHANGES:
 If you need to modify files, use write_file or edit_file.
-Example: After reading a file with a bug, edit it to fix the bug.
+Example: After reading a file with a bug, use file_write to fix the bug.
 
 OPTION 3 - PROVIDE FINAL SUMMARY (Only When Complete):
 ONLY choose this option when:
@@ -124,13 +124,13 @@ const TOOL_USAGE_MANDATORY = `
 CRITICAL: You MUST use tools for ALL file operations and command executions, NEVER output bash commands directly or fabricate results.
 
 WHEN TO USE TOOLS (MANDATORY):
-- Reading files: Use read_file tool with JSON format
-- Writing files: Use write_file tool with JSON format
-- Listing directories: Use list_directory tool with JSON format
-- Searching files: Use search_files tool with JSON format
-- Executing commands: Use execute_bash tool with JSON format
-- Checking ports/processes: Use execute_bash tool (e.g., "lsof -i :port", "ps aux")
-- Starting/stopping services: Use execute_bash tool (e.g., "npm run dev", "php artisan serve")
+- Reading files: Use file_read tool with format <tool name="file_read" path="/path/to/file"/>
+- Writing files: Use file_write tool with format <tool name="file_write" path="/path/to/file" content="content"/>
+- Listing directories: Use list_directory tool with format <tool name="list_directory" path="/path/to/dir"/>
+- Finding files: Use glob tool with format <tool name="glob" pattern="**/*.ts"/>
+- Executing commands: Use bash tool with format <tool name="bash" command="command"/>
+- Checking ports/processes: Use bash tool with format <tool name="bash" command="lsof -i :port"/>
+- Starting/stopping services: Use bash tool with format <tool name="bash" command="npm run dev"/>
 
 FORBIDDEN PATTERNS:
 ❌ NEVER output: \`\`\`bash\ncommand\n\`\`\`
@@ -138,7 +138,7 @@ FORBIDDEN PATTERNS:
 ❌ NEVER reuse PIDs, URLs, or port numbers from previous messages without re-executing commands
 ❌ NEVER fabricate results - ALWAYS execute tools first, get results, then report
 ❌ NEVER assume a service is running - ALWAYS verify by executing commands
-✅ ALWAYS output: \`\`\`json\n{"tool": "execute_bash", "arguments": {"command": "command"}}\n\`\`\`
+✅ ALWAYS output: <tool name="bash" command="command to execute"/>
 
 ⚠️ PORT OCCUPANCY CHECK - ABSOLUTELY CRITICAL ⚠️
 
@@ -147,34 +147,24 @@ BEFORE starting ANY service on a port, you MUST follow this exact workflow:
 STEP 1: CHECK PORT OCCUPANCY (MANDATORY)
 Command: lsof -i :PORT | grep LISTEN
 Example for port 8000:
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "lsof -i :8000 | grep LISTEN"}}
-\`\`\`
+<tool name="bash" command="lsof -i :8000 | grep LISTEN"/>
 
 STEP 2: IF PORT IS OCCUPIED, KILL THE PROCESS FIRST (MANDATORY)
 Extract PID from Step 1 result, then kill it:
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "kill -9 <PID_FROM_STEP_1>"}}
-\`\`\`
+<tool name="bash" command="kill -9 <PID_FROM_STEP_1>"/>
 
 STEP 3: WAIT AND VERIFY PORT IS FREE (MANDATORY)
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "sleep 1 && lsof -i :PORT | grep LISTEN"}}
-\`\`\`
+<tool name="bash" command="sleep 1 && lsof -i :PORT | grep LISTEN"/>
 If still occupied, repeat Step 2.
 
 STEP 4: START THE SERVICE (MUST RUN IN BACKGROUND)
 ⚠️ CRITICAL: Long-running services MUST be started in background with & and output redirected!
 
 For backend services (php artisan serve, npm run dev, python server, etc.):
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "cd <backend_dir> && php artisan serve --host=0.0.0.0 --port=8000 > /tmp/backend.log 2>&1 & echo \"Backend started with PID: $!\" && sleep 2 && cat /tmp/backend.log"}}
-\`\`\`
+<tool name="bash" command="cd <backend_dir> && php artisan serve --host=0.0.0.0 --port=8000 > /tmp/backend.log 2>&1 & echo \"Backend started with PID: $!\" && sleep 2 && cat /tmp/backend.log"/>
 
 For frontend services (npm run dev, vite, etc.):
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "cd <frontend_dir> && npm run dev > /tmp/frontend.log 2>&1 & echo \"Frontend started with PID: $!\" && sleep 3 && cat /tmp/frontend.log"}}
-\`\`\`
+<tool name="bash" command="cd <frontend_dir> && npm run dev > /tmp/frontend.log 2>&1 & echo \"Frontend started with PID: $!\" && sleep 3 && cat /tmp/frontend.log"/>
 
 KEY POINTS:
 - Append " > /tmp/service.log 2>&1 &" to run service in background
@@ -183,9 +173,7 @@ KEY POINTS:
 - Add "cat /tmp/service.log" to verify startup logs
 
 STEP 5: VERIFY SERVICE IS RUNNING (MANDATORY)
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "curl -I http://127.0.0.1:8000 || echo 'Service failed to start'"}}
-\`\`\`
+<tool name="bash" command="curl -I http://127.0.0.1:8000 || echo 'Service failed to start'"/>
 
 ⚠️ YOU MUST NOT SKIP ANY OF THESE STEPS! ⚠️
 If you detect port occupancy, you MUST kill the old process first, then restart.
@@ -199,18 +187,14 @@ cd /path/to/dir && ls
 \`\`\`
 
 ✅ CORRECT (tool call):
-\`\`\`json
-{"tool": "list_directory", "arguments": {"path": "/path/to/dir"}}
-\`\`\`
+<tool name="list_directory" path="/path/to/dir"/>
 
 ❌ WRONG (fabricating results):
 "The backend is now running at http://127.0.0.1:8000"
 (You didn't actually execute any command!)
 
 ✅ CORRECT (actual execution):
-\`\`\`json
-{"tool": "execute_bash", "arguments": {"command": "cd backend && php artisan serve --port=8000"}}
-\`\`\`
+<tool name="bash" command="cd backend && php artisan serve --port=8000"/>
 (Wait for the tool result, then verify the service is actually running)
 
 ❌ WRONG (bash code block):
@@ -219,9 +203,7 @@ echo "content" > file.txt
 \`\`\`
 
 ✅ CORRECT (tool call):
-\`\`\`json
-{"tool": "write_file", "arguments": {"path": "file.txt", "content": "content"}}
-\`\`\`
+<tool name="file_write" path="file.txt" content="content"/>
 
 ❌ WRONG (bash code block):
 \`\`\`bash
@@ -229,11 +211,9 @@ grep -r "pattern" .
 \`\`\`
 
 ✅ CORRECT (tool call):
-\`\`\`json
-{"tool": "search_files", "arguments": {"pattern": "pattern", "path": "."}}
-\`\`\`
+<tool name="glob" pattern="**/*.ts"/>
 
-REMEMBER: ALL file and directory operations AND command executions MUST use JSON tool calls, NEVER bash code blocks or fabrication!`
+REMEMBER: ALL file and directory operations AND command executions MUST use XML-style tool calls like <tool name="file_read" path="..."/>, NEVER JSON code blocks, bash code blocks, or fabrication!`
 
 /**
  * 项目上下文使用指南

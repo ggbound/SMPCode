@@ -28,6 +28,7 @@ interface UseKiloConversationOptions {
 interface CliChatApi {
   createSession: (mode: 'chat' | 'agent', cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
   sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string; name?: string }>, model?: string) => Promise<{ success: boolean; error?: string }>
+  stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
 }
 
@@ -37,6 +38,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
   const store = useKiloStore()
   const abortControllerRef = useRef<AbortController | null>(null)
   const unsubscribeRef = useRef<(() => void) | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   
   // 使用 ref 存储最新的 model 值，确保发送消息时使用最新值
@@ -145,17 +147,57 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     store.addMessage(assistantMessage)
     store.startStreaming(assistantMessageId)
     
-    // 准备请求
-    const messages = store.messages
-      .filter(m => m.id !== assistantMessageId)
-      .map(m => ({
-        role: m.role,
-        content: m.content
-      }))
+    // 准备请求 - 构建符合 OpenAI API 格式的消息历史
+    const messages: Array<{ role: string; content: string; name?: string; tool_call_id?: string }> = []
     
     // 添加系统提示词
     const systemPrompt = generateSystemPrompt(store.currentMode)
-    messages.unshift({ role: 'system', content: systemPrompt })
+    messages.push({ role: 'system', content: systemPrompt })
+    
+    // 转换历史消息为 API 格式
+    const historyMessages = store.messages.filter(m => m.id !== assistantMessageId)
+    for (const msg of historyMessages) {
+      if (msg.role === 'user') {
+        // 用户消息
+        messages.push({ role: 'user', content: msg.content })
+      } else if (msg.role === 'assistant') {
+        // 助手消息 - 检查是否包含工具调用
+        // 清理 content 中可能包含的工具调用格式
+        let cleanContent = msg.content || ''
+        // 移除可能的工具调用 JSON 格式（如 file_read: "{"path": ...}"）
+        cleanContent = cleanContent.replace(/\w+:\s*"\{[^}]*\}"/g, '')
+        // 移除 Markdown 代码块中的工具调用 JSON
+        cleanContent = cleanContent.replace(/```json\s*\n?\{[\s\S]*?"tool"[\s\S]*?\}\s*\n?```/g, '')
+        // 移除列表格式的工具调用描述（如 - file_read (...)）
+        cleanContent = cleanContent.replace(/^\s*-\s+\w+\s*\([^)]*\)\s*$/gm, '')
+        // 移除"我将使用以下工具"等提示文本
+        cleanContent = cleanContent.replace(/我将使用以下工具[：:]\s*\n?/g, '')
+        // 清理多余的空行
+        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim()
+        
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          // 只发送清理后的内容，不包含工具调用描述
+          messages.push({ 
+            role: 'assistant', 
+            content: cleanContent || '我将分析并处理您的请求。'
+          })
+          
+          // 添加工具结果作为 tool 角色消息
+          for (const toolCall of msg.toolCalls) {
+            if (toolCall.status === 'completed' || toolCall.status === 'failed') {
+              messages.push({
+                role: 'tool',
+                content: toolCall.result || toolCall.error || '',
+                tool_call_id: toolCall.id
+              })
+            }
+          }
+        } else {
+          // 普通助手消息
+          messages.push({ role: 'assistant', content: cleanContent })
+        }
+      }
+    }
     
     // 创建 AbortController
     abortControllerRef.current = new AbortController()
@@ -181,6 +223,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       }
 
       const sessionId = createResult.sessionId
+      sessionIdRef.current = sessionId
       
       // 设置流式监听 - 支持内联工具调用
       const unsubscribe = ipcApi.cliChat.onStreamChunk((_event, data) => {
@@ -363,6 +406,15 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       abortControllerRef.current = null
+    }
+    
+    // 调用后端停止会话
+    if (sessionIdRef.current) {
+      const ipcApi = (window as unknown as { api?: { cliChat?: CliChatApi } }).api?.cliChat
+      if (ipcApi?.stopSession) {
+        ipcApi.stopSession(sessionIdRef.current)
+      }
+      sessionIdRef.current = null
     }
     
     if (store.streamingMessageId) {

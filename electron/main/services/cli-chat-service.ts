@@ -166,17 +166,38 @@ When showing code, use proper code blocks with language identifiers.`
 ${systemInfo}
 
 You have access to various tools to help you complete tasks:
-- read_file: Read the contents of a file
-- write_file: Create or overwrite a file
-- edit_file: Edit a specific part of a file
+- file_read: Read the contents of a file
+- file_write: Create or overwrite a file
 - list_directory: List files in a directory
-- search_code: Search for code patterns
-- execute_bash: Execute shell commands
+- bash: Execute shell commands
+- glob: Find files matching a pattern
 
-When you need to use a tool, output the tool call in the format:
-<tool name="tool_name" param1="value1" param2="value2"/>
+CRITICAL INSTRUCTIONS FOR TOOL USAGE:
 
-Always think step by step and explain your reasoning.`
+1. When you need to use a tool, you MUST output it in this EXACT format:
+   <tool name="tool_name" param1="value1" param2="value2"/>
+
+2. The tool call MUST be on its own line, without any markdown formatting, code blocks, or bullet points.
+
+3. CORRECT examples:
+   <tool name="file_read" path="/Users/test/project/README.md"/>
+   <tool name="list_directory" path="/Users/test/project/src"/>
+   <tool name="bash" command="npm install"/>
+
+4. INCORRECT formats (NEVER use these):
+   - file_read: "{\"path\": \"/Users/test/project/README.md\"}"  ← WRONG!
+   - file_read (/Users/test/project/README.md)  ← WRONG!
+   - \`\`\`json
+     {"tool": "file_read", "arguments": {"path": "/Users/test"}}
+     \`\`\`  ← WRONG!
+   - I'll use file_read to read the file  ← WRONG! Just use the tool directly
+
+5. Use the EXACT tool names: file_read, file_write, list_directory, bash, glob
+   Do NOT use: read_file, write_file, execute_bash, search_code, or any other names.
+
+6. Output the tool call directly in your response. Do NOT say "I'll use X tool" - just use it.
+
+Always think step by step and explain your reasoning, but when you need to use a tool, output it in the correct format immediately.`
   }
 }
 
@@ -259,33 +280,101 @@ async function executeToolCall(
 }
 
 /**
- * 从文本内容中提取 JSON 格式的工具调用
+ * 从文本内容中提取工具调用，并返回清理后的内容
+ * 支持多种格式：
+ * 1. <tool name="..." .../> - 正确格式
+ * 2. ```json {"tool": "...", "arguments": {...}} ``` - JSON代码块
+ * 3. tool_name: "{...}" - 错误格式（AI可能输出）
+ * 4. - tool_name (...) - 列表格式（AI可能输出）
  */
-function extractToolCallsFromContent(content: string): Array<{ id: string; name: string; arguments: Record<string, unknown> }> {
+function extractToolCallsFromContent(content: string): {
+  toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
+  cleanedContent: string
+} {
   const toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = []
+  let cleanedContent = content
 
-  // 匹配 ```json 代码块
+  // 已知工具列表
+  const knownTools = ['file_read', 'file_write', 'list_directory', 'bash', 'glob', 'echo']
+
+  // 1. 匹配 <tool name="..." .../> 格式（正确格式）
+  const toolRegex = /<tool\s+name="([^"]+)"([^\/>]*)\/>/g
+  let toolMatch
+  while ((toolMatch = toolRegex.exec(content)) !== null) {
+    const toolName = toolMatch[1]
+    const attrsContent = toolMatch[2]
+    const args: Record<string, unknown> = {}
+    const attrRegex = /(\w+)="([^"]*)"/g
+    let attrMatch
+    while ((attrMatch = attrRegex.exec(attrsContent)) !== null) {
+      args[attrMatch[1]] = attrMatch[2].replace(/\\"/g, '"').replace(/\\n/g, '\n')
+    }
+    if (knownTools.includes(toolName)) {
+      toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
+      log.info(`[CLI-Chat] Extracted tool call from <tool> tag: ${toolName}`)
+      cleanedContent = cleanedContent.replace(toolMatch[0], '')
+    }
+  }
+
+  // 2. 匹配 ```json 代码块
   const jsonBlockRegex = /```json\s*\n?([\s\S]*?)\n?```/g
   let match
-
   while ((match = jsonBlockRegex.exec(content)) !== null) {
     try {
       const json = JSON.parse(match[1].trim())
-      if (json.tool && json.arguments) {
-        toolCalls.push({
-          id: uuidv4(),
-          name: json.tool,
-          arguments: json.arguments
-        })
+      if (json.tool && json.arguments && knownTools.includes(json.tool)) {
+        toolCalls.push({ id: uuidv4(), name: json.tool, arguments: json.arguments })
         log.info(`[CLI-Chat] Extracted tool call from JSON block: ${json.tool}`)
+        cleanedContent = cleanedContent.replace(match[0], '')
       }
     } catch (e) {
-      // 解析失败，忽略
       log.debug(`[CLI-Chat] Failed to parse JSON block: ${e}`)
     }
   }
 
-  return toolCalls
+  // 3. 匹配 file_read: "{...}" 格式（AI 错误输出的格式）
+  const wrongFormatRegex = /(\w+):\s*"(\{[^}]*\})"/g
+  let wrongMatch
+  while ((wrongMatch = wrongFormatRegex.exec(content)) !== null) {
+    const toolName = wrongMatch[1]
+    const jsonStr = wrongMatch[2]
+    try {
+      const args = JSON.parse(jsonStr)
+      if (knownTools.includes(toolName)) {
+        toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
+        log.info(`[CLI-Chat] Extracted tool call from wrong format: ${toolName}`)
+        cleanedContent = cleanedContent.replace(wrongMatch[0], '')
+      }
+    } catch (e) {
+      log.debug(`[CLI-Chat] Failed to parse wrong format JSON: ${e}`)
+    }
+  }
+
+  // 4. 匹配 - tool_name (...) 列表格式（AI 错误输出的格式）
+  // 例如：- file_read (/path/to/file) 或 - list_directory (/path)
+  const listFormatRegex = /^\s*-\s*(file_read|file_write|list_directory|bash|glob|echo)\s*(?:\(([^)]*)\))?\s*$/gim
+  let listMatch
+  while ((listMatch = listFormatRegex.exec(content)) !== null) {
+    const toolName = listMatch[1]
+    const pathHint = listMatch[2]
+    // 根据工具类型构建参数
+    const args: Record<string, unknown> = {}
+    if (pathHint && (toolName === 'file_read' || toolName === 'file_write' || toolName === 'list_directory')) {
+      args.path = pathHint.trim()
+    }
+    toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
+    log.info(`[CLI-Chat] Extracted tool call from list format: ${toolName}`)
+    cleanedContent = cleanedContent.replace(listMatch[0], '')
+  }
+
+  // 5. 移除"我将使用以下工具"等提示文本
+  cleanedContent = cleanedContent.replace(/我将使用以下工具[：:]?\s*\n?/g, '')
+  cleanedContent = cleanedContent.replace(/我将分析并处理您的请求[。]?\s*\n?/g, '')
+
+  // 清理多余的空行
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n').trim()
+
+  return { toolCalls, cleanedContent }
 }
 
 // 最大迭代次数限制
@@ -468,7 +557,8 @@ export async function sendCLIMessageStream(
       messages: session.messages,
       tools,
       stream: true,
-      apiUrl
+      apiUrl,
+      signal: session.abortController?.signal
     })) {
       chunkCount++
       if (session.abortController?.signal.aborted) {
@@ -655,14 +745,15 @@ export async function sendCLIMessageStream(
 
     // 检查 AI 响应中是否包含 JSON 工具调用（从文本内容中提取）
     if (session.mode === 'agent' && fullContent.trim()) {
-      const extractedToolCalls = extractToolCallsFromContent(fullContent)
+      const { toolCalls: extractedToolCalls, cleanedContent } = extractToolCallsFromContent(fullContent)
       if (extractedToolCalls.length > 0) {
         log.info(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
 
         // 添加助手回复到消息历史（必须包含 tool_calls）
+        // 使用清理后的内容（不包含 JSON 工具调用代码块）
         session.messages.push({
           role: 'assistant',
-          content: fullContent,
+          content: cleanedContent,
           tool_calls: extractedToolCalls.map(tc => ({
             id: tc.id,
             type: 'function',

@@ -24,6 +24,7 @@ export interface ChatRequest {
   tools?: unknown[]
   stream?: boolean
   apiUrl?: string  // 自定义 API 端点
+  signal?: AbortSignal  // 用于取消请求
 }
 
 export interface ChatResponse {
@@ -292,12 +293,12 @@ async function sendAnthropicMessage(
  * Stream chat message to LLM API
  */
 export async function* streamChatMessage(request: ChatRequest): AsyncGenerator<StreamChunk> {
-  const { apiKey, model, messages, tools, apiUrl } = request
+  const { apiKey, model, messages, tools, apiUrl, signal } = request
 
   if (isAnthropicModel(model)) {
-    yield* streamAnthropicMessage(apiKey, model, messages, tools, apiUrl)
+    yield* streamAnthropicMessage(apiKey, model, messages, tools, apiUrl, signal)
   } else {
-    yield* streamOpenAIMessage(apiKey, model, messages, tools, apiUrl)
+    yield* streamOpenAIMessage(apiKey, model, messages, tools, apiUrl, signal)
   }
 }
 
@@ -309,7 +310,8 @@ async function* streamOpenAIMessage(
   model: string,
   messages: Message[],
   tools?: unknown[],
-  apiUrl?: string
+  apiUrl?: string,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const requestBody: Record<string, unknown> = {
     model,
@@ -343,7 +345,8 @@ async function* streamOpenAIMessage(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: signal
     })
 
     if (!response.ok) {
@@ -412,7 +415,8 @@ async function* streamAnthropicMessage(
   model: string,
   messages: Message[],
   tools?: unknown[],
-  apiUrl?: string
+  apiUrl?: string,
+  signal?: AbortSignal
 ): AsyncGenerator<StreamChunk> {
   const requestBody: Record<string, unknown> = {
     model,
@@ -437,7 +441,8 @@ async function* streamAnthropicMessage(
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01'
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: signal
     })
 
     if (!response.ok) {

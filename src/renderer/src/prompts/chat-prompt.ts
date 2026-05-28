@@ -36,10 +36,10 @@ const CHAT_MODE_PRINCIPLES = `=== CORE PRINCIPLES ===
  */
 const CHAT_MODE_EXAMPLES = `=== USAGE EXAMPLES ===
 When to use tools:
-✓ "帮我分析下这个项目" → Use list_directory, read_file to explore
-✓ "查看一下这个文件" → Use read_file
-✓ "搜索一下这段代码" → Use search_code
-✓ "运行 npm install" → Use execute_bash
+✓ "帮我分析下这个项目" → Use list_directory, file_read to explore
+✓ "查看一下这个文件" → Use file_read
+✓ "搜索一下这段代码" → Use glob
+✓ "运行 npm install" → Use bash
 
 When NOT to use tools:
 ✗ "你好" → Respond naturally

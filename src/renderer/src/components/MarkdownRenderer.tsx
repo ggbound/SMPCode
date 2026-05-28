@@ -99,6 +99,14 @@ function isToolCallJSON(code: string): boolean {
   if (trimmed.includes('```json') && trimmed.includes('"tool"')) {
     return true
   }
+  // 检测 file_read: 格式的工具调用（多轮对话后可能出现的格式）
+  if (/^file_read:\s*"\{/.test(trimmed) || /^file_write:\s*"\{/.test(trimmed)) {
+    return true
+  }
+  // 检测其他工具调用格式
+  if (/^(file_read|file_write|edit_file|execute_bash|search_files|list_directory)\s*[:=]/.test(trimmed)) {
+    return true
+  }
   return false
 }
 

@@ -133,7 +133,7 @@ export const AGENT_MODE_CONFIGS: Record<AgentMode, AgentModeConfig> = {
     systemPrompt: `你是一个专业的代码助手。专注于编写高质量、可维护的代码。
 你可以读取文件、搜索代码、编辑文件和执行命令。
 始终遵循最佳实践，编写清晰的代码和注释。`,
-    allowedTools: ['read_file', 'write_to_file', 'apply_diff', 'search_files', 'execute_command'],
+    allowedTools: ['file_read', 'file_write', 'list_directory', 'bash', 'glob'],
     features: ['code_edit', 'file_read', 'file_write', 'search', 'terminal']
   },
   architect: {
@@ -146,7 +146,7 @@ export const AGENT_MODE_CONFIGS: Record<AgentMode, AgentModeConfig> = {
     systemPrompt: `你是一个软件架构师。专注于系统设计、技术选型和架构规划。
 在写代码前，先分析需求、设计架构、规划实现步骤。
 提供清晰的设计文档和实现路线图。`,
-    allowedTools: ['read_file', 'search_files', 'list_files'],
+    allowedTools: ['file_read', 'list_directory', 'bash', 'glob'],
     features: ['file_read', 'search', 'planning']
   },
   debug: {
@@ -159,7 +159,7 @@ export const AGENT_MODE_CONFIGS: Record<AgentMode, AgentModeConfig> = {
     systemPrompt: `你是一个调试专家。专注于识别、分析和修复代码中的 Bug。
 仔细阅读错误信息，追踪问题根源，提供修复方案。
 解释问题原因和修复思路。`,
-    allowedTools: ['read_file', 'search_files', 'execute_command', 'apply_diff'],
+    allowedTools: ['file_read', 'file_write', 'list_directory', 'bash', 'glob'],
     features: ['file_read', 'search', 'terminal', 'debugging']
   },
   ask: {
@@ -172,7 +172,7 @@ export const AGENT_MODE_CONFIGS: Record<AgentMode, AgentModeConfig> = {
     systemPrompt: `你是一个代码知识助手。回答用户关于代码库的问题。
 可以搜索代码、读取文件来提供准确的答案。
 保持回答简洁、准确、有帮助。`,
-    allowedTools: ['read_file', 'search_files', 'list_files'],
+    allowedTools: ['file_read', 'list_directory', 'bash', 'glob'],
     features: ['file_read', 'search']
   },
   custom: {
