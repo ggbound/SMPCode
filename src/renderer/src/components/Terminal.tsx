@@ -7,6 +7,7 @@ import { t } from '../i18n'
 interface TerminalProps {
   isVisible: boolean
   projectPath?: string | null
+  onOpenUrl?: (url: string) => void
 }
 
 // AI意图上下文
@@ -55,7 +56,7 @@ interface TerminalSession {
 
 // Window API 类型在 env.d.ts 中全局声明
 
-const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPath }, ref) => {
+const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPath, onOpenUrl }, ref) => {
   const [sessions, setSessions] = useState<TerminalSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
@@ -358,7 +359,21 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
 
           const fitAddon = new FitAddon()
           xterm.loadAddon(fitAddon)
-          xterm.loadAddon(new WebLinksAddon())
+          
+          // 使用 WebLinksAddon 并自定义链接点击行为
+          const webLinksAddon = new WebLinksAddon(
+            (event: MouseEvent, uri: string) => {
+              // 阻止默认行为，在编辑器内打开浏览器
+              event.preventDefault()
+              if (onOpenUrl) {
+                onOpenUrl(uri)
+              } else {
+                // 如果没有提供回调，使用默认行为
+                window.open(uri, '_blank')
+              }
+            }
+          )
+          xterm.loadAddon(webLinksAddon)
 
           // Open terminal in container
           xterm.open(container)

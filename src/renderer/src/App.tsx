@@ -1287,6 +1287,23 @@ function App() {
     setActiveTabId(browserTabId)
   }, [])
 
+  // Open URL in browser tab - 从终端点击URL打开
+  const handleOpenUrlInBrowser = useCallback((url: string) => {
+    const browserTabId = `browser-${Date.now()}`
+    const newTab: Tab = {
+      id: browserTabId,
+      path: `browser://${browserTabId}`,
+      name: '浏览器',
+      content: '',
+      isDirty: false,
+      isBrowser: true,
+      browserUrl: url
+    }
+    
+    setTabs(prev => [...prev, newTab])
+    setActiveTabId(browserTabId)
+  }, [])
+
   // Handle tab content change
   const handleTabContentChange = useCallback((tabId: string, content: string) => {
     setTabs(prev => prev.map(tab => 
@@ -1872,7 +1889,12 @@ function App() {
                   />
                 )}
               </div>
-              <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />
+              <Terminal 
+                ref={terminalRef} 
+                isVisible={showTerminal} 
+                projectPath={projectPath}
+                onOpenUrl={handleOpenUrlInBrowser}
+              />
             </div>
 
             {/* Right: Chat Area - Kilo Style */}
