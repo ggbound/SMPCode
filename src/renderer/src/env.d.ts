@@ -71,7 +71,7 @@ declare global {
       onTerminalCreateRequest: (callback: (event: unknown, data: { id: string; cwd?: string; title?: string }) => void) => () => void
       
       // Process management - 支持AI意图
-      startProcessInTerminal: (command: string, cwd: string, terminalId: string, aiPrompt?: string) => Promise<{ processId: string; success: boolean; error?: string }>
+      startProcessInTerminal: (command: string, cwd: string, terminalId?: string, aiPrompt?: string) => Promise<{ processId: string; success: boolean; error?: string }>
       stopProcess: (processId: string) => Promise<{ success: boolean; error?: string; actuallyStopped?: boolean }>
       restartProcess: (processId: string) => Promise<{ success: boolean; error?: string; processId?: string }>
       getRunningProcesses: () => Promise<RunningProcess[]>

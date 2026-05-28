@@ -12,6 +12,7 @@ import type {
   ToolStatusEvent
 } from '../../../src/shared/types/tool-call'
 import { toolManager } from './tool-manager'
+import { normalizeToolName } from './tools-definitions'
 
 // ============ 执行记录管理 ============
 
@@ -83,14 +84,21 @@ export async function executeTool(
 ): Promise<ToolExecutionResult> {
   log.info(`[ToolExecutor] ========== Tool Execution Start ==========`)
   log.info(`[ToolExecutor] Call ID: ${callId}`)
-  log.info(`[ToolExecutor] Tool name: ${toolName}`)
+  log.info(`[ToolExecutor] Tool name (original): ${toolName}`)
+  
+  // 规范化具名称（支持别名）
+  const normalizedToolName = normalizeToolName(toolName)
+  if (normalizedToolName !== toolName) {
+    log.info(`[ToolExecutor] Tool name mapped: ${toolName} -> ${normalizedToolName}`)
+  }
+  
   log.info(`[ToolExecutor] Arguments type:`, typeof args)
   log.info(`[ToolExecutor] Arguments keys:`, args ? Object.keys(args) : 'null')
   log.info(`[ToolExecutor] Arguments:`, JSON.stringify(args, null, 2))
   log.info(`[ToolExecutor] Working directory: ${cwd}`)
   
   // CRITICAL: Validate arguments for execute_bash
-  if (toolName === 'execute_bash') {
+  if (normalizedToolName === 'execute_bash') {
     if (!args || !args.command) {
       const errorMsg = `Command is required for execute_bash tool. Received args: ${JSON.stringify(args)}`
       log.error(`[ToolExecutor] ${errorMsg}`)
@@ -115,8 +123,8 @@ export async function executeTool(
 
   try {
     // 使用统一的工具管理器执行
-    log.info(`[ToolExecutor] Delegating to toolManager.execute()`)
-    const result = await toolManager.execute(callId, toolName, args, cwd)
+    log.info(`[ToolExecutor] Delegating to toolManager.execute() with normalized tool name: ${normalizedToolName}`)
+    const result = await toolManager.execute(callId, normalizedToolName, args, cwd)
 
     log.info(`[ToolExecutor] Tool execution result: success=${result.success}`)
     
@@ -130,7 +138,7 @@ export async function executeTool(
     notifyFrontend({
       type: result.success ? 'completed' : 'failed',
       callId,
-      toolName,
+      toolName: normalizedToolName,
       timestamp: Date.now(),
       result
     })
@@ -157,7 +165,7 @@ export async function executeTool(
     notifyFrontend({
       type: 'failed',
       callId,
-      toolName,
+      toolName: normalizedToolName,
       timestamp: Date.now(),
       error: errorMessage
     })

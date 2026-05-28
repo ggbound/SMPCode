@@ -18,6 +18,7 @@ interface MarkdownRendererProps {
   enableTables?: boolean
   enableDirectoryTree?: boolean
   maxHeight?: number
+  onLinkClick?: (url: string) => void
 }
 
 // 检测是否为目录树
@@ -142,7 +143,7 @@ const CodeBlockWrapper = memo(function CodeBlockWrapper({
         <ReactMarkdown 
           remarkPlugins={[remarkGfm]} 
           rehypePlugins={[rehypeRaw]}
-          components={markdownComponents}
+          components={createMarkdownComponents()}
         >
           {code}
         </ReactMarkdown>
@@ -160,8 +161,8 @@ const CodeBlockWrapper = memo(function CodeBlockWrapper({
   )
 })
 
-// Markdown 组件配置
-const markdownComponents: Components = {
+// 创建 Markdown 组件配置（支持自定义链接点击）
+const createMarkdownComponents = (onLinkClick?: (url: string) => void): Components => ({
   // 代码块处理
   pre: (props) => {
     return <>{props.children}</>
@@ -218,8 +219,20 @@ const markdownComponents: Components = {
   // 链接处理
   a: (props) => {
     const { children, href } = props
+    const handleClick = (e: React.MouseEvent) => {
+      if (onLinkClick && href) {
+        e.preventDefault()
+        onLinkClick(href)
+      }
+    }
     return (
-      <a className="markdown-link" href={href} target="_blank" rel="noopener noreferrer">
+      <a 
+        className="markdown-link" 
+        href={href} 
+        target={onLinkClick ? undefined : "_blank"} 
+        rel={onLinkClick ? undefined : "noopener noreferrer"}
+        onClick={handleClick}
+      >
         {children}
       </a>
     )
@@ -262,23 +275,27 @@ const markdownComponents: Components = {
   em: (props) => (
     <em className="markdown-em">{props.children}</em>
   ),
-}
+})
 
 // 主组件
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   className = '',
+  onLinkClick,
 }: MarkdownRendererProps) {
   if (!content || content.trim().length === 0) {
     return null
   }
+  
+  // 根据 onLinkClick 创建组件配置
+  const components = createMarkdownComponents(onLinkClick)
   
   return (
     <div className={`markdown-renderer ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={[rehypeRaw]}
-        components={markdownComponents}
+        components={components}
       >
         {content}
       </ReactMarkdown>

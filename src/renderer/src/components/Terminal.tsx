@@ -203,12 +203,17 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     })
 
     // Listen for terminal create requests from main process
-    const removeCreateListener = window.api.onTerminalCreateRequest((_, data) => {
+    const removeCreateListener = window.api.onTerminalCreateRequest(async (_, data) => {
       console.log('[Terminal] Received terminal create request:', data)
       // Check if terminal already exists
       const existingSession = sessionsRef.current.find(s => s.id === data.id)
       if (!existingSession) {
-        createTerminalForProcess(data.id, data.title || 'Process', data.cwd || '')
+        console.log('[Terminal] Creating terminal for process:', data.id)
+        // 等待终端创建完成
+        await createTerminalForProcess(data.id, data.title || 'Process', data.cwd || '')
+        console.log('[Terminal] Terminal creation completed for:', data.id)
+      } else {
+        console.log('[Terminal] Terminal already exists:', data.id)
       }
     })
 
@@ -423,6 +428,14 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
             s.id === session.id ? { ...s, xterm, fitAddon } : s
           ))
 
+          // Flush buffered data to the newly initialized xterm
+          const bufferedData = terminalDataBufferRef.current.get(session.id)
+          if (bufferedData && bufferedData.length > 0) {
+            console.log('[Terminal] Flushing', bufferedData.length, 'buffered data chunks to xterm')
+            bufferedData.forEach(chunk => xterm.write(chunk))
+            terminalDataBufferRef.current.delete(session.id)
+          }
+
           // Initial resize to sync with PTY - use xterm's actual dimensions after fit
           if (window.api?.resizeTerminal) {
             window.api.resizeTerminal(session.id, xterm.cols, xterm.rows)
@@ -439,6 +452,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     })
   }, [sessions])
 
+  // Terminal data buffer for each session (stores data received before xterm is initialized)
+  const terminalDataBufferRef = useRef<Map<string, string[]>>(new Map())
+
   // Handle terminal data from main process
   useEffect(() => {
     console.log('[Terminal] Setting up terminal data listener')
@@ -450,7 +466,15 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     const removeListener = window.api.onTerminalData((_, { id, data }) => {
       const session = sessionsRef.current.find(s => s.id === id)
       if (session?.xterm) {
+        // xterm已初始化，直接写入
         session.xterm.write(data)
+      } else {
+        // xterm未初始化，缓冲数据
+        console.log('[Terminal] Buffering data for session without xterm:', id)
+        if (!terminalDataBufferRef.current.has(id)) {
+          terminalDataBufferRef.current.set(id, [])
+        }
+        terminalDataBufferRef.current.get(id)?.push(data)
       }
     })
 

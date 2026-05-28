@@ -7,6 +7,7 @@ import { useCallback, useRef, useEffect, useState } from 'react'
 import { useKiloStore, KiloMessage, KiloSession, KiloToolCall, TextBlock, ToolCallBlock } from '../store/kiloStore'
 import { AgentMode, AGENT_MODE_CONFIGS } from '../types/agent'
 import { v4 as uuidv4 } from 'uuid'
+import { executeTool } from '../services/tool-client'
 
 // 流式响应块类型
 type StreamBlock = 
@@ -248,6 +249,10 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             
           case 'tool_call':
             if (chunk.toolCall) {
+              console.log('[useKiloConversation] ========== Tool Call Received ==========')
+              console.log('[useKiloConversation] Tool name:', chunk.toolCall.name)
+              console.log('[useKiloConversation] Tool arguments:', JSON.stringify(chunk.toolCall.arguments))
+              
               const toolCall: KiloToolCall = {
                 id: chunk.toolCall.id || uuidv4(),
                 name: chunk.toolCall.name,
@@ -265,6 +270,76 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                 timestamp: Date.now()
               }
               store.addContentBlock(assistantMessageId, toolBlock)
+              
+              // 异步执行工具调用
+              const toolCallId = toolCall.id
+              ;(async () => {
+                try {
+                  console.log('[useKiloConversation] Executing tool:', toolCall.name)
+                  console.log('[useKiloConversation] Tool args (raw):', JSON.stringify(toolCall.args))
+                  
+                  const currentCwd = projectPath || '/'
+                  
+                  // 解析arguments（可能是字符串或对象）
+                  let parsedArgs: Record<string, unknown>
+                  if (typeof toolCall.args === 'string') {
+                    try {
+                      parsedArgs = JSON.parse(toolCall.args)
+                      console.log('[useKiloConversation] Arguments parsed from string')
+                    } catch (e) {
+                      console.error('[useKiloConversation] Failed to parse arguments:', e)
+                      parsedArgs = {}
+                    }
+                  } else {
+                    parsedArgs = toolCall.args || {}
+                  }
+                  
+                  console.log('[useKiloConversation] Tool args (parsed):', JSON.stringify(parsedArgs))
+                  
+                  // 调用工具执行
+                  const result = await executeTool(toolCall.name, parsedArgs, {
+                    cwd: currentCwd,
+                    useTerminal: true // 启用终端模式
+                  })
+                  
+                  console.log('[useKiloConversation] Tool execution completed:', result.success)
+                  console.log('[useKiloConversation] Result length:', result.output.length)
+                  
+                  // 更新工具调用状态
+                  store.updateToolCall(assistantMessageId, toolCallId, {
+                    status: result.success ? 'completed' : 'failed',
+                    result: result.output,
+                    error: result.error,
+                    duration: Date.now() - toolCall.timestamp
+                  })
+                  
+                  // 更新内容块中的工具调用状态
+                  const updatedToolBlock = store.messages.find(m => m.id === assistantMessageId)?.blocks?.find(
+                    b => b.type === 'tool_call' && (b as ToolCallBlock).toolCall.id === toolCallId
+                  ) as ToolCallBlock | undefined
+                  
+                  if (updatedToolBlock) {
+                    store.updateContentBlock(assistantMessageId, updatedToolBlock.id, {
+                      toolCall: {
+                        ...updatedToolBlock.toolCall,
+                        status: result.success ? 'completed' : 'failed',
+                        result: result.output,
+                        error: result.error,
+                        duration: Date.now() - toolCall.timestamp
+                      }
+                    })
+                  }
+                  
+                  console.log('[useKiloConversation] Tool UI updated with result')
+                  
+                } catch (error) {
+                  console.error('[useKiloConversation] Tool execution failed:', error)
+                  store.updateToolCall(assistantMessageId, toolCallId, {
+                    status: 'failed',
+                    error: error instanceof Error ? error.message : String(error)
+                  })
+                }
+              })()
             }
             break
             

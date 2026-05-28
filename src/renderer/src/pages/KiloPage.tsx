@@ -38,9 +38,10 @@ interface KiloPageProps {
   providers: Provider[]
   projectPath?: string
   onModelChange?: (modelId: string) => void
+  onOpenUrl?: (url: string) => void
 }
 
-export default function KiloPage({ apiKey, model, providers, projectPath, onModelChange }: KiloPageProps) {
+export default function KiloPage({ apiKey, model, providers, projectPath, onModelChange, onOpenUrl }: KiloPageProps) {
   const [showSidebar, setShowSidebar] = useState(false)
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -576,6 +577,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                   key={message.id}
                   message={message}
                   isLast={index === kiloMessages.length - 1}
+                  onOpenUrl={onOpenUrl}
                 />
               ))}
               <div ref={messagesEndRef} />

@@ -210,6 +210,7 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
         session.onDataCallbacks.forEach(callback => callback(data))
         // 发送到前端
         if (windowRef && !windowRef.isDestroyed()) {
+          log.debug(`[Terminal] Sending ${data.length} bytes from terminal ${id} to frontend`)
           windowRef.webContents.send('terminal:data', { id, data })
         }
       })
@@ -296,9 +297,11 @@ export function getTerminals(): Map<string, TerminalSession> {
 export function writeToTerminal(id: string, data: string): boolean {
   const session = terminals.get(id)
   if (session) {
+    log.info(`[Terminal] Writing ${data.length} bytes to terminal ${id}: ${JSON.stringify(data.substring(0, 100))}`)
     session.pty.write(data)
     return true
   }
+  log.warn(`[Terminal] Terminal ${id} not found for writing`)
   return false
 }
 

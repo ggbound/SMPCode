@@ -197,6 +197,15 @@ CRITICAL INSTRUCTIONS FOR TOOL USAGE:
 
 6. Output the tool call directly in your response. Do NOT say "I'll use X tool" - just use it.
 
+CRITICAL: FOR LONG-RUNNING COMMANDS (servers, watchers, etc.):
+- DO NOT use background execution with & or redirect output to files (>, >>, 2>&1)
+- DO NOT use: npm run dev > /tmp/frontend.log 2>&1 &
+- DO NOT use: php artisan serve > /tmp/backend.log 2>&1 &
+- Instead, run commands directly in the terminal: npm run dev, php artisan serve
+- The terminal will handle process management automatically
+- You can stop processes later using: kill <PID> or killall <process_name>
+- To check if a service is running, use: lsof -i :<port> or ps aux | grep <process>
+
 Always think step by step and explain your reasoning, but when you need to use a tool, output it in the correct format immediately.`
   }
 }
@@ -242,35 +251,48 @@ async function executeToolCall(
   args: Record<string, unknown>,
   cwd: string
 ): Promise<{ success: boolean; output: string; error?: string }> {
+  log.info(`[CLI-Chat Tool] ========== executeToolCall START ==========`)
+  log.info(`[CLI-Chat Tool] toolName: ${toolName}`)
+  log.info(`[CLI-Chat Tool] args: ${JSON.stringify(args)}`)
+  log.info(`[CLI-Chat Tool] cwd: ${cwd}`)
+  
   const tool = toolRegistry.get(toolName)
   if (!tool) {
+    log.error(`[CLI-Chat Tool] Tool not found: ${toolName}`)
     return {
       success: false,
       output: '',
       error: `Tool not found: ${toolName}`
     }
   }
+  log.info(`[CLI-Chat Tool] Tool found in registry: ${toolName}`)
 
   const permission = toolRegistry.isAllowed(toolName)
   if (!permission.allowed) {
+    log.error(`[CLI-Chat Tool] Permission denied: ${permission.reason}`)
     return {
       success: false,
       output: '',
       error: `Permission denied: ${permission.reason}`
     }
   }
+  log.info(`[CLI-Chat Tool] Permission check passed`)
 
   try {
+    log.info(`[CLI-Chat Tool] Executing tool via registry...`)
     const result = await toolRegistry.execute(toolName, args, {
       cwd,
       permissionMode: 'moderate'
     })
+    log.info(`[CLI-Chat Tool] Tool execution result: success=${result.success}, output length=${result.output?.length || 0}`)
+    log.info(`[CLI-Chat Tool] Output preview: ${result.output?.substring(0, 200)}`)
     return {
       success: result.success,
       output: result.output,
       error: result.error
     }
   } catch (error) {
+    log.error(`[CLI-Chat Tool] Tool execution threw error:`, error)
     return {
       success: false,
       output: '',
@@ -663,7 +685,8 @@ export async function sendCLIMessageStream(
 
     // 执行工具调用（Agent 模式）
     if (session.mode === 'agent' && toolCalls.length > 0) {
-      log.info(`[CLI-Chat] Executing ${toolCalls.length} tool calls in iteration ${iterationCount + 1}`)
+      log.info(`[CLI-Chat] ========== Executing ${toolCalls.length} tool calls in iteration ${iterationCount + 1} ==========`)
+      log.info(`[CLI-Chat] Tool calls:`, JSON.stringify(toolCalls.map(tc => ({ name: tc.name, id: tc.id }))))
 
       // 添加助手回复到消息历史（必须包含 tool_calls，否则后续的 tool 消息会报错）
       session.messages.push({

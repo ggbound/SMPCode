@@ -96,7 +96,7 @@ const api = {
   },
 
   // Process management - 支持AI意图
-  startProcessInTerminal: (command: string, cwd: string, terminalId: string, aiPrompt?: string) =>
+  startProcessInTerminal: (command: string, cwd: string, terminalId?: string, aiPrompt?: string) =>
     ipcRenderer.invoke('process:start-in-terminal', { command, cwd, terminalId, aiPrompt }),
   stopProcess: (processId: string) =>
     ipcRenderer.invoke('process:stop', { processId }),

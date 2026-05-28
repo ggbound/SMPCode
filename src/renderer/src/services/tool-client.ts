@@ -62,6 +62,77 @@ export function initializeToolClient(): void {
 // ============ 工具执行 ============
 
 /**
+ * 在终端中执行 bash 命令
+ * 使用 startProcessInTerminal API 发送到内置终端执行
+ */
+async function executeBashInTerminal(
+  command: string,
+  cwd: string,
+  callId: string
+): Promise<ToolExecutionResult> {
+  console.log(`[ToolClient] Executing bash in terminal: ${command}`)
+  
+  if (!window.api?.startProcessInTerminal) {
+    throw new Error('startProcessInTerminal API not available')
+  }
+
+  try {
+    // 注意：不传递 terminalId，让主进程自动生成并创建终端
+    // 主进程会发送 terminal:create 事件给前端
+    const result = await window.api.startProcessInTerminal(
+      command,
+      cwd,
+      undefined,  // 不指定terminalId，让主进程创建
+      `AI 执行: ${command}`
+    )
+
+    if (result.success) {
+      console.log(`[ToolClient] Process started in terminal: ${result.processId}`)
+      
+      // 等待进程执行完成并获取结果
+      // 这里我们需要等待进程完成，但 startProcessInTerminal 是异步启动的
+      // 所以我们需要轮询检查进程状态
+      const processId = result.processId
+      let isRunning = true
+      let attempts = 0
+      const maxAttempts = 300 // 最多等待 5 分钟 (300 * 1s)
+      
+      while (isRunning && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // 获取进程列表检查状态
+        if (window.api?.getRunningProcesses) {
+          const processes = await window.api.getRunningProcesses()
+          const process = processes.find(p => p.id === processId)
+          isRunning = process?.isRunning ?? false
+        }
+        attempts++
+      }
+      
+      return {
+        success: true,
+        output: `命令已在终端中执行完成: ${command}`,
+        error: undefined
+      }
+    } else {
+      return {
+        success: false,
+        output: '',
+        error: result.error || 'Failed to start process in terminal'
+      }
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error(`[ToolClient] Failed to execute bash in terminal:`, errorMessage)
+    return {
+      success: false,
+      output: '',
+      error: errorMessage
+    }
+  }
+}
+
+/**
  * 执行工具调用
  * 1. 在 store 中创建调用记录
  * 2. 通过 IPC 调用主进程执行
@@ -70,7 +141,7 @@ export function initializeToolClient(): void {
 export async function executeTool(
   toolName: string,
   args: Record<string, unknown>,
-  options: { cwd?: string } = {}
+  options: { cwd?: string; useTerminal?: boolean } = {}
 ): Promise<ToolExecutionResult> {
   // 确保已初始化
   initializeToolClient()
@@ -109,7 +180,25 @@ export async function executeTool(
   console.log(`[ToolClient] Executing tool: ${toolName} (id: ${callId})`)
 
   try {
-    // 通过 IPC 调用主进程
+    // 对于 execute_bash 工具（及其别名），默认使用终端执行
+    const isBashTool = toolName === 'execute_bash' || toolName === 'bash' || toolName === 'shell' || toolName === 'cmd' || toolName === 'terminal'
+    
+    if (isBashTool && options.useTerminal !== false) {
+      const command = args.command as string
+      console.log(`[ToolClient] Detected bash tool (${toolName}), executing in terminal`)
+      const result = await executeBashInTerminal(command, cwd, callId)
+      
+      // 更新 store 状态
+      if (result.success) {
+        store.updateCallStatus(callId, 'completed', result.output)
+      } else {
+        store.updateCallStatus(callId, 'failed', undefined, result.error)
+      }
+      
+      return result
+    }
+    
+    // 其他工具通过 IPC 调用主进程
     if (!window.api?.executeTool) {
       throw new Error('executeTool IPC not available')
     }

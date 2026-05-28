@@ -32,6 +32,7 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 interface KiloMessageInlineProps {
   message: KiloMessageType
   isLast?: boolean
+  onOpenUrl?: (url: string) => void
 }
 
 import type { LucideIcon } from 'lucide-react'
@@ -171,16 +172,18 @@ const InlineToolCallCard = memo(function InlineToolCallCard({
 // 文本内容块
 const TextBlockComponent = memo(function TextBlockComponent({ 
   content,
-  isStreaming
+  isStreaming,
+  onOpenUrl
 }: { 
   content: string
   isStreaming?: boolean
+  onOpenUrl?: (url: string) => void
 }) {
   if (!content.trim()) return null
   
   return (
     <div className="kilo-text-block">
-      <MarkdownRenderer content={content} />
+      <MarkdownRenderer content={content} onLinkClick={onOpenUrl} />
     </div>
   )
 })
@@ -189,15 +192,17 @@ const TextBlockComponent = memo(function TextBlockComponent({
 const ContentBlockRenderer = memo(function ContentBlockRenderer({
   block,
   isLast,
-  isStreaming
+  isStreaming,
+  onOpenUrl
 }: {
   block: ContentBlock
   isLast?: boolean
   isStreaming?: boolean
+  onOpenUrl?: (url: string) => void
 }) {
   switch (block.type) {
     case 'text':
-      return <TextBlockComponent content={(block as TextBlock).content} isStreaming={isStreaming} />
+      return <TextBlockComponent content={(block as TextBlock).content} isStreaming={isStreaming} onOpenUrl={onOpenUrl} />
     
     case 'tool_call':
       return <InlineToolCallCard toolCall={(block as ToolCallBlock).toolCall} />
@@ -218,7 +223,8 @@ const ContentBlockRenderer = memo(function ContentBlockRenderer({
 // 主消息组件 - 简洁左右布局，无头像无标识
 export const KiloMessageInline = memo(function KiloMessageInline({ 
   message, 
-  isLast 
+  isLast,
+  onOpenUrl
 }: KiloMessageInlineProps) {
   const isUser = message.role === 'user'
   
@@ -265,6 +271,7 @@ export const KiloMessageInline = memo(function KiloMessageInline({
               block={block}
               isLast={isLast && index === blocks.length - 1}
               isStreaming={message.isStreaming}
+              onOpenUrl={onOpenUrl}
             />
           ))}
           {message.isStreaming && isLast && (

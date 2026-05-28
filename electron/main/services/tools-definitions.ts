@@ -591,15 +591,19 @@ const executeBashTool: ToolExecutor = {
 
       // Check if command should run in terminal
       const shouldRunInTerminal = processBridge.shouldRunInTerminal(command)
+      log.info(`[execute_bash] shouldRunInTerminal=${shouldRunInTerminal} for command: ${command}`)
 
       // 检测是否包含后台运行符 &
       const isBackgroundCommand = /&\s*$/.test(command.trim()) || /&\s*\n/.test(command)
 
       // 检测是否是长运行的开发服务器类命令（不应该等待进程结束）
       const isDevServerCommand = /npm\s+run\s+(dev|serve|start)|vite|next\s+dev|nuxt\s+dev|vue-cli-service\s+serve/i.test(command)
+      log.info(`[execute_bash] isBackgroundCommand=${isBackgroundCommand}, isDevServerCommand=${isDevServerCommand}`)
 
       if (shouldRunInTerminal && !isBackgroundCommand) {
+        log.info(`[execute_bash] Running in terminal via processBridge.startProcess`)
         const result = await processBridge.startProcess(command, cwd)
+        log.info(`[execute_bash] processBridge.startProcess result:`, JSON.stringify(result))
         if (result.success) {
           // 对于开发服务器类命令，不等待进程完成，立即返回
           if (isDevServerCommand) {
@@ -1117,8 +1121,15 @@ export const CODE_TOOLS: ToolDefinition[] = toolRegistry.toOpenAIDefinitions()
 
 // 导出便捷函数（toolRegistry 已在上面定义）
 
-// 工具名称映射（支持大驼峰命名向后兼容）
+// 工具名称映射（支持别名和向后兼容）
 const TOOL_NAME_MAP: Record<string, string> = {
+  // 别名映射
+  'bash': 'execute_bash',  // bash -> execute_bash
+  'shell': 'execute_bash', // shell -> execute_bash
+  'cmd': 'execute_bash',   // cmd -> execute_bash
+  'terminal': 'execute_bash', // terminal -> execute_bash
+  
+  // 大驼峰命名向后兼容
   'FileWriteTool': 'write_file',
   'FileReadTool': 'read_file',
   'FileEditTool': 'edit_file',
@@ -1147,7 +1158,7 @@ const PARAMETER_NAME_MAP: Record<string, string> = {
 /**
  * 转换工具名称（支持向后兼容）
  */
-function normalizeToolName(name: string): string {
+export function normalizeToolName(name: string): string {
   return TOOL_NAME_MAP[name] || name
 }
 

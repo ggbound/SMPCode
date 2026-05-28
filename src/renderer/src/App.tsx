@@ -1905,6 +1905,7 @@ function App() {
                 providers={providers}
                 projectPath={projectPath || undefined}
                 onModelChange={setModel}
+                onOpenUrl={handleOpenUrlInBrowser}
               />
             </div>
           </main>

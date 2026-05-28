@@ -2,7 +2,7 @@ import { EventEmitter } from 'events'
 import { exec } from 'child_process'
 import log from 'electron-log'
 import { v4 as uuidv4 } from 'uuid'
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { getTerminals, writeToTerminal, TerminalSession, onTerminalData, getTerminalOutput } from './terminal-service'
 
 // Process types that should run in terminal
@@ -98,6 +98,27 @@ class ProcessTerminalBridge extends EventEmitter {
     if (/docker.*up|docker-compose/.test(cmd)) return 'docker-deploy'
     if (/pip\s+install|npm\s+install|yarn\s+install/.test(cmd)) return 'install'
     return 'command'
+  }
+
+  // 清理命令中的后台执行符号和重定向
+  // 将所有命令转换为前台执行，便于在终端中监控
+  private cleanCommand(command: string): string {
+    // 移除末尾的 & (后台执行)
+    let cleaned = command.replace(/\s*&\s*$/, '')
+    
+    // 移除输出重定向 > /path/to/file 或 >> /path/to/file
+    cleaned = cleaned.replace(/\s*>>?\s*\/[^\s&]+/, '')
+    
+    // 移除错误重定向 2>&1
+    cleaned = cleaned.replace(/\s*2>&1/, '')
+    
+    // 移除单独的 2> /path/to/file
+    cleaned = cleaned.replace(/\s*2>\s*\/[^\s&]+/, '')
+    
+    // 清理多余的空格
+    cleaned = cleaned.replace(/\s+/g, ' ').trim()
+    
+    return cleaned
   }
 
   // 推断项目类型
@@ -207,8 +228,18 @@ class ProcessTerminalBridge extends EventEmitter {
     aiPrompt?: string
   ): Promise<{ processId: string; success: boolean; error?: string; reused?: boolean }> {
     try {
-      const commandTypeKey = this.getCommandTypeKey(command, cwd)
-      log.info(`[ProcessBridge] Starting process: ${commandTypeKey}`)
+      // 清理命令：去除后台重定向符号，转换为前台执行
+      const originalCommand = command
+      const cleanedCommand = this.cleanCommand(command)
+        
+      if (originalCommand !== cleanedCommand) {
+        log.info(`[ProcessBridge] Command cleaned:`)
+        log.info(`  Original: ${originalCommand}`)
+        log.info(`  Cleaned:  ${cleanedCommand}`)
+      }
+        
+      const commandTypeKey = this.getCommandTypeKey(cleanedCommand, cwd)
+      log.info(`[ProcessBridge] Starting process: command="${cleanedCommand}", cwd="${cwd}", terminalId="${terminalId || 'auto'}"`)
 
       // 检查是否已有同类型进程在运行
       const existingProcessId = this.commandTypeMap.get(commandTypeKey)
@@ -249,14 +280,34 @@ class ProcessTerminalBridge extends EventEmitter {
           // 额外等待确保终端准备就绪
           await new Promise(resolve => setTimeout(resolve, 800))
         } else if (this.windowRef && !this.windowRef.isDestroyed()) {
+          // 发送事件到前端创建终端
+          log.info(`[ProcessBridge] Sending terminal:create event: ${expectedTerminalId}`)
           this.windowRef.webContents.send('terminal:create', {
             id: expectedTerminalId,
             cwd: cwd,
             title: this.getCommandDisplayName(command)
           })
           targetTerminalId = expectedTerminalId
-          // 等待终端创建完成
-          await new Promise(resolve => setTimeout(resolve, 800))
+          // 等待终端创建完成 - 轮询检查终端是否存在
+          log.info(`[ProcessBridge] Waiting for terminal ${expectedTerminalId} to be created...`)
+          let attempts = 0
+          const maxAttempts = 50 // 最多等待5秒
+          while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 100))
+            const terminals = getTerminals()
+            if (terminals.has(expectedTerminalId)) {
+              log.info(`[ProcessBridge] Terminal ${expectedTerminalId} created successfully after ${attempts * 100}ms`)
+              // 额外等待确保前端xterm完全初始化（需要更长时间）
+              log.info(`[ProcessBridge] Waiting for frontend xterm initialization...`)
+              await new Promise(resolve => setTimeout(resolve, 800))
+              log.info(`[ProcessBridge] Ready to write command to terminal ${expectedTerminalId}`)
+              break
+            }
+            attempts++
+          }
+          if (attempts >= maxAttempts) {
+            log.warn(`[ProcessBridge] Terminal creation timeout for ${expectedTerminalId}, proceeding anyway`)
+          }
         }
       }
 
@@ -282,13 +333,13 @@ class ProcessTerminalBridge extends EventEmitter {
       // 创建进程记录
       const managedProcess: ManagedProcess = {
         id: processId,
-        command: command,
-        output: [`$ ${command}`, `Working directory: ${cwd}`, '---'],
+        command: cleanedCommand,  // 存储清理后的命令
+        output: [`$ ${cleanedCommand}`, `Working directory: ${cwd}`, '---'],
         isRunning: true,
         startTime: new Date().toISOString(),
         cwd: cwd,
         terminalId: targetTerminalId,
-        aiIntent: aiPrompt ? this.createAIIntent(aiPrompt, command, cwd) : undefined,
+        aiIntent: aiPrompt ? this.createAIIntent(aiPrompt, cleanedCommand, cwd) : undefined,
         commandTypeKey: commandTypeKey,
         port: port
       }
@@ -310,27 +361,33 @@ class ProcessTerminalBridge extends EventEmitter {
         ;(managedProcess as any).unsubscribeTerminal = unsubscribe
       }
 
-      // 清理命令并执行
-      const foregroundCommand = command
+      // 清理命令并执行（去除后台重定向，确保前台执行）
+      const foregroundCommand = cleanedCommand
         .replace(/\s*>\s*[^&]+?\s*2>&1\s*&?\s*$/, '')
         .replace(/\s*>\s*[^&]+?\s*&?\s*$/, '')
         .replace(/\s*2>&1\s*&?\s*$/, '')
         .replace(/\s*&\s*$/, '')
         .trim()
 
+      log.info(`[ProcessBridge] About to write to terminal: ${targetTerminalId}`)
+      log.info(`[ProcessBridge] Command to execute: ${foregroundCommand}`)
+      
       // 确保终端有干净的提示符
-      writeToTerminal(targetTerminalId, '\n')
+      const writeNewlineResult = writeToTerminal(targetTerminalId, '\n')
+      log.info(`[ProcessBridge] Write newline result: ${writeNewlineResult}`)
       await new Promise(resolve => setTimeout(resolve, 200))
       
       // 发送命令
       log.info(`[ProcessBridge] Executing command in terminal: ${foregroundCommand}`)
-      writeToTerminal(targetTerminalId, `${foregroundCommand}\n`)
+      const writeCommandResult = writeToTerminal(targetTerminalId, `${foregroundCommand}\n`)
+      log.info(`[ProcessBridge] Write command result: ${writeCommandResult}`)
 
       // 通知前端
       if (this.windowRef && !this.windowRef.isDestroyed()) {
         this.windowRef.webContents.send('process:started', {
           processId,
-          command,
+          command: originalCommand,  // 发送原始命令用于显示
+          cleanedCommand: foregroundCommand,  // 发送清理后的命令用于执行
           cwd,
           terminalId: targetTerminalId,
           aiIntentId: managedProcess.aiIntent?.intentId,
@@ -765,6 +822,84 @@ class ProcessTerminalBridge extends EventEmitter {
         this.cleanupProcessRecord(id)
       }
     }
+  }
+
+  // 注册IPC handlers
+  setupIPCListeners(): void {
+    log.info('[ProcessBridge] Setting up IPC listeners')
+
+    // process:start-in-terminal - 在终端中启动进程
+    ipcMain.handle('process:start-in-terminal', async (_, { command, cwd, terminalId, aiPrompt }) => {
+      try {
+        log.info(`[ProcessBridge IPC] Received start-process request: command="${command}", cwd="${cwd}"`)
+        const result = await this.startProcess(command, cwd, terminalId, aiPrompt)
+        log.info(`[ProcessBridge IPC] Start process result: ${JSON.stringify(result)}`)
+        return result
+      } catch (error) {
+        log.error(`[ProcessBridge IPC] Failed to start process:`, error)
+        return { 
+          processId: '', 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error) 
+        }
+      }
+    })
+
+    // process:stop - 停止进程
+    ipcMain.handle('process:stop', async (_, { processId }) => {
+      try {
+        log.info(`[ProcessBridge IPC] Received stop-process request: ${processId}`)
+        const result = await this.stopProcess(processId)
+        log.info(`[ProcessBridge IPC] Stop process result: ${JSON.stringify(result)}`)
+        return result
+      } catch (error) {
+        log.error(`[ProcessBridge IPC] Failed to stop process:`, error)
+        return { 
+          processId, 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error) 
+        }
+      }
+    })
+
+    // process:restart - 重启进程
+    ipcMain.handle('process:restart', async (_, { processId }) => {
+      try {
+        log.info(`[ProcessBridge IPC] Received restart-process request: ${processId}`)
+        const result = await this.restartProcess(processId)
+        log.info(`[ProcessBridge IPC] Restart process result: ${JSON.stringify(result)}`)
+        return result
+      } catch (error) {
+        log.error(`[ProcessBridge IPC] Failed to restart process:`, error)
+        return { 
+          processId, 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error) 
+        }
+      }
+    })
+
+    // process:list - 获取所有进程
+    ipcMain.handle('process:list', async () => {
+      try {
+        return this.getAllProcesses()
+      } catch (error) {
+        log.error(`[ProcessBridge IPC] Failed to list processes:`, error)
+        return []
+      }
+    })
+
+    // process:should-run-in-terminal - 检查命令是否应该在终端运行
+    ipcMain.handle('process:should-run-in-terminal', (_, { command }) => {
+      try {
+        return this.shouldRunInTerminal(command)
+      } catch (error) {
+        log.error(`[ProcessBridge IPC] Failed to check should-run-in-terminal:`, error)
+        return false
+      }
+    })
+
+    log.info('[ProcessBridge] IPC listeners setup completed')
   }
 }
 

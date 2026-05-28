@@ -224,9 +224,12 @@ export function useAgentMode() {
         }
 
         console.log(`[useAgentMode] Executing tool: ${toolCall.tool}`)
+        console.log(`[useAgentMode] Tool arguments:`, JSON.stringify(toolCall.arguments))
 
         try {
           const { success, result } = await executeToolCall(toolCall, currentCwd)
+          console.log(`[useAgentMode] Tool execution result: success=${success}, result length=${result.length}`)
+          console.log(`[useAgentMode] Tool result (first 200 chars):`, result.substring(0, 200))
 
           if (success && isFileOperationTool(toolCall.tool)) {
             triggerFileRefresh()
