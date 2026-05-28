@@ -10,6 +10,7 @@ import SearchPanel from './components/SearchPanel'
 import GitPanel from './components/GitPanel'
 import FileViewer from './components/FileViewer'
 import DiffViewer from './components/DiffViewer'
+import BrowserView from './components/BrowserView'
 import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
 import SessionSidebar from './components/SessionSidebar'
@@ -1252,6 +1253,40 @@ function App() {
     })
   }, [activeTabId])
 
+  // Handle open file in browser
+  const handleOpenInBrowser = useCallback((filePath: string) => {
+    console.log('[App] Opening file in browser:', filePath)
+    
+    // 检查是否为 HTML 文件
+    const isHtmlFile = /\.(html|htm)$/i.test(filePath)
+    
+    if (isHtmlFile) {
+      // 对于 HTML 文件，使用 file:// 协议打开
+      const fileUrl = `file://${filePath}`
+      window.open(fileUrl, '_blank')
+    } else {
+      // 对于其他文件，可以显示一个提示或尝试用其他方式打开
+      alert(`无法在浏览器中打开非 HTML 文件: ${filePath}\n仅支持 .html 和 .htm 文件`)
+    }
+  }, [])
+
+  // Toggle browser view - 创建新的浏览器标签
+  const handleToggleBrowserView = useCallback(() => {
+    const browserTabId = `browser-${Date.now()}`
+    const newTab: Tab = {
+      id: browserTabId,
+      path: `browser://${browserTabId}`,
+      name: '浏览器',
+      content: '',
+      isDirty: false,
+      isBrowser: true,
+      browserUrl: ''
+    }
+    
+    setTabs(prev => [...prev, newTab])
+    setActiveTabId(browserTabId)
+  }, [])
+
   // Handle tab content change
   const handleTabContentChange = useCallback((tabId: string, content: string) => {
     setTabs(prev => prev.map(tab => 
@@ -1798,9 +1833,11 @@ function App() {
                 onTabCloseAll={handleTabCloseAll}
                 onTabCloseToRight={handleTabCloseToRight}
                 onTabCloseToLeft={handleTabCloseToLeft}
+                onOpenInBrowser={handleOpenInBrowser}
+                onToggleBrowserView={handleToggleBrowserView}
               />
               
-              {/* File Viewer / Diff Viewer */}
+              {/* File Viewer / Diff Viewer / Browser View */}
               <div className="file-viewer-container">
                 {diffView ? (
                   <DiffViewer
@@ -1808,6 +1845,18 @@ function App() {
                     commitHash={diffView.commitHash}
                     repoPath={diffView.repoPath}
                     onClose={() => setDiffView(null)}
+                  />
+                ) : activeTab?.isBrowser ? (
+                  <BrowserView 
+                    key={activeTab.id}
+                    initialUrl={activeTab.browserUrl || ''}
+                    onClose={() => handleTabClose(activeTab.id)}
+                    onUrlChange={(url) => {
+                      // 更新浏览器标签的 URL
+                      setTabs(prev => prev.map(tab => 
+                        tab.id === activeTab.id ? { ...tab, browserUrl: url } : tab
+                      ))
+                    }}
                   />
                 ) : (
                   <FileViewer

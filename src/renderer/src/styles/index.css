@@ -975,6 +975,216 @@ body {
   border-left: 1px solid var(--border-color);
 }
 
+/* Open in Browser button */
+.open-in-browser-btn {
+  width: 32px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: none;
+  border-left: 1px solid var(--border-color);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.open-in-browser-btn:hover {
+  background: var(--bg-hover);
+  color: var(--primary-color);
+}
+
+.open-in-browser-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Toggle Browser View button */
+.toggle-browser-btn {
+  width: 32px;
+  height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: none;
+  border-left: 1px solid var(--border-color);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.toggle-browser-btn:hover {
+  background: var(--bg-hover);
+  color: var(--primary-color);
+}
+
+.toggle-browser-btn.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.toggle-browser-btn.active:hover {
+  background: var(--accent-hover);
+}
+
+.toggle-browser-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ============================================
+   Browser View Styles
+   ============================================ */
+
+.browser-view-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-color);
+}
+
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.browser-nav-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.browser-nav-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.browser-nav-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+.browser-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.browser-url-bar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.browser-url-input {
+  width: 100%;
+  padding: 6px 12px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-color);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.browser-url-input:focus {
+  border-color: var(--primary-color);
+}
+
+.browser-loading-indicator {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.browser-close-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  padding: 0;
+}
+
+.browser-close-btn:hover {
+  background: var(--danger-color);
+  color: white;
+}
+
+.browser-webview-container {
+  flex: 1;
+  overflow: hidden;
+}
+
+.browser-webview {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Browser Empty State */
+.browser-empty-state {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-color);
+}
+
+.empty-state-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.empty-state-content p {
+  font-size: 14px;
+  margin: 0;
+}
+
 /* Tab Context Menu */
 .tab-context-menu {
   position: fixed;

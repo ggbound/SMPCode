@@ -10,6 +10,8 @@ export interface Tab {
   isPreview?: boolean
   language?: string
   lastModified?: number  // Timestamp for external content changes
+  isBrowser?: boolean  // 标识是否为浏览器标签
+  browserUrl?: string    // 浏览器标签的URL
 }
 
 interface FileTabsProps {
@@ -21,10 +23,23 @@ interface FileTabsProps {
   onTabCloseAll: () => void
   onTabCloseToRight: (tabId: string) => void
   onTabCloseToLeft: (tabId: string) => void
+  onOpenInBrowser?: (path: string) => void
+  onToggleBrowserView?: () => void
 }
 
 // VSCode-style file icon component for tabs
-const FileIcon = ({ filename }: { filename: string }) => {
+const FileIcon = ({ filename, isBrowser }: { filename: string; isBrowser?: boolean }) => {
+  // 浏览器标签使用地球图标
+  if (isBrowser) {
+    return (
+      <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none">
+        <circle cx="8" cy="8" r="6" fill="#4CAF50"/>
+        <line x1="2" y1="8" x2="14" y2="8" stroke="white" strokeWidth="1"/>
+        <path d="M8 2a10 10 0 0 1 3 6 10 10 0 0 1-3 6 10 10 0 0 1-3-6 10 10 0 0 1 3-6z" stroke="white" strokeWidth="0.5" fill="none"/>
+      </svg>
+    )
+  }
+  
   const ext = filename.split('.').pop()?.toLowerCase()
   const name = filename.toLowerCase()
   
@@ -109,7 +124,9 @@ function FileTabs({
   onTabCloseOthers,
   onTabCloseAll,
   onTabCloseToRight,
-  onTabCloseToLeft
+  onTabCloseToLeft,
+  onOpenInBrowser,
+  onToggleBrowserView
 }: FileTabsProps) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; tabId: string } | null>(null)
   const tabsContainerRef = useRef<HTMLDivElement>(null)
@@ -192,6 +209,21 @@ function FileTabs({
             <span className="tab-name">placeholder</span>
           </div>
         </div>
+        
+        {/* Toggle Browser View button - always visible even when no tabs */}
+        {onToggleBrowserView && (
+          <button 
+            className="toggle-browser-btn"
+            onClick={onToggleBrowserView}
+            title="打开浏览器"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+          </button>
+        )}
       </div>
     )
   }
@@ -223,7 +255,7 @@ function FileTabs({
               onMouseDown={(e) => handleMouseDown(e, tab.id)}
               title={getTabTooltip(tab)}
             >
-              <span className="tab-icon"><FileIcon filename={tab.name} /></span>
+              <span className="tab-icon"><FileIcon filename={tab.name} isBrowser={tab.isBrowser} /></span>
               <span className="tab-name">{displayName}</span>
               {tab.isDirty && <span className="tab-dirty-indicator">●</span>}
               <button
@@ -248,6 +280,21 @@ function FileTabs({
           onClick={() => scrollTabs('right')}
         >
           ▶
+        </button>
+      )}
+
+      {/* Toggle Browser View button - always visible */}
+      {onToggleBrowserView && (
+        <button 
+          className="toggle-browser-btn"
+          onClick={onToggleBrowserView}
+          title="打开浏览器"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
         </button>
       )}
 
