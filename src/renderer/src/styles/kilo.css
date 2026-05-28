@@ -856,7 +856,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 12px 16px;
+  height: 35px;
+  padding: 0 16px;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
 }
@@ -1373,9 +1374,11 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  height: 35px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--border-color);
   background: var(--bg-secondary);
+  flex-shrink: 0;
 }
 
 .kilo-header-left {

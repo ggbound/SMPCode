@@ -34,10 +34,10 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--vscode-sideBar-background);
-  color: var(--vscode-sideBar-foreground);
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
+  background: #0D1117;
+  color: var(--vscode-fg, #cccccc);
+  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
 }
 
 .file-explorer-header {

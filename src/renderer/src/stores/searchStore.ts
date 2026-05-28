@@ -40,6 +40,7 @@ interface SearchState {
   performSearch: (projectPath: string) => Promise<void>
   addToHistory: () => void
   clearResults: () => void
+  clearHistory: () => void
   loadFromHistory: (entry: ISearchHistoryEntry) => void
 }
 
@@ -238,6 +239,16 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     result: null,
     expandedFiles: new Set()
   }),
+  
+  // 清除历史记录
+  clearHistory: () => {
+    set({ searchHistory: [] })
+    try {
+      localStorage.removeItem('searchHistory')
+    } catch (e) {
+      console.error('Failed to clear search history:', e)
+    }
+  },
   
   // 从历史记录加载
   loadFromHistory: (entry) => set({

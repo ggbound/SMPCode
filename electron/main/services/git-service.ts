@@ -335,7 +335,7 @@ export async function push(repoPath: string, remote = 'origin', branch?: string)
     const git = initGit(repoPath)
     if (!git) return false
 
-    const currentBranch = branch || (await git.status()).current
+    const currentBranch = branch || (await git.status()).current || 'main'
     await git.push(remote, currentBranch)
     log.info(`Pushed to ${remote}/${currentBranch}`)
     return true
@@ -351,7 +351,7 @@ export async function pull(repoPath: string, remote = 'origin', branch?: string)
     const git = initGit(repoPath)
     if (!git) return false
 
-    const currentBranch = branch || (await git.status()).current
+    const currentBranch = branch || (await git.status()).current || 'main'
     await git.pull(remote, currentBranch)
     log.info(`Pulled from ${remote}/${currentBranch}`)
     return true
@@ -431,6 +431,606 @@ export async function popStash(repoPath: string, index = 0): Promise<boolean> {
     return true
   } catch (error) {
     log.error('Failed to pop stash:', error)
+    return false
+  }
+}
+
+// ==================== Remote Branch Management ====================
+
+// Fetch from remote
+export async function fetchRemote(repoPath: string, remote = 'origin'): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.fetch(remote)
+    log.info(`Fetched from ${remote}`)
+    return true
+  } catch (error) {
+    log.error('Failed to fetch:', error)
+    return false
+  }
+}
+
+// Get remote branches
+export async function getRemoteBranches(repoPath: string): Promise<Array<{
+  name: string
+  remote: string
+  branch: string
+}>> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return []
+
+    const branches = await git.branch(['-r'])
+    return branches.all.map(branchName => {
+      const parts = branchName.split('/')
+      const remote = parts[0]
+      const branch = parts.slice(1).join('/')
+      return {
+        name: branchName,
+        remote,
+        branch
+      }
+    })
+  } catch (error) {
+    log.error('Failed to get remote branches:', error)
+    return []
+  }
+}
+
+// Delete remote branch
+export async function deleteRemoteBranch(repoPath: string, remote: string, branch: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.raw(['push', remote, '--delete', branch])
+    log.info(`Deleted remote branch ${remote}/${branch}`)
+    return true
+  } catch (error) {
+    log.error('Failed to delete remote branch:', error)
+    return false
+  }
+}
+
+// Get remotes list
+export async function getRemotes(repoPath: string): Promise<Array<{
+  name: string
+  url: string
+}>> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return []
+
+    const remotes = await git.getRemotes(true)
+    return remotes.map(r => ({
+      name: r.name,
+      url: r.refs.fetch || r.refs.push || ''
+    }))
+  } catch (error) {
+    log.error('Failed to get remotes:', error)
+    return []
+  }
+}
+
+// ==================== Merge Operations ====================
+
+// Merge branch
+export async function mergeBranch(repoPath: string, branchName: string, noFastForward = false): Promise<{
+  success: boolean
+  error?: string
+  hasConflicts?: boolean
+}> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return { success: false, error: 'Not a git repository' }
+
+    const options = noFastForward ? ['--no-ff'] : []
+    await git.merge([branchName, ...options])
+    log.info(`Merged branch: ${branchName}`)
+    return { success: true }
+  } catch (error: any) {
+    log.error('Failed to merge branch:', error)
+    const errorMessage = String(error)
+
+    // Check if there are conflicts
+    if (errorMessage.includes('CONFLICT') || errorMessage.includes('conflict')) {
+      return { success: false, error: errorMessage, hasConflicts: true }
+    }
+
+    return { success: false, error: errorMessage }
+  }
+}
+
+// Check for merge conflicts
+export async function checkMergeConflicts(repoPath: string): Promise<{
+  hasConflicts: boolean
+  conflictedFiles: string[]
+}> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return { hasConflicts: false, conflictedFiles: [] }
+
+    const status = await git.status()
+    const conflictedFiles = status.conflicted || []
+
+    return {
+      hasConflicts: conflictedFiles.length > 0,
+      conflictedFiles
+    }
+  } catch (error) {
+    log.error('Failed to check merge conflicts:', error)
+    return { hasConflicts: false, conflictedFiles: [] }
+  }
+}
+
+// Abort merge
+export async function abortMerge(repoPath: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.raw(['merge', '--abort'])
+    log.info('Aborted merge')
+    return true
+  } catch (error) {
+    log.error('Failed to abort merge:', error)
+    return false
+  }
+}
+
+// Continue merge (after resolving conflicts)
+export async function continueMerge(repoPath: string, message?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    // Stage all resolved files
+    await git.add('.')
+
+    // Commit with custom message or default
+    if (message) {
+      await git.commit(message)
+    } else {
+      await git.raw(['commit', '-m', 'Merge commit'])
+    }
+
+    log.info('Continued merge')
+    return true
+  } catch (error) {
+    log.error('Failed to continue merge:', error)
+    return false
+  }
+}
+
+// ==================== Tag Management ====================
+
+// Get tags
+export async function getTags(repoPath: string): Promise<Array<{
+  name: string
+  hash: string
+  message: string
+  date: string
+  author: string
+}>> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return []
+
+    const tags = await git.tag(['-l', '-n1'])
+    const tagList: Array<{
+      name: string
+      hash: string
+      message: string
+      date: string
+      author: string
+    }> = []
+
+    // Get detailed info for each tag
+    const tagNames = tags.split('\n').filter(t => t.trim())
+    for (const tagLine of tagNames) {
+      const tagName = tagLine.split(' ')[0]
+      try {
+        const logResult = await git.log({ from: tagName, to: tagName, maxCount: 1 })
+        if (logResult.latest) {
+          tagList.push({
+            name: tagName,
+            hash: logResult.latest.hash.substring(0, 7),
+            message: logResult.latest.message,
+            date: logResult.latest.date,
+            author: logResult.latest.author_name
+          })
+        }
+      } catch {
+        // Tag might be lightweight, get the commit it points to
+        try {
+          const showResult = await git.show(['--no-patch', '--format=%H|%an|%ad|%s', tagName])
+          const parts = showResult.split('|')
+          if (parts.length >= 4) {
+            tagList.push({
+              name: tagName,
+              hash: parts[0].substring(0, 7),
+              message: parts[3],
+              date: parts[2],
+              author: parts[1]
+            })
+          }
+        } catch {
+          // Skip tags we can't parse
+        }
+      }
+    }
+
+    return tagList
+  } catch (error) {
+    log.error('Failed to get tags:', error)
+    return []
+  }
+}
+
+// Create tag
+export async function createTag(repoPath: string, tagName: string, message?: string, commitHash?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (message) {
+      // Annotated tag
+      const target = commitHash || 'HEAD'
+      await git.tag(['-a', tagName, target, '-m', message])
+    } else {
+      // Lightweight tag
+      const target = commitHash || 'HEAD'
+      await git.tag([tagName, target])
+    }
+
+    log.info(`Created tag: ${tagName}`)
+    return true
+  } catch (error) {
+    log.error('Failed to create tag:', error)
+    return false
+  }
+}
+
+// Delete tag
+export async function deleteTag(repoPath: string, tagName: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.tag(['-d', tagName])
+    log.info(`Deleted tag: ${tagName}`)
+    return true
+  } catch (error) {
+    log.error('Failed to delete tag:', error)
+    return false
+  }
+}
+
+// Push tag to remote
+export async function pushTag(repoPath: string, tagName: string, remote = 'origin'): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.push(remote, tagName)
+    log.info(`Pushed tag ${tagName} to ${remote}`)
+    return true
+  } catch (error) {
+    log.error('Failed to push tag:', error)
+    return false
+  }
+}
+
+// Push all tags to remote
+export async function pushAllTags(repoPath: string, remote = 'origin'): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.push(remote, '--tags')
+    log.info(`Pushed all tags to ${remote}`)
+    return true
+  } catch (error) {
+    log.error('Failed to push all tags:', error)
+    return false
+  }
+}
+
+// ==================== Commit History Operations ====================
+
+// Revert commit
+export async function revertCommit(repoPath: string, commitHash: string, noEdit = false): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (noEdit) {
+      await git.raw(['revert', '--no-edit', commitHash])
+    } else {
+      await git.raw(['revert', commitHash])
+    }
+    log.info(`Reverted commit: ${commitHash}`)
+    return true
+  } catch (error) {
+    log.error('Failed to revert commit:', error)
+    return false
+  }
+}
+
+// Reset to commit (soft, mixed, hard)
+export async function resetToCommit(
+  repoPath: string,
+  commitHash: string,
+  mode: 'soft' | 'mixed' | 'hard' = 'mixed'
+): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    const resetMode = mode === 'mixed' ? '--mixed' : `--${mode}`
+    await git.reset([resetMode, commitHash])
+    log.info(`Reset to commit ${commitHash} with mode ${mode}`)
+    return true
+  } catch (error) {
+    log.error('Failed to reset commit:', error)
+    return false
+  }
+}
+
+// Cherry-pick commit
+export async function cherryPickCommit(repoPath: string, commitHash: string, noCommit = false): Promise<{
+  success: boolean
+  error?: string
+  hasConflicts?: boolean
+}> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return { success: false, error: 'Not a git repository' }
+
+    const options = noCommit ? ['-n'] : []
+    await git.raw(['cherry-pick', ...options, commitHash])
+    log.info(`Cherry-picked commit: ${commitHash}`)
+    return { success: true }
+  } catch (error: any) {
+    log.error('Failed to cherry-pick commit:', error)
+    const errorMessage = String(error)
+
+    // Check if there are conflicts
+    if (errorMessage.includes('CONFLICT') || errorMessage.includes('conflict')) {
+      return { success: false, error: errorMessage, hasConflicts: true }
+    }
+
+    return { success: false, error: errorMessage }
+  }
+}
+
+// Abort cherry-pick
+export async function abortCherryPick(repoPath: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.raw(['cherry-pick', '--abort'])
+    log.info('Aborted cherry-pick')
+    return true
+  } catch (error) {
+    log.error('Failed to abort cherry-pick:', error)
+    return false
+  }
+}
+
+// Continue cherry-pick (after resolving conflicts)
+export async function continueCherryPick(repoPath: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    await git.raw(['cherry-pick', '--continue'])
+    log.info('Continued cherry-pick')
+    return true
+  } catch (error) {
+    log.error('Failed to continue cherry-pick:', error)
+    return false
+  }
+}
+
+// Get commit details
+export async function getCommitDetails(repoPath: string, commitHash: string): Promise<{
+  hash: string
+  message: string
+  author: string
+  email: string
+  date: string
+  body: string
+  files: string[]
+} | null> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return null
+
+    const logResult = await git.log({ from: commitHash, to: commitHash, maxCount: 1 })
+    const commit = logResult.latest
+
+    if (!commit) return null
+
+    // Get files changed in this commit
+    const diffResult = await git.show(['--name-only', '--pretty=format:', commitHash])
+    const files = diffResult.split('\n').filter(f => f.trim())
+
+    return {
+      hash: commit.hash,
+      message: commit.message,
+      author: commit.author_name,
+      email: commit.author_email,
+      date: commit.date,
+      body: commit.body || '',
+      files
+    }
+  } catch (error) {
+    log.error('Failed to get commit details:', error)
+    return null
+  }
+}
+
+// ==================== Submodule Management ====================
+
+// Get submodules
+export async function getSubmodules(repoPath: string): Promise<Array<{
+  name: string
+  path: string
+  url: string
+  branch?: string
+  commit?: string
+}>> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return []
+
+    // Read .gitmodules file
+    const gitmodulesPath = path.join(repoPath, '.gitmodules')
+    if (!fs.existsSync(gitmodulesPath)) {
+      return []
+    }
+
+    const content = fs.readFileSync(gitmodulesPath, 'utf-8')
+    const submodules: Array<{
+      name: string
+      path: string
+      url: string
+      branch?: string
+      commit?: string
+    }> = []
+
+    // Parse .gitmodules
+    const submoduleRegex = /\[submodule "([^"]+)"\]([^[]*)/g
+    let match
+    while ((match = submoduleRegex.exec(content)) !== null) {
+      const name = match[1]
+      const section = match[2]
+
+      const pathMatch = section.match(/path\s*=\s*(.+)/)
+      const urlMatch = section.match(/url\s*=\s*(.+)/)
+      const branchMatch = section.match(/branch\s*=\s*(.+)/)
+
+      if (pathMatch && urlMatch) {
+        const submodulePath = pathMatch[1].trim()
+        const submoduleUrl = urlMatch[1].trim()
+        const submoduleBranch = branchMatch ? branchMatch[1].trim() : undefined
+
+        // Get current commit of submodule
+        let commit: string | undefined
+        try {
+          const submoduleGitPath = path.join(repoPath, submodulePath, '.git')
+          if (fs.existsSync(submoduleGitPath)) {
+            const submoduleGit = simpleGit(path.join(repoPath, submodulePath))
+            const logResult = await submoduleGit.log({ maxCount: 1 })
+            commit = logResult.latest?.hash.substring(0, 7)
+          }
+        } catch {
+          // Submodule might not be initialized
+        }
+
+        submodules.push({
+          name,
+          path: submodulePath,
+          url: submoduleUrl,
+          branch: submoduleBranch,
+          commit
+        })
+      }
+    }
+
+    return submodules
+  } catch (error) {
+    log.error('Failed to get submodules:', error)
+    return []
+  }
+}
+
+// Add submodule
+export async function addSubmodule(repoPath: string, url: string, submodulePath: string, branch?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (branch) {
+      await git.raw(['submodule', 'add', '-b', branch, url, submodulePath])
+    } else {
+      await git.raw(['submodule', 'add', url, submodulePath])
+    }
+    log.info(`Added submodule: ${submodulePath} from ${url}`)
+    return true
+  } catch (error) {
+    log.error('Failed to add submodule:', error)
+    return false
+  }
+}
+
+// Remove submodule
+export async function removeSubmodule(repoPath: string, submodulePath: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    // Deinitialize submodule
+    await git.raw(['submodule', 'deinit', '-f', submodulePath])
+
+    // Remove from .git/modules
+    const gitModulesPath = path.join(repoPath, '.git', 'modules', submodulePath)
+    if (fs.existsSync(gitModulesPath)) {
+      fs.rmSync(gitModulesPath, { recursive: true, force: true })
+    }
+
+    // Remove from index
+    await git.raw(['rm', '-f', submodulePath])
+
+    log.info(`Removed submodule: ${submodulePath}`)
+    return true
+  } catch (error) {
+    log.error('Failed to remove submodule:', error)
+    return false
+  }
+}
+
+// Update submodule
+export async function updateSubmodule(repoPath: string, submodulePath?: string, init = false): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    const options = init ? ['--init'] : []
+    if (submodulePath) {
+      await git.subModule(['update', ...options, '--', submodulePath])
+    } else {
+      await git.subModule(['update', ...options, '--recursive'])
+    }
+
+    log.info(`Updated submodule${submodulePath ? `: ${submodulePath}` : 's'}`)
+    return true
+  } catch (error) {
+    log.error('Failed to update submodule:', error)
+    return false
+  }
+}
+
+// Sync submodule
+export async function syncSubmodule(repoPath: string, submodulePath?: string): Promise<boolean> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return false
+
+    if (submodulePath) {
+      await git.subModule(['sync', '--', submodulePath])
+    } else {
+      await git.subModule(['sync'])
+    }
+
+    log.info(`Synced submodule${submodulePath ? `: ${submodulePath}` : 's'}`)
+    return true
+  } catch (error) {
+    log.error('Failed to sync submodule:', error)
     return false
   }
 }

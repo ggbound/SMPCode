@@ -9,6 +9,7 @@ import FileExplorer from './components/FileExplorer'
 import SearchPanel from './components/SearchPanel'
 import GitPanel from './components/GitPanel'
 import FileViewer from './components/FileViewer'
+import DiffViewer from './components/DiffViewer'
 import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
 import SessionSidebar from './components/SessionSidebar'
@@ -118,6 +119,13 @@ function App() {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  
+  // Diff viewer state
+  const [diffView, setDiffView] = useState<{
+    filePath: string
+    commitHash?: string
+    repoPath: string
+  } | null>(null)
   
   // Editor reference for jumping to lines
   const editorRef = useRef<any>(null)
@@ -1102,6 +1110,19 @@ function App() {
     return `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   }, [])
 
+  // Listen for git:openDiff event
+  useEffect(() => {
+    const handleOpenDiff = (event: CustomEvent<{ filePath: string; commitHash?: string; repoPath: string }>) => {
+      const { filePath, commitHash, repoPath } = event.detail
+      setDiffView({ filePath, commitHash, repoPath })
+    }
+    
+    window.addEventListener('git:openDiff', handleOpenDiff as EventListener)
+    return () => {
+      window.removeEventListener('git:openDiff', handleOpenDiff as EventListener)
+    }
+  }, [])
+
   // Get file language from path (using unified language map)
   const getFileLanguage = useCallback((path: string): string => {
     return getLanguageFromPath(path)
@@ -1711,8 +1732,8 @@ function App() {
 
           {/* Main Content Area */}
           <main className="main-content three-column-layout">
-            {/* Left: Sidebar (File Explorer or Search) */}
-            <div style={{ display: activeActivity === 'explorer' ? 'flex' : 'none', flex: '0 0 auto' }}>
+            {/* Left: Sidebar (File Explorer or Search) - Unified width */}
+            <div className="sidebar-panel-container" style={{ display: activeActivity === 'explorer' ? 'flex' : 'none' }}>
               <FileExplorer
                 onFileSelect={handleFileSelect}
                 selectedPath={selectedFilePath}
@@ -1722,10 +1743,10 @@ function App() {
                 onFileDeleted={handleFileDeleted}
               />
             </div>
-            
-            <div style={{ display: activeActivity === 'search' ? 'flex' : 'none', flex: '0 0 auto' }}>
-              <SearchPanel 
-                projectPath={projectPath} 
+
+            <div className="sidebar-panel-container" style={{ display: activeActivity === 'search' ? 'flex' : 'none' }}>
+              <SearchPanel
+                projectPath={projectPath}
                 onFileClick={(filePath, line) => {
                   // 打开文件并跳转到指定行
                   console.log('[App] onFileClick called with:', filePath, line)
@@ -1761,6 +1782,10 @@ function App() {
               />
             </div>
 
+            <div className="sidebar-panel-container" style={{ display: activeActivity === 'git' ? 'flex' : 'none' }}>
+              <GitPanel repoPath={projectPath} openFile={openFile} />
+            </div>
+
             {/* Center: File Tabs + File Viewer + Terminal */}
             <div className="center-column">
               {/* File Tabs */}
@@ -1775,19 +1800,28 @@ function App() {
                 onTabCloseToLeft={handleTabCloseToLeft}
               />
               
-              {/* File Viewer */}
+              {/* File Viewer / Diff Viewer */}
               <div className="file-viewer-container">
-                <FileViewer
-                  tab={activeTab}
-                  onContentChange={handleTabContentChange}
-                  onSave={handleTabSave}
-                  rootPath={projectPath || undefined}
-                  onCursorPositionChange={setCursorPosition}
-                  onEditorMount={(editor) => {
-                    editorRef.current = editor
-                    console.log('[App] Editor mounted')
-                  }}
-                />
+                {diffView ? (
+                  <DiffViewer
+                    filePath={diffView.filePath}
+                    commitHash={diffView.commitHash}
+                    repoPath={diffView.repoPath}
+                    onClose={() => setDiffView(null)}
+                  />
+                ) : (
+                  <FileViewer
+                    tab={activeTab}
+                    onContentChange={handleTabContentChange}
+                    onSave={handleTabSave}
+                    rootPath={projectPath || undefined}
+                    onCursorPositionChange={setCursorPosition}
+                    onEditorMount={(editor) => {
+                      editorRef.current = editor
+                      console.log('[App] Editor mounted')
+                    }}
+                  />
+                )}
               </div>
               <Terminal ref={terminalRef} isVisible={showTerminal} projectPath={projectPath} />
             </div>

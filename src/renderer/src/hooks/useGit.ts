@@ -9,9 +9,20 @@ import {
   getGitBranches,
   getGitCommits,
   getFileDiff,
-  getGitStashList,
-  type GitStatus as GitStatusType
+  getGitStashList
 } from '../services/enhanced-ipc-client'
+
+// Git status from main process
+interface GitStatusFromMain {
+  isRepo: boolean
+  branch: string
+  ahead: number
+  behind: number
+  staged: string[]
+  modified: string[]
+  untracked: string[]
+  conflicted: string[]
+}
 
 export interface GitFile {
   path: string
@@ -43,6 +54,33 @@ export interface UseGitOptions {
   refreshInterval?: number
 }
 
+export interface GitTag {
+  name: string
+  hash: string
+  message: string
+  date: string
+  author: string
+}
+
+export interface GitRemoteBranch {
+  name: string
+  remote: string
+  branch: string
+}
+
+export interface GitRemote {
+  name: string
+  url: string
+}
+
+export interface GitSubmodule {
+  name: string
+  path: string
+  url: string
+  branch?: string
+  commit?: string
+}
+
 export interface UseGitReturn {
   // State
   isRepo: boolean
@@ -53,6 +91,10 @@ export interface UseGitReturn {
   branches: GitBranch[]
   commits: GitCommit[]
   stashes: GitStash[]
+  tags: GitTag[]
+  remoteBranches: GitRemoteBranch[]
+  remotes: GitRemote[]
+  submodules: GitSubmodule[]
   selectedFiles: Set<string>
   commitMessage: string
   isLoading: boolean
@@ -75,6 +117,35 @@ export interface UseGitReturn {
   getDiff: (filePath: string, staged?: boolean) => Promise<string>
   stash: (message?: string) => Promise<boolean>
   popStash: (index?: number) => Promise<boolean>
+  // Remote operations
+  fetch: (remote?: string) => Promise<boolean>
+  getRemoteBranchesList: () => Promise<GitRemoteBranch[]>
+  deleteRemoteBranch: (remote: string, branch: string) => Promise<boolean>
+  getRemotesList: () => Promise<GitRemote[]>
+  // Merge operations
+  merge: (branchName: string, noFastForward?: boolean) => Promise<{ success: boolean; error?: string; hasConflicts?: boolean }>
+  abortMerge: () => Promise<boolean>
+  continueMerge: (message?: string) => Promise<boolean>
+  checkMergeConflicts: () => Promise<{ hasConflicts: boolean; conflictedFiles: string[] }>
+  // Tag operations
+  getTagsList: () => Promise<GitTag[]>
+  createTag: (tagName: string, message?: string, commitHash?: string) => Promise<boolean>
+  deleteTag: (tagName: string) => Promise<boolean>
+  pushTag: (tagName: string, remote?: string) => Promise<boolean>
+  pushAllTags: (remote?: string) => Promise<boolean>
+  // Commit history operations
+  revertCommit: (commitHash: string, noEdit?: boolean) => Promise<boolean>
+  resetToCommit: (commitHash: string, mode?: 'soft' | 'mixed' | 'hard') => Promise<boolean>
+  cherryPick: (commitHash: string, noCommit?: boolean) => Promise<{ success: boolean; error?: string; hasConflicts?: boolean }>
+  abortCherryPick: () => Promise<boolean>
+  continueCherryPick: () => Promise<boolean>
+  getCommitDetails: (commitHash: string) => Promise<any>
+  // Submodule operations
+  getSubmodulesList: () => Promise<GitSubmodule[]>
+  addSubmodule: (url: string, path: string, branch?: string) => Promise<boolean>
+  removeSubmodule: (path: string) => Promise<boolean>
+  updateSubmodule: (path?: string, init?: boolean) => Promise<boolean>
+  syncSubmodule: (path?: string) => Promise<boolean>
 }
 
 export function useGit(options: UseGitOptions): UseGitReturn {
@@ -88,6 +159,10 @@ export function useGit(options: UseGitOptions): UseGitReturn {
   const [branches, setBranches] = useState<GitBranch[]>([])
   const [commits, setCommits] = useState<GitCommit[]>([])
   const [stashes, setStashes] = useState<GitStash[]>([])
+  const [tags, setTags] = useState<GitTag[]>([])
+  const [remoteBranches, setRemoteBranches] = useState<GitRemoteBranch[]>([])
+  const [remotes, setRemotes] = useState<GitRemote[]>([])
+  const [submodules, setSubmodules] = useState<GitSubmodule[]>([])
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
   const [commitMessage, setCommitMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -112,8 +187,13 @@ export function useGit(options: UseGitOptions): UseGitReturn {
     setError(null)
 
     try {
-      // 获取状态
-      const status = await getGitStatus(repoPath)
+      // 获取状态 - 使用 IPC API
+      const api = (window as any).api
+      if (!api?.gitStatus) {
+        throw new Error('Git status API not available')
+      }
+
+      const status: GitStatusFromMain = await api.gitStatus(repoPath)
       setIsRepo(status.isRepo)
       setBranch(status.branch)
       setAhead(status.ahead)
@@ -122,15 +202,15 @@ export function useGit(options: UseGitOptions): UseGitReturn {
       if (status.isRepo) {
         // 合并文件列表
         const allFiles: GitFile[] = [
-          ...status.staged.map(path => ({ path, status: 'staged' as const, staged: true })),
-          ...status.modified.map(path => ({ path, status: 'modified' as const, staged: false })),
-          ...status.untracked.map(path => ({ path, status: 'untracked' as const, staged: false })),
-          ...status.conflicted.map(path => ({ path, status: 'conflicted' as const, staged: false }))
+          ...status.staged.map((path: string) => ({ path, status: 'staged' as const, staged: true })),
+          ...status.modified.map((path: string) => ({ path, status: 'modified' as const, staged: false })),
+          ...status.untracked.map((path: string) => ({ path, status: 'untracked' as const, staged: false })),
+          ...status.conflicted.map((path: string) => ({ path, status: 'conflicted' as const, staged: false }))
         ]
         setFiles(allFiles)
 
         // 获取分支
-        const branchesResult = await getGitBranches(repoPath)
+        const branchesResult: any = await getGitBranches(repoPath)
         const branchList: GitBranch[] = Object.entries(branchesResult.branches || {}).map(([name, info]: [string, any]) => ({
           name,
           current: info.current
@@ -144,6 +224,22 @@ export function useGit(options: UseGitOptions): UseGitReturn {
         // 获取 stash 列表
         const stashesResult = await getGitStashList(repoPath)
         setStashes(stashesResult)
+
+        // 获取标签列表
+        const tagsResult = await api.gitTags(repoPath)
+        setTags(tagsResult || [])
+
+        // 获取远程分支
+        const remoteBranchesResult = await api.gitRemoteBranches(repoPath)
+        setRemoteBranches(remoteBranchesResult || [])
+
+        // 获取远程仓库
+        const remotesResult = await api.gitRemotes(repoPath)
+        setRemotes(remotesResult || [])
+
+        // 获取子模块
+        const submodulesResult = await api.gitSubmodules(repoPath)
+        setSubmodules(submodulesResult || [])
       }
     } catch (err) {
       console.error('Failed to refresh git status:', err)
@@ -484,6 +580,308 @@ export function useGit(options: UseGitOptions): UseGitReturn {
     }
   }, [repoPath, refresh])
 
+  // ==================== Remote Operations ====================
+
+  const fetch = useCallback(async (remote = 'origin'): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitFetch(repoPath, remote)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const getRemoteBranchesList = useCallback(async (): Promise<GitRemoteBranch[]> => {
+    if (!repoPath) return []
+    try {
+      const api = (window as any).api
+      return await api.gitRemoteBranches(repoPath) || []
+    } catch (err) {
+      return []
+    }
+  }, [repoPath])
+
+  const deleteRemoteBranchAction = useCallback(async (remote: string, branch: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitDeleteRemoteBranch(repoPath, remote, branch)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const getRemotesList = useCallback(async (): Promise<GitRemote[]> => {
+    if (!repoPath) return []
+    try {
+      const api = (window as any).api
+      return await api.gitRemotes(repoPath) || []
+    } catch (err) {
+      return []
+    }
+  }, [repoPath])
+
+  // ==================== Merge Operations ====================
+
+  const merge = useCallback(async (branchName: string, noFastForward = false): Promise<{ success: boolean; error?: string; hasConflicts?: boolean }> => {
+    if (!repoPath) return { success: false, error: 'No repository' }
+    try {
+      const api = (window as any).api
+      const result = await api.gitMerge(repoPath, branchName, noFastForward)
+      await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return { success: false, error: String(err) }
+    }
+  }, [repoPath, refresh])
+
+  const abortMergeAction = useCallback(async (): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitAbortMerge(repoPath)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const continueMergeAction = useCallback(async (message?: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitContinueMerge(repoPath, message)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const checkMergeConflictsAction = useCallback(async (): Promise<{ hasConflicts: boolean; conflictedFiles: string[] }> => {
+    if (!repoPath) return { hasConflicts: false, conflictedFiles: [] }
+    try {
+      const api = (window as any).api
+      return await api.gitCheckMergeConflicts(repoPath)
+    } catch (err) {
+      return { hasConflicts: false, conflictedFiles: [] }
+    }
+  }, [repoPath])
+
+  // ==================== Tag Operations ====================
+
+  const getTagsList = useCallback(async (): Promise<GitTag[]> => {
+    if (!repoPath) return []
+    try {
+      const api = (window as any).api
+      return await api.gitTags(repoPath) || []
+    } catch (err) {
+      return []
+    }
+  }, [repoPath])
+
+  const createTagAction = useCallback(async (tagName: string, message?: string, commitHash?: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitCreateTag(repoPath, tagName, message, commitHash)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const deleteTagAction = useCallback(async (tagName: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitDeleteTag(repoPath, tagName)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const pushTagAction = useCallback(async (tagName: string, remote = 'origin'): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitPushTag(repoPath, tagName, remote)
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath])
+
+  const pushAllTagsAction = useCallback(async (remote = 'origin'): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitPushAllTags(repoPath, remote)
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath])
+
+  // ==================== Commit History Operations ====================
+
+  const revertCommitAction = useCallback(async (commitHash: string, noEdit = false): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitRevert(repoPath, commitHash, noEdit)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const resetToCommitAction = useCallback(async (commitHash: string, mode: 'soft' | 'mixed' | 'hard' = 'mixed'): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitReset(repoPath, commitHash, mode)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const cherryPick = useCallback(async (commitHash: string, noCommit = false): Promise<{ success: boolean; error?: string; hasConflicts?: boolean }> => {
+    if (!repoPath) return { success: false, error: 'No repository' }
+    try {
+      const api = (window as any).api
+      const result = await api.gitCherryPick(repoPath, commitHash, noCommit)
+      await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return { success: false, error: String(err) }
+    }
+  }, [repoPath, refresh])
+
+  const abortCherryPickAction = useCallback(async (): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitAbortCherryPick(repoPath)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const continueCherryPickAction = useCallback(async (): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitContinueCherryPick(repoPath)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const getCommitDetailsAction = useCallback(async (commitHash: string): Promise<any> => {
+    if (!repoPath) return null
+    try {
+      const api = (window as any).api
+      return await api.gitCommitDetails(repoPath, commitHash)
+    } catch (err) {
+      return null
+    }
+  }, [repoPath])
+
+  // ==================== Submodule Operations ====================
+
+  const getSubmodulesList = useCallback(async (): Promise<GitSubmodule[]> => {
+    if (!repoPath) return []
+    try {
+      const api = (window as any).api
+      return await api.gitSubmodules(repoPath) || []
+    } catch (err) {
+      return []
+    }
+  }, [repoPath])
+
+  const addSubmoduleAction = useCallback(async (url: string, path: string, branch?: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitAddSubmodule(repoPath, url, path, branch)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const removeSubmoduleAction = useCallback(async (path: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitRemoveSubmodule(repoPath, path)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const updateSubmoduleAction = useCallback(async (path?: string, init = false): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitUpdateSubmodule(repoPath, path, init)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
+  const syncSubmoduleAction = useCallback(async (path?: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.gitSyncSubmodule(repoPath, path)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
   // 自动刷新
   useEffect(() => {
     if (autoRefresh && repoPath) {
@@ -520,6 +918,10 @@ export function useGit(options: UseGitOptions): UseGitReturn {
     branches,
     commits,
     stashes,
+    tags,
+    remoteBranches,
+    remotes,
+    submodules,
     selectedFiles,
     commitMessage,
     isLoading,
@@ -539,7 +941,36 @@ export function useGit(options: UseGitOptions): UseGitReturn {
     pull,
     getDiff,
     stash,
-    popStash
+    popStash,
+    // Remote operations
+    fetch,
+    getRemoteBranchesList,
+    deleteRemoteBranch: deleteRemoteBranchAction,
+    getRemotesList,
+    // Merge operations
+    merge,
+    abortMerge: abortMergeAction,
+    continueMerge: continueMergeAction,
+    checkMergeConflicts: checkMergeConflictsAction,
+    // Tag operations
+    getTagsList,
+    createTag: createTagAction,
+    deleteTag: deleteTagAction,
+    pushTag: pushTagAction,
+    pushAllTags: pushAllTagsAction,
+    // Commit history operations
+    revertCommit: revertCommitAction,
+    resetToCommit: resetToCommitAction,
+    cherryPick,
+    abortCherryPick: abortCherryPickAction,
+    continueCherryPick: continueCherryPickAction,
+    getCommitDetails: getCommitDetailsAction,
+    // Submodule operations
+    getSubmodulesList,
+    addSubmodule: addSubmoduleAction,
+    removeSubmodule: removeSubmoduleAction,
+    updateSubmodule: updateSubmoduleAction,
+    syncSubmodule: syncSubmoduleAction
   }
 }
 

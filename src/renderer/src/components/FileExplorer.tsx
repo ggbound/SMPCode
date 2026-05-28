@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2 } from 'lucide-react'
+import { Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2, RefreshCw, ChevronDown } from 'lucide-react'
 import { t } from '../i18n'
 import { gitIPC } from './GitStatusBar'
 import { getFileIconSVG } from '../utils/fileIconTheme'
 import { getSetiIconInfo } from '../utils/setiIconTheme'
 import '../styles/fileExplorer.css'
+import '../styles/vscode-sidebar.css'
 
 interface FileNode {
   name: string
@@ -383,7 +384,77 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     }
 
     return newTree
-  }, [loadDirectory, rootPath])
+  }, [loadDirectory, rootPath, getGitStatusForFiles])
+
+  // Listen for git:revealInExplorer event from GitPanel
+  useEffect(() => {
+    const handleRevealInExplorer = (event: CustomEvent<{ path: string }>) => {
+      const { path: filePath } = event.detail
+      console.log('[FileExplorer] Reveal in explorer:', filePath)
+      
+      if (!filePath || !rootPath) return
+      
+      // Ensure the file path is within the current root
+      if (!filePath.startsWith(rootPath)) {
+        console.warn('[FileExplorer] File path is not within root:', filePath, rootPath)
+        return
+      }
+      
+      // Calculate relative path from root
+      const relativePath = filePath.slice(rootPath.length + 1)
+      const pathParts = relativePath.split('/').filter(Boolean)
+      
+      // Function to expand directories to reveal the file
+      const revealFile = async () => {
+        let currentNodes = fileTree
+        let currentPath = rootPath
+        
+        // Expand each directory in the path
+        for (let i = 0; i < pathParts.length; i++) {
+          const part = pathParts[i]
+          currentPath = `${currentPath}/${part}`
+          
+          // Find the node in current level
+          const nodeIndex = currentNodes.findIndex(n => n.name === part)
+          if (nodeIndex === -1) break
+          
+          const node = currentNodes[nodeIndex]
+          
+          // If it's a directory and not expanded, expand it
+          if (node.isDirectory && !node.isOpen) {
+            // Use toggleDirectory to expand
+            await toggleDirectory(node, fileTree, pathParts.slice(0, i + 1))
+          }
+          
+          // Move to children for next iteration
+          if (node.children) {
+            currentNodes = node.children
+          }
+        }
+        
+        // Select the file - dispatch event to parent
+        onFileSelect(filePath, '')
+        
+        // Scroll to the file in the tree
+        setTimeout(() => {
+          const fileElement = document.querySelector(`[data-path="${CSS.escape(filePath)}"]`)
+          if (fileElement) {
+            fileElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
+        }, 100)
+      }
+      
+      revealFile()
+    }
+    
+    window.addEventListener('git:revealInExplorer', handleRevealInExplorer as EventListener)
+    
+    return () => {
+      window.removeEventListener('git:revealInExplorer', handleRevealInExplorer as EventListener)
+    }
+  }, [rootPath, fileTree, toggleDirectory])
+
+
 
   // Handle node click
   const handleNodeClick = useCallback(async (node: FileNode, tree: FileNode[], path: string[], e?: React.MouseEvent) => {
@@ -849,7 +920,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     const isExpanded = node.isOpen || node.isExpanded
 
     return (
-      <div key={node.path} className="file-tree-node" data-depth={node.depth}>
+      <div key={node.path} className="file-tree-node" data-depth={node.depth} data-path={node.path}>
         <div
           className={`file-node ${isSelected ? 'selected' : ''} ${node.isDirectory ? 'directory' : 'file'} ${isDropTarget ? `drop-target-${dropTarget?.position}` : ''}`}
           style={{ paddingLeft: `${node.depth * 16 + 4}px` }}
@@ -1095,49 +1166,60 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
   }
 
   return (
-    <div className="file-explorer">
-      {/* Header */}
-      <div className="file-explorer-header">
-        <span className="file-explorer-title">{t('explorer').toUpperCase()}</span>
-      </div>
-
-      {/* Search bar */}
-      {isSearching && (
-        <div className="file-explorer-search">
-          <input
-            ref={searchInputRef}
-            type="text"
-            className="file-search-input"
-            placeholder={t('searchFiles')}
-            value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') {
-                setIsSearching(false)
-                setSearchQuery('')
-              }
-            }}
-          />
+    <div className="vscode-sidebar-panel file-explorer">
+      {/* Header - VSCode 风格 */}
+      <div className="vscode-panel-header">
+        <div className="vscode-panel-header-left">
+          <span className="vscode-panel-title">{t('explorer')}</span>
+        </div>
+        <div className="vscode-panel-actions">
           <button 
-            className="btn-icon btn-close-search"
-            onClick={() => {
-              setIsSearching(false)
-              setSearchQuery('')
-            }}
+            className="vscode-panel-action-btn" 
+            title={t('refresh')}
+            onClick={handleRefreshPreserveExpansion}
           >
-            ✕
+            <RefreshCw size={16} />
+          </button>
+          <button 
+            className="vscode-panel-action-btn" 
+            title="全部折叠"
+            onClick={handleCollapseAll}
+          >
+            <ChevronDown size={16} />
           </button>
         </div>
-      )}
-
-      {/* Project name / Path */}
-      <div className="file-explorer-path" title={rootPath}>
-        {rootPath ? (
-          <span className="project-name">{rootPath.split('/').pop() || rootPath}</span>
-        ) : (
-          <span className="no-folder">{t('noFolderOpened').toUpperCase()}</span>
-        )}
       </div>
+
+      {/* Content */}
+      <div className="vscode-panel-content">
+        {/* Search bar */}
+        {isSearching && (
+          <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--vscode-border)' }}>
+            <input
+              ref={searchInputRef}
+              type="text"
+              className="vscode-input"
+              placeholder={t('searchFiles')}
+              value={searchQuery}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setIsSearching(false)
+                  setSearchQuery('')
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {/* Project name / Path */}
+        <div style={{ padding: '4px 12px', borderBottom: '1px solid var(--sidebar-border)' }} title={rootPath}>
+          {rootPath ? (
+            <span style={{ fontSize: '13px', color: '#cccccc' }}>{rootPath.split('/').pop() || rootPath}</span>
+          ) : (
+            <span style={{ fontSize: '11px', color: '#858585', textTransform: 'uppercase' }}>{t('noFolderOpened')}</span>
+          )}
+        </div>
 
       {/* File tree content */}
       <div className="file-explorer-content" ref={containerRef}>
@@ -1375,6 +1457,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           </div>
         </div>
       )}
+      </div>
     </div>
   )
 }

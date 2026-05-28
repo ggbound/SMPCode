@@ -7,7 +7,7 @@ interface SearchWidgetProps {
 }
 
 export function SearchWidget({ onSearch }: SearchWidgetProps) {
-  const { query, setQuery, isSearching, showReplace, replaceString, setReplaceString } = useSearchStore()
+  const { query, setQuery, showReplace, replaceString, setReplaceString } = useSearchStore()
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -53,9 +53,6 @@ export function SearchWidget({ onSearch }: SearchWidgetProps) {
             </button>
           </div>
         </div>
-        
-        {/* 搜索中指示器 - 移到wrapper外部 */}
-        {isSearching && <div className="search-indicator">{t('searching')}</div>}
       </div>
       
       {/* 替换输入行(可选) */}

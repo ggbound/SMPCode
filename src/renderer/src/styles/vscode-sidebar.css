@@ -1,0 +1,1173 @@
+/**
+ * VSCode Dark+ Theme Sidebar Styles
+ * 完全按照 VSCode Dark+ 主题的精确颜色值和尺寸
+ */
+
+/* ============================================
+   VSCode Dark+ 主题颜色变量
+   ============================================ */
+:root {
+  /* 基础颜色 - VSCode Dark+ 精确值 */
+  --vscode-editor-bg: #1e1e1e;
+  --vscode-sidebar-bg: #0D1117;
+  --vscode-activity-bar-bg: #333333;
+  --vscode-status-bar-bg: #007acc;
+  
+  /* 文字颜色 */
+  --vscode-fg: #cccccc;
+  --vscode-fg-dark: #858585;
+  --vscode-fg-muted: #6e6e6e;
+  --vscode-fg-active: #ffffff;
+  
+  /* 边框颜色 */
+  --vscode-border: #2b2b2b;
+  --vscode-border-light: #3c3c3c;
+  --vscode-border-active: #007acc;
+  
+  /* 列表/树颜色 */
+  --vscode-list-hover-bg: #2a2d2e;
+  --vscode-list-active-bg: #37373d;
+  --vscode-list-focus-bg: #094771;
+  
+  /* 输入框 */
+  --vscode-input-bg: #3c3c3c;
+  --vscode-input-fg: #cccccc;
+  --vscode-input-placeholder: #6e6e6e;
+  --vscode-input-border: #3c3c3c;
+  --vscode-input-focus-border: #007acc;
+  
+  /* 按钮 */
+  --vscode-button-bg: #0e639c;
+  --vscode-button-hover-bg: #1177bb;
+  --vscode-button-fg: #ffffff;
+  
+  /* Git 状态颜色 */
+  --vscode-git-modified: #cca700;
+  --vscode-git-added: #89d185;
+  --vscode-git-deleted: #f85149;
+  --vscode-git-untracked: #89d185;
+  --vscode-git-conflict: #f85149;
+  
+  /* 字体 */
+  --vscode-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --vscode-font-size: 13px;
+  --vscode-font-size-small: 11px;
+  --vscode-line-height: 1.4;
+  
+  /* 尺寸 - 精确匹配 VSCode */
+  --vscode-sidebar-header-height: 35px;
+  --vscode-section-header-height: 22px;
+  --vscode-list-item-height: 22px;
+  --vscode-icon-size: 16px;
+  
+  /* 间距 */
+  --vscode-padding: 12px;
+  --vscode-padding-sm: 8px;
+  --vscode-padding-xs: 4px;
+}
+
+/* ============================================
+   侧边栏面板容器
+   ============================================ */
+.vscode-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background-color: #0D1117;
+  color: var(--vscode-fg);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: var(--vscode-line-height);
+  overflow: hidden;
+}
+
+/* ============================================
+   面板标题栏 - VSCode 风格
+   ============================================ */
+.vscode-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--vscode-sidebar-header-height);
+  padding: 0 var(--vscode-padding);
+  background-color: #161b22;
+  border-bottom: 1px solid var(--vscode-border);
+  flex-shrink: 0;
+}
+
+.vscode-panel-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vscode-panel-title {
+  font-size: var(--vscode-font-size-small);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--vscode-fg);
+  user-select: none;
+}
+
+.vscode-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.vscode-panel-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--vscode-fg);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-panel-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.vscode-panel-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============================================
+   面板内容区域
+   ============================================ */
+.vscode-panel-content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================
+   分区标题 (Section Header) - VSCode 风格
+   ============================================ */
+.vscode-section {
+  border-bottom: 1px solid var(--vscode-border);
+}
+
+.vscode-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--vscode-section-header-height);
+  padding: 0 var(--vscode-padding-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-section-header:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+.vscode-section-header-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vscode-section-icon {
+  width: var(--vscode-icon-size);
+  height: var(--vscode-icon-size);
+  color: var(--vscode-fg-dark);
+  transition: transform 0.1s ease;
+  flex-shrink: 0;
+}
+
+.vscode-section-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.vscode-section-title {
+  font-size: var(--vscode-font-size-small);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--vscode-fg);
+  letter-spacing: 0.5px;
+}
+
+.vscode-section-count {
+  font-size: var(--vscode-font-size-small);
+  color: var(--vscode-fg-dark);
+  margin-left: 4px;
+}
+
+.vscode-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.vscode-section-header:hover .vscode-section-actions {
+  opacity: 1;
+}
+
+.vscode-section-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--vscode-fg);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-section-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.vscode-section-content {
+  padding-bottom: var(--vscode-padding-xs);
+}
+
+/* ============================================
+   列表项 (List Item) - VSCode 风格
+   ============================================ */
+.vscode-list-item {
+  display: flex;
+  align-items: center;
+  height: var(--vscode-list-item-height);
+  padding: 0 var(--vscode-padding-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-list-item:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+.vscode-list-item.selected {
+  background-color: var(--vscode-list-active-bg);
+}
+
+.vscode-list-item:focus {
+  background-color: var(--vscode-list-focus-bg);
+  outline: none;
+}
+
+.vscode-list-item-indent {
+  width: var(--vscode-icon-size);
+  margin-right: 4px;
+}
+
+.vscode-list-item-icon {
+  width: var(--vscode-icon-size);
+  height: var(--vscode-icon-size);
+  margin-right: 6px;
+  color: var(--vscode-fg-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vscode-list-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-fg);
+  font-size: var(--vscode-font-size);
+}
+
+.vscode-list-item-sublabel {
+  color: var(--vscode-fg-muted);
+  font-size: var(--vscode-font-size-small);
+  margin-left: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-list-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.vscode-list-item:hover .vscode-list-item-actions {
+  opacity: 1;
+}
+
+.vscode-list-item-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--vscode-fg);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-list-item-action-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ============================================
+   输入框 - VSCode 风格
+   ============================================ */
+.vscode-input {
+  width: 100%;
+  padding: 4px 8px;
+  background-color: var(--vscode-input-bg);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 2px;
+  color: var(--vscode-input-fg);
+  font-family: inherit;
+  font-size: var(--vscode-font-size);
+  outline: none;
+  transition: border-color 0.1s ease;
+}
+
+.vscode-input:focus {
+  border-color: var(--vscode-input-focus-border);
+}
+
+.vscode-input::placeholder {
+  color: var(--vscode-input-placeholder);
+}
+
+.vscode-textarea {
+  resize: none;
+  min-height: 60px;
+  line-height: 1.5;
+}
+
+/* ============================================
+   按钮 - VSCode 风格
+   ============================================ */
+.vscode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background-color: var(--vscode-button-bg);
+  border: none;
+  border-radius: 2px;
+  color: var(--vscode-button-fg);
+  font-family: inherit;
+  font-size: var(--vscode-font-size);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-btn:hover:not(:disabled) {
+  background-color: var(--vscode-button-hover-bg);
+}
+
+.vscode-btn:disabled {
+  background-color: var(--vscode-list-active-bg);
+  color: var(--vscode-fg-muted);
+  cursor: not-allowed;
+}
+
+.vscode-btn-secondary {
+  background-color: transparent;
+  color: var(--vscode-fg);
+  border: 1px solid var(--vscode-border-light);
+}
+
+.vscode-btn-secondary:hover:not(:disabled) {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+/* ============================================
+   空状态 - VSCode 风格
+   ============================================ */
+.vscode-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: var(--vscode-padding);
+  color: var(--vscode-fg-muted);
+  text-align: center;
+}
+
+.vscode-empty-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+  color: var(--vscode-fg-dark);
+}
+
+.vscode-empty-title {
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-fg);
+  margin: 0 0 4px;
+}
+
+.vscode-empty-subtitle {
+  font-size: var(--vscode-font-size-small);
+  color: var(--vscode-fg-muted);
+  margin: 0;
+}
+
+/* ============================================
+   分支选择器 - VSCode 风格
+   ============================================ */
+.vscode-branch-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--vscode-fg);
+  font-family: inherit;
+  font-size: var(--vscode-font-size);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-branch-selector:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+.vscode-branch-icon {
+  width: var(--vscode-icon-size);
+  height: var(--vscode-icon-size);
+  color: var(--vscode-fg-dark);
+}
+
+.vscode-branch-name {
+  font-weight: 500;
+}
+
+.vscode-branch-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--vscode-fg-dark);
+}
+
+/* ============================================
+   同步状态 - VSCode 风格
+   ============================================ */
+.vscode-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vscode-sync-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--vscode-git-added);
+  font-size: var(--vscode-font-size-small);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-sync-btn:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+/* ============================================
+   提交区域 - VSCode 风格
+   ============================================ */
+.vscode-commit-box {
+  padding: var(--vscode-padding-sm);
+  border-bottom: 1px solid var(--vscode-border);
+  background: #0D1117;
+  flex-shrink: 0;
+}
+
+.vscode-commit-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vscode-commit-input-wrapper .vscode-input {
+  flex: 1;
+  height: 28px;
+  min-height: 28px;
+  padding: 4px 8px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 13px;
+}
+
+.vscode-commit-input-wrapper .vscode-input:focus {
+  border-color: #58a6ff;
+  outline: none;
+}
+
+.vscode-commit-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.vscode-commit-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vscode-commit-toolbar-btn:hover {
+  background: rgba(139, 148, 158, 0.1);
+  color: #c9d1d9;
+}
+
+.vscode-commit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+/* 主按钮 - VSCode 紫色主题 */
+.vscode-btn-primary {
+  background: linear-gradient(135deg, #8957e5 0%, #6f42c1 100%) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vscode-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #9b6bf0 0%, #7d4dd6 100%) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(137, 87, 229, 0.3);
+}
+
+.vscode-btn-primary:disabled {
+  background: #30363d !important;
+  color: #8b949e !important;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ============================================
+   文件状态图标 - VSCode 风格
+   ============================================ */
+.vscode-file-status {
+  width: var(--vscode-icon-size);
+  height: var(--vscode-icon-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.vscode-file-status.staged {
+  color: var(--vscode-git-added);
+}
+
+.vscode-file-status.modified {
+  color: var(--vscode-git-modified);
+}
+
+.vscode-file-status.untracked {
+  color: var(--vscode-git-added);
+}
+
+.vscode-file-status.conflicted {
+  color: var(--vscode-git-conflict);
+}
+
+/* ============================================
+   复选框 - VSCode 风格
+   ============================================ */
+.vscode-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0 6px 0 0;
+  cursor: pointer;
+  accent-color: var(--vscode-button-bg);
+}
+
+/* ============================================
+   滚动条 - VSCode 风格
+   ============================================ */
+.vscode-panel-content::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.vscode-panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vscode-panel-content::-webkit-scrollbar-thumb {
+  background: var(--vscode-list-active-bg);
+  border-radius: 5px;
+  border: 2px solid var(--vscode-sidebar-bg);
+}
+
+.vscode-panel-content::-webkit-scrollbar-thumb:hover {
+  background: var(--vscode-fg-dark);
+}
+
+/* ============================================
+   动画
+   ============================================ */
+@keyframes vscode-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vscode-spin {
+  animation: vscode-spin 1s linear infinite;
+}
+
+/* ============================================
+   仓库信息栏
+   ============================================ */
+.vscode-repo-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px var(--vscode-padding);
+  border-bottom: 1px solid var(--vscode-border);
+}
+
+/* ============================================
+   更改列表
+   ============================================ */
+.vscode-changes-list {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* ============================================
+   提交历史区域 - 独立区域
+   ============================================ */
+.vscode-commit-history-section {
+  flex-shrink: 0;
+  max-height: 40%;
+  overflow: auto;
+  border-top: 1px solid var(--vscode-border);
+}
+
+/* ============================================
+   干净状态 (无更改)
+   ============================================ */
+.vscode-clean-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  color: var(--vscode-fg-muted);
+}
+
+.vscode-clean-icon {
+  width: 32px;
+  height: 32px;
+  margin-bottom: 8px;
+  opacity: 0.5;
+  color: var(--vscode-fg-dark);
+}
+
+.vscode-clean-text {
+  font-size: var(--vscode-font-size);
+  color: var(--vscode-fg);
+  margin: 0;
+}
+
+.vscode-clean-subtitle {
+  font-size: var(--vscode-font-size-small);
+  margin: 4px 0 0;
+  opacity: 0.7;
+}
+
+/* ============================================
+   提交历史项样式
+   ============================================ */
+
+.vscode-commit-history-list {
+  padding: 4px 0;
+}
+
+/* 提交历史项 */
+.vscode-commit-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  position: relative;
+}
+
+.vscode-commit-item:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+.vscode-commit-item.current {
+  background-color: rgba(88, 166, 255, 0.1);
+}
+
+.vscode-commit-item.current:hover {
+  background-color: rgba(88, 166, 255, 0.15);
+}
+
+/* 图形化分支线 */
+.vscode-commit-graph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 20px;
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.vscode-commit-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #58a6ff;
+  border: 2px solid #0D1117;
+  box-shadow: 0 0 0 2px #58a6ff;
+}
+
+.vscode-commit-item.current .vscode-commit-dot {
+  background: #8957e5;
+  box-shadow: 0 0 0 2px #8957e5;
+}
+
+.vscode-commit-line {
+  width: 2px;
+  height: 100%;
+  background: #30363d;
+  flex: 1;
+  margin-top: 4px;
+}
+
+/* 提交内容 */
+.vscode-commit-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.vscode-commit-message {
+  font-size: 13px;
+  color: #c9d1d9;
+  font-weight: 500;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-commit-item.current .vscode-commit-message {
+  color: #58a6ff;
+}
+
+.vscode-commit-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.vscode-commit-author,
+.vscode-commit-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 分支标签 */
+.vscode-commit-branches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.vscode-branch-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: rgba(137, 87, 229, 0.2);
+  border: 1px solid rgba(137, 87, 229, 0.3);
+  border-radius: 12px;
+  font-size: 11px;
+  color: #8957e5;
+  font-weight: 500;
+}
+
+/* 悬停操作按钮 */
+.vscode-commit-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.vscode-commit-item:hover .vscode-commit-actions {
+  opacity: 1;
+}
+
+.vscode-commit-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.vscode-commit-action-btn:hover {
+  background: rgba(139, 148, 158, 0.1);
+  color: #c9d1d9;
+}
+
+/* ============================================
+   文件类型图标
+   ============================================ */
+.vscode-file-type-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.vscode-file-icon-symbol {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.vscode-file-icon-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* ============================================
+   右键上下文菜单
+   ============================================ */
+.vscode-context-menu {
+  position: fixed;
+  min-width: 200px;
+  max-width: 280px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
+  padding: 4px;
+  animation: contextMenuFadeIn 0.1s ease;
+}
+
+@keyframes contextMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.vscode-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  color: #c9d1d9;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.1s ease;
+  white-space: nowrap;
+}
+
+.vscode-context-menu-item:hover {
+  background: #1f6feb;
+  color: #ffffff;
+}
+
+.vscode-context-menu-item-danger {
+  color: #f85149;
+}
+
+.vscode-context-menu-item-danger:hover {
+  background: #f85149;
+  color: #ffffff;
+}
+
+.vscode-context-menu-separator {
+  height: 1px;
+  background: #30363d;
+  margin: 4px 0;
+}
+
+/* ============================================
+   提交历史展开文件列表
+   ============================================ */
+.vscode-commit-item-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.vscode-commit-item.expanded {
+  background-color: rgba(88, 166, 255, 0.05);
+}
+
+.vscode-commit-expand-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  color: #8b949e;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.vscode-commit-files {
+  margin-left: 28px;
+  padding: 4px 0;
+  border-left: 2px solid #30363d;
+}
+
+.vscode-commit-file-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px 4px 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  font-size: 12px;
+  color: #c9d1d9;
+}
+
+.vscode-commit-file-item:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+.vscode-commit-file-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.vscode-commit-file-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vscode-commit-files-loading,
+.vscode-commit-files-empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #8b949e;
+  text-align: center;
+}
+
+/* ============================================
+   Diff 视图样式
+   ============================================ */
+.vscode-diff-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-editor-bg);
+  overflow: hidden;
+}
+
+.vscode-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #252526;
+  border-bottom: 1px solid var(--vscode-border);
+  flex-shrink: 0;
+}
+
+.vscode-diff-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vscode-diff-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vscode-diff-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vscode-fg);
+}
+
+.vscode-diff-subtitle {
+  font-size: 11px;
+  color: var(--vscode-fg-muted);
+}
+
+.vscode-diff-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  color: var(--vscode-fg);
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+
+.vscode-diff-close-btn:hover {
+  background-color: var(--vscode-list-hover-bg);
+}
+
+.vscode-diff-content {
+  flex: 1;
+  overflow: auto;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.vscode-diff-line {
+  display: flex;
+  min-height: 20px;
+}
+
+.vscode-diff-line-number {
+  width: 50px;
+  padding: 0 8px;
+  text-align: right;
+  color: var(--vscode-fg-muted);
+  background: #1e1e1e;
+  border-right: 1px solid var(--vscode-border);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.vscode-diff-line-content {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.vscode-diff-line.added {
+  background: rgba(35, 134, 54, 0.2);
+}
+
+.vscode-diff-line.added .vscode-diff-line-number {
+  background: rgba(35, 134, 54, 0.15);
+}
+
+.vscode-diff-line.removed {
+  background: rgba(218, 54, 51, 0.2);
+}
+
+.vscode-diff-line.removed .vscode-diff-line-number {
+  background: rgba(218, 54, 51, 0.15);
+}
+
+.vscode-diff-line.context {
+  background: transparent;
+}
+
+.vscode-diff-line.header {
+  background: rgba(88, 166, 255, 0.1);
+  color: #58a6ff;
+}
+
+.vscode-diff-line.header .vscode-diff-line-number {
+  background: rgba(88, 166, 255, 0.05);
+}
+
+.vscode-diff-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--vscode-fg-muted);
+  font-size: 13px;
+}

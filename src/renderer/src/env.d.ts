@@ -106,6 +106,8 @@ declare global {
       fsWatch: (dirPath: string) => Promise<void>
       fsUnwatch: (dirPath: string) => Promise<void>
       fsGetGitignore: (dirPath: string) => Promise<string[]>
+      fsReadFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
+      fsWriteFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
       onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => () => void
       
       // File operation notifications from AI tools

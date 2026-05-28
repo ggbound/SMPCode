@@ -17,10 +17,10 @@ function ActivityBar({ activeItem, onItemClick }: ActivityBarProps) {
   const [hoveredItem, setHoveredItem] = useState<ActivityBarItem | null>(null)
 
   const activities: { id: ActivityBarItem; icon: ReactNode; label: string }[] = [
-    { id: 'explorer', icon: <File size={24} />, label: t('explorer') || 'Explorer' },
-    { id: 'search', icon: <Search size={24} />, label: 'Search' },
-    { id: 'git', icon: <GitBranch size={24} />, label: 'Git' },
-    { id: 'settings', icon: <Settings size={24} />, label: t('settings') || 'Settings' },
+    { id: 'explorer', icon: <File size={16} />, label: t('explorer') || 'Explorer' },
+    { id: 'search', icon: <Search size={16} />, label: 'Search' },
+    { id: 'git', icon: <GitBranch size={16} />, label: 'Git' },
+    { id: 'settings', icon: <Settings size={16} />, label: t('settings') || 'Settings' },
   ]
 
   const bottomActivities: { id: ActivityBarItem; icon: ReactNode; label: string }[] = []

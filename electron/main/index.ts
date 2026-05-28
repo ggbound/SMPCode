@@ -18,7 +18,7 @@ import {
 import { initTerminalService, cleanupTerminals } from './services/terminal-service'
 import { processBridge } from './services/process-terminal-bridge'
 import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
-import { 
+import {
   getGitStatus,
   isGitRepository,
   findGitRoot,
@@ -37,14 +37,39 @@ import {
   getFileDiff,
   getStashList,
   stashChanges,
-  popStash
+  popStash,
+  fetchRemote,
+  getRemoteBranches,
+  deleteRemoteBranch,
+  getRemotes,
+  mergeBranch,
+  checkMergeConflicts,
+  abortMerge,
+  continueMerge,
+  getTags,
+  createTag,
+  deleteTag,
+  pushTag,
+  pushAllTags,
+  revertCommit,
+  resetToCommit,
+  cherryPickCommit,
+  abortCherryPick,
+  continueCherryPick,
+  getCommitDetails,
+  getSubmodules,
+  addSubmodule,
+  removeSubmodule,
+  updateSubmodule,
+  syncSubmodule
 } from './services/git-service'
 import { 
   watchDirectory,
   unwatchDirectory,
   stopAllWatchers,
   getGitIgnorePatterns,
-  writeFile
+  writeFile as writeFileService,
+  readFile as readFileService
 } from './services/files-service'
 import { searchFiles } from './services/search-service'
 import { initializeToolExecutor } from './services/tool-executor'
@@ -596,6 +621,107 @@ function setupIpcHandlers(): void {
     return await popStash(repoPath, index)
   })
 
+  // Remote branch management handlers
+  ipcMain.handle('git:fetch', async (_event, { repoPath, remote }: { repoPath: string; remote?: string }) => {
+    return await fetchRemote(repoPath, remote)
+  })
+
+  ipcMain.handle('git:remote-branches', async (_event, repoPath: string) => {
+    return await getRemoteBranches(repoPath)
+  })
+
+  ipcMain.handle('git:delete-remote-branch', async (_event, { repoPath, remote, branch }: { repoPath: string; remote: string; branch: string }) => {
+    return await deleteRemoteBranch(repoPath, remote, branch)
+  })
+
+  ipcMain.handle('git:remotes', async (_event, repoPath: string) => {
+    return await getRemotes(repoPath)
+  })
+
+  // Merge handlers
+  ipcMain.handle('git:merge', async (_event, { repoPath, branchName, noFastForward }: { repoPath: string; branchName: string; noFastForward?: boolean }) => {
+    return await mergeBranch(repoPath, branchName, noFastForward)
+  })
+
+  ipcMain.handle('git:check-merge-conflicts', async (_event, repoPath: string) => {
+    return await checkMergeConflicts(repoPath)
+  })
+
+  ipcMain.handle('git:abort-merge', async (_event, repoPath: string) => {
+    return await abortMerge(repoPath)
+  })
+
+  ipcMain.handle('git:continue-merge', async (_event, { repoPath, message }: { repoPath: string; message?: string }) => {
+    return await continueMerge(repoPath, message)
+  })
+
+  // Tag management handlers
+  ipcMain.handle('git:tags', async (_event, repoPath: string) => {
+    return await getTags(repoPath)
+  })
+
+  ipcMain.handle('git:create-tag', async (_event, { repoPath, tagName, message, commitHash }: { repoPath: string; tagName: string; message?: string; commitHash?: string }) => {
+    return await createTag(repoPath, tagName, message, commitHash)
+  })
+
+  ipcMain.handle('git:delete-tag', async (_event, { repoPath, tagName }: { repoPath: string; tagName: string }) => {
+    return await deleteTag(repoPath, tagName)
+  })
+
+  ipcMain.handle('git:push-tag', async (_event, { repoPath, tagName, remote }: { repoPath: string; tagName: string; remote?: string }) => {
+    return await pushTag(repoPath, tagName, remote)
+  })
+
+  ipcMain.handle('git:push-all-tags', async (_event, { repoPath, remote }: { repoPath: string; remote?: string }) => {
+    return await pushAllTags(repoPath, remote)
+  })
+
+  // Commit history operations handlers
+  ipcMain.handle('git:revert', async (_event, { repoPath, commitHash, noEdit }: { repoPath: string; commitHash: string; noEdit?: boolean }) => {
+    return await revertCommit(repoPath, commitHash, noEdit)
+  })
+
+  ipcMain.handle('git:reset', async (_event, { repoPath, commitHash, mode }: { repoPath: string; commitHash: string; mode?: 'soft' | 'mixed' | 'hard' }) => {
+    return await resetToCommit(repoPath, commitHash, mode)
+  })
+
+  ipcMain.handle('git:cherry-pick', async (_event, { repoPath, commitHash, noCommit }: { repoPath: string; commitHash: string; noCommit?: boolean }) => {
+    return await cherryPickCommit(repoPath, commitHash, noCommit)
+  })
+
+  ipcMain.handle('git:abort-cherry-pick', async (_event, repoPath: string) => {
+    return await abortCherryPick(repoPath)
+  })
+
+  ipcMain.handle('git:continue-cherry-pick', async (_event, repoPath: string) => {
+    return await continueCherryPick(repoPath)
+  })
+
+  ipcMain.handle('git:commit-details', async (_event, { repoPath, commitHash }: { repoPath: string; commitHash: string }) => {
+    return await getCommitDetails(repoPath, commitHash)
+  })
+
+  // Submodule management handlers
+  ipcMain.handle('git:submodules', async (_event, repoPath: string) => {
+    return await getSubmodules(repoPath)
+  })
+
+  ipcMain.handle('git:add-submodule', async (_event, { repoPath, url, path, branch }: { repoPath: string; url: string; path: string; branch?: string }) => {
+    return await addSubmodule(repoPath, url, path, branch)
+  })
+
+  ipcMain.handle('git:remove-submodule', async (_event, { repoPath, path }: { repoPath: string; path: string }) => {
+    return await removeSubmodule(repoPath, path)
+  })
+
+  ipcMain.handle('git:update-submodule', async (_event, { repoPath, path, init }: { repoPath: string; path?: string; init?: boolean }) => {
+    return await updateSubmodule(repoPath, path, init)
+  })
+
+  ipcMain.handle('git:sync-submodule', async (_event, { repoPath, path }: { repoPath: string; path?: string }) => {
+    return await syncSubmodule(repoPath, path)
+  })
+
   // File watching handlers
   ipcMain.handle('fs:watch', (_event, dirPath: string) => {
     log.info(`[IPC] Starting to watch directory: ${dirPath}`)
@@ -615,6 +741,27 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('fs:get-gitignore', (_event, dirPath: string) => {
     return getGitIgnorePatterns(dirPath)
+  })
+
+  // File read/write handlers
+  ipcMain.handle('fs:read-file', async (_event, filePath: string) => {
+    try {
+      const content = readFileService(filePath)
+      return { success: true, content }
+    } catch (error) {
+      log.error('Failed to read file:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('fs:write-file', async (_event, { filePath, content }: { filePath: string; content: string }) => {
+    try {
+      writeFileService(filePath, content)
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to write file:', error)
+      return { success: false, error: String(error) }
+    }
   })
 
   // Search handlers
@@ -1087,7 +1234,7 @@ function initializeCLIRegistries(): void {
       try {
         const path = require('path')
         const filePath = path.resolve(context.cwd, String(args.path))
-        writeFile(filePath, String(args.content))  // Use unified function to trigger watchers
+        writeFileService(filePath, String(args.content))  // Use unified function to trigger watchers
         return {
           success: true,
           output: `File written: ${filePath}`,

@@ -383,6 +383,26 @@ body {
   overflow: hidden;
 }
 
+/* Unified Sidebar Panel Container - 统一侧边栏面板容器 */
+.sidebar-panel-container {
+  display: flex;
+  flex-direction: column;
+  width: 280px;
+  min-width: 200px;
+  max-width: 400px;
+  height: 100%;
+  flex-shrink: 0;
+  background: #0D1117;
+  border-right: 1px solid var(--vscode-border, #2b2b2b);
+  overflow: hidden;
+}
+
+/* Ensure all sidebar panels fill the container */
+.sidebar-panel-container > * {
+  width: 100%;
+  height: 100%;
+}
+
 /* 右侧列：包含 SessionBar 和 ChatArea */
 .right-column {
   display: flex;
@@ -414,16 +434,13 @@ body {
 
 /* File Explorer (Left) - VS Code Dark Style */
 .file-explorer {
-  width: 260px;
-  min-width: 200px;
-  max-width: 400px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--border-color);
+  width: 100%;
+  height: 100%;
+  background: #0D1117;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   user-select: none;
-  height: 100%;
   overflow: hidden;
 }
 
@@ -8290,8 +8307,8 @@ code ::selection {
    ============================================ */
 
 .activity-bar {
-  width: 48px;
-  min-width: 48px;
+  width: 32px;
+  min-width: 32px;
   height: 100%; /* Fill parent container */
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
@@ -8316,8 +8333,8 @@ code ::selection {
 }
 
 .activity-bar-item {
-  width: 48px;
-  height: 48px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -8354,7 +8371,7 @@ code ::selection {
   top: 50%;
   transform: translateY(-50%);
   width: 2px;
-  height: 24px;
+  height: 16px;
   background-color: var(--accent-color);
   border-radius: 0 2px 2px 0;
 }
