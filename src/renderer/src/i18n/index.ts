@@ -193,6 +193,7 @@ export const translations = {
     replaceAll: '全部替换',
     showQueryDetails: '显示查询详情',
     hideQueryDetails: '隐藏查询详情',
+    searchOptions: '搜索选项',
     searching: '搜索中...',
   },
   en: {
@@ -387,6 +388,7 @@ export const translations = {
     replaceAll: 'Replace All',
     showQueryDetails: 'Show Query Details',
     hideQueryDetails: 'Hide Query Details',
+    searchOptions: 'Search Options',
     searching: 'Searching...',
   }
 }

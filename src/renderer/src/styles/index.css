@@ -9123,8 +9123,8 @@ code ::selection {
    ============================================ */
 
 .activity-bar {
-  width: 32px;
-  min-width: 32px;
+  width: 48px;
+  min-width: 48px;
   height: 100%; /* Fill parent container */
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
@@ -9140,17 +9140,17 @@ code ::selection {
 .activity-bar-items {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 0;
+  gap: 6px;
+  padding: 12px 0;
 }
 
 .activity-bar-bottom {
-  padding-bottom: 8px;
+  padding-bottom: 12px;
 }
 
 .activity-bar-item {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -9176,6 +9176,11 @@ code ::selection {
   color: var(--text-secondary);
 }
 
+.activity-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
 .activity-bar-item:hover .activity-icon,
 .activity-bar-item.active .activity-icon {
   color: var(--text-primary);
@@ -9186,8 +9191,8 @@ code ::selection {
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 2px;
-  height: 16px;
+  width: 3px;
+  height: 24px;
   background-color: var(--accent-color);
   border-radius: 0 2px 2px 0;
 }
@@ -9212,7 +9217,7 @@ code ::selection {
 
 .search-input-container,
 .replace-input-container {
-  padding: 8px 12px;
+  padding: 8px 0;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -9221,9 +9226,9 @@ code ::selection {
   align-items: center;
   gap: 8px;
   background: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  padding: 4px 8px;
+  border: none;
+  border-radius: 0;
+  padding: 4px 12px;
 }
 
 .search-icon {
@@ -9253,7 +9258,6 @@ code ::selection {
   display: flex;
   gap: 4px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--border-color);
 }
 
 .search-option-btn {
@@ -9269,6 +9273,187 @@ code ::selection {
 
 .search-option-btn:hover {
   background: var(--bg-hover);
+}
+
+/* ============================================
+   Query Details Panel - Modern Design
+   ============================================ */
+
+/* ============================================
+   Search Options - Unified Design
+   ============================================ */
+
+/* 折叠状态 - Minimal Text Button (No gap) */
+.show-details-btn {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border: none;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.show-details-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.show-details-btn .btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  opacity: 0.6;
+}
+
+/* 展开状态 - 与折叠状态保持一致的背景风格 */
+.query-details-panel {
+  margin: 0;
+  padding: 8px 12px 12px 12px;
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 面板头部 - 简洁风格 */
+.query-details-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.query-details-panel .panel-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.query-details-panel .panel-close {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.query-details-panel .panel-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* 输入行 */
+.query-details-panel .pattern-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.query-details-panel .pattern-input-row:last-child {
+  margin-bottom: 0;
+}
+
+/* 输入框 - 与搜索输入框风格一致 */
+.query-details-panel .pattern-input {
+  flex: 1;
+  padding: 5px 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.query-details-panel .pattern-input:focus {
+  border-color: var(--accent-color);
+  background: var(--bg-color);
+}
+
+.query-details-panel .pattern-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+/* 提示文字 */
+.query-details-panel .input-hint {
+  margin: 2px 0 8px 22px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.query-details-panel .input-hint:last-child {
+  margin-bottom: 0;
+}
+
+/* .gitignore 开关按钮 */
+.query-details-panel .ignore-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.query-details-panel .ignore-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.query-details-panel .ignore-btn.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+.query-details-panel .ignore-btn.active {
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+.query-details-panel .input-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding-left: 4px;
 }
 
 .search-pattern-input {

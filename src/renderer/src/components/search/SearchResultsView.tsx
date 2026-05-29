@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { useSearchStore } from '../../stores/searchStore'
 import type { IFileMatch, ISearchMatch } from '../../types/search'
 import { t } from '../../i18n'
+import { Search } from 'lucide-react'
 
 interface SearchResultsViewProps {
   projectPath: string | null
@@ -198,7 +199,9 @@ function FileIcon({ language }: { language: string }) {
 function SearchPlaceholder() {
   return (
     <div className="search-placeholder">
-      <div className="search-placeholder-icon">🔍</div>
+      <div className="search-placeholder-icon">
+        <Search size={32} />
+      </div>
       <div>{t('noResultsFound')}</div>
     </div>
   )
