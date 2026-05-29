@@ -59,9 +59,9 @@ export const TOOL_NAME_MAP: Record<string, string> = {
   'ListDirectoryTool': 'list_directory',
   'list_directory_tool': 'list_directory',
   'list_directory': 'list_directory',
-  'SearchCodeTool': 'search_code',
-  'search_code_tool': 'search_code',
-  'search_code': 'search_code',
+  'SearchCodeTool': 'search_files',  // ✅ 修复：统一使用 search_files
+  'search_code_tool': 'search_files',
+  'search_code': 'search_files',  // 兼容旧名称
   'DeleteFileTool': 'delete_file',
   'delete_file_tool': 'delete_file',
   'delete_file': 'delete_file',
@@ -74,7 +74,7 @@ export const TOOL_NAME_MAP: Record<string, string> = {
   'read_file': 'read_file',
   'write_file': 'write_file',
   'edit_file': 'edit_file',
-  'search_files': 'search_code',
+  'search_files': 'search_files',  // ✅ 修复：直接使用正确名称
   'execute_bash': 'execute_bash',
   'CheckPortTool': 'check_port',
   'check_port_tool': 'check_port',
@@ -173,7 +173,7 @@ export function parseToolCalls(text: string): ToolCall[] | null {
       else if (parsed.path !== undefined && parsed.content !== undefined) inferredTool = 'write_file'
       else if (parsed.path !== undefined && parsed.old_string !== undefined) inferredTool = 'edit_file'
       else if (parsed.path !== undefined) inferredTool = 'read_file'
-      else if (parsed.query !== undefined) inferredTool = 'search_code'
+      else if (parsed.query !== undefined) inferredTool = 'search_files'  // ✅ 修复：使用正确的工具名称
 
       if (inferredTool) {
         toolCalls.push({ tool: inferredTool, arguments: parsed })

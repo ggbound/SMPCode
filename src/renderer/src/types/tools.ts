@@ -262,7 +262,7 @@ export const BUILTIN_TOOLS = [
   'list_directory',
   'delete_file',
   'execute_bash',
-  'search_code',
+  'search_files',  // ✅ 修复：使用正确的工具名称
   'get_running_processes',
   'stop_process',
   'restart_process'

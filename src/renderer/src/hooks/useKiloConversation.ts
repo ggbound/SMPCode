@@ -188,7 +188,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             if (toolCall.status === 'completed' || toolCall.status === 'failed') {
               messages.push({
                 role: 'tool',
-                content: toolCall.result || toolCall.error || '',
+                content: String(toolCall.result || toolCall.error || ''),
                 tool_call_id: toolCall.id
               })
             }
@@ -382,6 +382,11 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             break
             
           case 'error':
+            // ✅ 修复：忽略 AbortError，这是正常的取消操作（如应用退出时）
+            if (chunk.error?.includes('aborted') || chunk.error?.includes('AbortError')) {
+              console.debug('[useKiloConversation] Stream aborted (normal cleanup), ignoring')
+              break
+            }
             console.error('[useKiloConversation] Error chunk:', chunk.error)
             const errorMsg = chunk.error || 'Unknown error'
             const currentContent = store.messages.find(m => m.id === assistantMessageId)?.content || ''

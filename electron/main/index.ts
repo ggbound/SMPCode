@@ -1181,7 +1181,7 @@ function initializeCLIRegistries(): void {
   })
 
   toolRegistry.register({
-    name: 'file_read',
+    name: 'read_file',
     description: 'Read file contents',
     sourceHint: 'builtin',
     responsibility: 'Read the contents of a file',
@@ -1215,7 +1215,7 @@ function initializeCLIRegistries(): void {
   })
 
   toolRegistry.register({
-    name: 'file_write',
+    name: 'write_file',
     description: 'Write content to a file',
     sourceHint: 'builtin',
     responsibility: 'Write content to a file',
@@ -1253,7 +1253,7 @@ function initializeCLIRegistries(): void {
   })
 
   toolRegistry.register({
-    name: 'bash',
+    name: 'execute_bash',
     description: 'Execute a bash command',
     sourceHint: 'builtin',
     responsibility: 'Execute bash commands in the terminal',
@@ -1348,7 +1348,7 @@ function initializeCLIRegistries(): void {
   })
 
   toolRegistry.register({
-    name: 'glob',
+    name: 'search_files',
     description: 'Find files matching a pattern',
     sourceHint: 'builtin',
     responsibility: 'Find files using glob patterns',

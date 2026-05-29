@@ -86,16 +86,30 @@ function BrowserView({ initialUrl = '', onClose, onUrlChange }: BrowserViewProps
       setCanGoForward(webview.canGoForward())
     }
 
+    const handleFailLoad = (event: Event) => {
+      const failEvent = event as unknown as { errorCode: number; errorDescription: string; validatedURL: string }
+      // ERR_ABORTED (-3) 是用户取消或页面跳转时的正常错误，不需要显示
+      if (failEvent.errorCode === -3) {
+        console.log('[BrowserView] Load aborted (normal for navigation)')
+        setIsLoading(false)
+        return
+      }
+      console.error('[BrowserView] Failed to load:', failEvent.errorDescription, 'URL:', failEvent.validatedURL)
+      setIsLoading(false)
+    }
+
     webview.addEventListener('did-start-loading', handleLoadStart)
     webview.addEventListener('did-stop-loading', handleLoadStop)
     webview.addEventListener('did-navigate', handleNavigate)
     webview.addEventListener('did-navigate-in-page', handleNavigate)
+    webview.addEventListener('did-fail-load', handleFailLoad)
 
     return () => {
       webview.removeEventListener('did-start-loading', handleLoadStart)
       webview.removeEventListener('did-stop-loading', handleLoadStop)
       webview.removeEventListener('did-navigate', handleNavigate)
       webview.removeEventListener('did-navigate-in-page', handleNavigate)
+      webview.removeEventListener('did-fail-load', handleFailLoad)
     }
   }, [])
 

@@ -74,7 +74,7 @@ const toolConfig: Record<string, {
     color: '#8b5cf6',
     bgColor: 'rgba(139, 92, 246, 0.1)'
   },
-  'search_code': { 
+  'search_files': {  // ✅ 修复：使用正确的工具名称
     icon: <Search size={14} />, 
     label: '搜索',
     color: '#06b6d4',

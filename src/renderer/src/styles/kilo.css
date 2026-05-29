@@ -303,8 +303,8 @@
 }
 
 .kilo-model-option.active {
-  background: var(--accent-color);
-  background-opacity: 0.1;
+  background: rgba(47, 129, 247, 0.15);
+  border: 1px solid var(--accent-color);
 }
 
 .kilo-model-option-name {
@@ -320,8 +320,8 @@
 }
 
 .kilo-model-option.active .kilo-model-option-name {
-  color: var(--accent-color);
-  font-weight: 500;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .kilo-model-active-indicator {

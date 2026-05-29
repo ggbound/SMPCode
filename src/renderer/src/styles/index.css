@@ -3996,27 +3996,180 @@ code ::selection {
   }
 }
 
-/* Settings Modal */
-.settings-modal {
-  width: 600px;
+/* Settings Modal - 全屏样式 */
+.settings-modal-overlay {
+  position: fixed;
+  top: 48px; /* 标题栏高度 */
+  left: 48px; /* ActivityBar 宽度 */
+  right: 0;
+  bottom: 24px; /* 状态栏高度 */
+  background: var(--bg-color);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
 }
 
-/* Settings Tabs - VS Code Dark */
-.settings-tabs {
+.settings-modal {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0;
   display: flex;
-  border-bottom: 1px solid var(--border-color);
+  flex-direction: column;
+  box-shadow: none;
+  border: none;
+}
+
+.settings-modal .modal-header {
+  flex-shrink: 0;
+  padding: 16px 24px;
+}
+
+.settings-modal .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.settings-modal .modal-footer {
+  flex-shrink: 0;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
   background: var(--bg-secondary);
 }
 
-.tab-btn {
-  padding: 10px 16px;
+/* Settings Page - Full page layout - VS Code Style (Compact) */
+.settings-full-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-color);
+}
+
+.settings-full-page .settings-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-full-page .settings-tabs {
+  flex-shrink: 0;
+}
+
+.settings-full-page .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.settings-full-page .modal-footer {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--bg-secondary);
+}
+
+/* Settings Page - As inline page (legacy) */
+.settings-page-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-color);
+  overflow: hidden;
+}
+
+.settings-page {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-color);
+  overflow: hidden;
+}
+
+.settings-page-header {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  min-height: 40px;
+}
+
+.settings-page-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin: 0;
+}
+
+.settings-page-close {
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  font-size: 13px;
+  font-size: 18px;
   color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius);
   transition: all 0.15s;
+}
+
+.settings-page-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-color);
+}
+
+.settings-page .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.settings-page .modal-footer {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  background: var(--bg-secondary);
+}
+
+/* Settings Tabs - VS Code Style (Compact) */
+.settings-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  padding: 8px 16px 0;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+  padding: 6px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  position: relative;
 }
 
 .tab-btn:hover {
@@ -4026,15 +4179,50 @@ code ::selection {
 
 .tab-btn.active {
   color: var(--text-color);
-  border-bottom-color: var(--accent-border);
-  background: var(--bg-color);
+  background: var(--bg-active);
+  font-weight: 600;
+}
+
+.tab-btn.active:hover {
+  background: var(--bg-active);
 }
 
 .form-hint {
   display: block;
-  margin-top: 4px;
-  font-size: 11px;
+  margin-top: 8px;
+  font-size: 12px;
   color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+/* General Settings - VS Code Style (Compact) */
+.general-settings {
+  max-width: 600px;
+}
+
+.general-settings .form-group {
+  background: transparent;
+  border-radius: 0;
+  padding: 12px 0;
+  margin-bottom: 8px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.general-settings .form-group:last-child {
+  border-bottom: none;
+}
+
+.general-settings .form-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-color);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* Providers Config */
@@ -5682,12 +5870,177 @@ code ::selection {
 
 .general-settings .form-select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 16px;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
+  border-radius: 10px;
   font-size: 14px;
-  background: var(--bg-color);
-  color: var(--text-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237d8590' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 40px;
+}
+
+.general-settings .form-select:hover {
+  border-color: var(--accent-hover);
+  background-color: var(--bg-tertiary);
+}
+
+.general-settings .form-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.15);
+}
+
+/* Custom Model Dropdown */
+.custom-model-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.custom-model-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  font-size: 15px;
+  color: var(--text-primary);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.custom-model-dropdown-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  transform: translateY(-1px);
+}
+
+.custom-model-dropdown-trigger:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.15), inset 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.custom-model-dropdown-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.custom-model-dropdown-provider {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.custom-model-dropdown-separator {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.custom-model-dropdown-model {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.custom-model-dropdown-placeholder {
+  color: var(--text-secondary);
+}
+
+.custom-model-dropdown-chevron {
+  color: var(--text-secondary);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+}
+
+.custom-model-dropdown-chevron.open {
+  transform: rotate(180deg);
+}
+
+.custom-model-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 0;
+  right: 0;
+  background: rgba(30, 35, 45, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  z-index: 1000;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px;
+  backdrop-filter: blur(20px);
+}
+
+.custom-model-dropdown-group {
+  margin-bottom: 12px;
+}
+
+.custom-model-dropdown-group:last-child {
+  margin-bottom: 0;
+}
+
+.custom-model-dropdown-group-label {
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.custom-model-dropdown-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: left;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.custom-model-dropdown-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(2px);
+}
+
+.custom-model-dropdown-option.active {
+  background: linear-gradient(135deg, rgba(47, 129, 247, 0.2) 0%, rgba(47, 129, 247, 0.1) 100%);
+  border: 1px solid rgba(47, 129, 247, 0.5);
+  box-shadow: 0 2px 8px rgba(47, 129, 247, 0.15);
+}
+
+.custom-model-dropdown-option-name {
+  font-weight: 500;
+}
+
+.custom-model-dropdown-check {
+  color: var(--accent-color);
+  flex-shrink: 0;
 }
 
 .general-settings .form-hint {
@@ -5697,15 +6050,21 @@ code ::selection {
   color: var(--text-secondary);
 }
 
+.settings-full-page .providers-layout {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
 .providers-layout {
   display: flex;
   height: 100%;
 }
 
-/* Left Sidebar - Provider List */
+/* Left Sidebar - Provider List - VS Code Style (Compact) */
 .providers-sidebar {
-  width: 220px;
-  min-width: 220px;
+  width: 200px;
+  min-width: 200px;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -5720,63 +6079,74 @@ code ::selection {
 
 .providers-search .form-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 6px 10px;
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
-  font-size: 13px;
+  font-size: 12px;
   background: var(--bg-color);
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.providers-search .form-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(47, 129, 247, 0.15);
 }
 
 .providers-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 4px;
 }
 
 .provider-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--border-radius);
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s;
-  margin-bottom: 4px;
+  transition: all 0.15s ease;
+  margin-bottom: 2px;
+  background: transparent;
 }
 
 .provider-item:hover {
-  background: var(--bg-tertiary);
+  background: var(--bg-hover);
 }
 
 .provider-item.active {
-  background: var(--primary-color);
-  color: white;
+  background: var(--bg-active);
+  color: var(--text-primary);
 }
 
 .provider-item.disabled {
-  opacity: 0.5;
+  opacity: 0.4;
 }
 
 .provider-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   background: var(--bg-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   flex-shrink: 0;
+  border: 1px solid var(--border-color);
 }
 
 .provider-item.active .provider-icon {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--accent-color);
+  color: white;
 }
 
 .provider-name {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5784,66 +6154,70 @@ code ::selection {
 }
 
 .provider-status {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   padding: 2px 6px;
-  border-radius: 10px;
+  border-radius: 4px;
   flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .provider-status.on {
-  background: var(--success-color);
-  color: white;
+  background: rgba(63, 185, 80, 0.2);
+  color: #3fb950;
 }
 
 .provider-status.off {
-  background: var(--secondary-color);
-  color: white;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-tertiary);
 }
 
 .btn-add-provider {
-  margin: 12px;
-  padding: 10px;
-  background: var(--primary-color);
+  margin: 8px 12px 12px;
+  padding: 8px;
+  background: var(--accent-color);
   color: white;
   border: none;
   border-radius: var(--border-radius);
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  transition: background 0.2s;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.15s ease;
 }
 
 .btn-add-provider:hover {
-  background: #357abd;
+  background: var(--accent-hover);
 }
 
-/* Center - Provider Details */
+/* Center - Provider Details - VS Code Style (Compact) */
 .provider-details {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
+  background: var(--bg-color);
 }
 
 .provider-details-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
-  background: var(--bg-color);
+  min-height: 40px;
 }
 
 .provider-title-section {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .provider-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-color);
 }
@@ -5854,34 +6228,211 @@ code ::selection {
 }
 
 .provider-actions .btn {
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  transition: all 0.15s ease;
+}
+
+.provider-actions .btn:hover {
+  background: var(--bg-hover);
 }
 
 .provider-form {
   flex: 1;
-  padding: 20px;
+  padding: 16px;
   overflow-y: auto;
 }
 
 .provider-form .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
+  background: transparent;
+  border-radius: 0;
+  padding: 12px 0;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.provider-form .form-group:last-child {
+  border-bottom: none;
 }
 
 .provider-form .form-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-color);
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .input-with-action {
   display: flex;
-  gap: 8px;
+  gap: 12px;
 }
 
 .input-with-action .form-input {
   flex: 1;
+}
+
+/* Modern Form Inputs - VS Code Style (Compact) */
+.provider-form .form-input,
+.general-settings .form-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.provider-form .form-input:focus,
+.general-settings .form-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(47, 129, 247, 0.15);
+}
+
+.provider-form .form-input:hover,
+.general-settings .form-input:hover {
+  border-color: var(--border-light);
+}
+
+/* Modern Buttons - VS Code Style (Compact) */
+.provider-form .btn,
+.general-settings .btn,
+.settings-full-page .modal-footer .btn {
+  padding: 6px 14px;
+  border-radius: var(--border-radius);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.provider-form .btn-primary,
+.general-settings .btn-primary,
+.settings-full-page .modal-footer .btn-primary {
+  background: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
+
+.provider-form .btn-primary:hover,
+.general-settings .btn-primary:hover,
+.settings-full-page .modal-footer .btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.provider-form .btn-secondary,
+.general-settings .btn-secondary,
+.settings-full-page .modal-footer .btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.provider-form .btn-secondary:hover,
+.general-settings .btn-secondary:hover,
+.settings-full-page .modal-footer .btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.provider-form .btn-danger {
+  background: rgba(248, 81, 73, 0.9);
+  color: white;
+  border-color: rgba(248, 81, 73, 0.9);
+}
+
+.provider-form .btn-danger:hover {
+  background: #f85149;
+  border-color: #f85149;
+}
+
+.provider-form .btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.provider-form .btn-ghost:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Test Connection Button */
+.btn-test {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 60px;
+  justify-content: center;
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
+.btn-test.testing {
+  background: #f59e0b !important;
+  color: white !important;
+}
+
+.btn-test.success {
+  background: #3fb950 !important;
+  color: white !important;
+}
+
+.btn-test.error {
+  background: #f85149 !important;
+  color: white !important;
+}
+
+.btn-test:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.btn-test .spin {
+  animation: spin 1s linear infinite;
+}
+
+.test-message {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: var(--border-radius);
+  margin-top: 6px;
+  display: inline-block;
+  animation: fadeIn 0.3s ease;
+}
+
+.test-message.success {
+  background: rgba(63, 185, 80, 0.15);
+  color: #3fb950;
+  border: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.test-message.error {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .models-header {
@@ -5891,73 +6442,112 @@ code ::selection {
   margin-bottom: 12px;
 }
 
+.models-header .form-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.models-header .btn {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  background: var(--accent-color);
+  color: white;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.models-header .btn:hover {
+  background: var(--accent-hover);
+}
+
 .models-list-container {
-  border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   background: var(--bg-secondary);
-  max-height: 300px;
+  max-height: 280px;
   overflow-y: auto;
+  border: 1px solid var(--border-color);
+  padding: 4px;
 }
 
 .model-group {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: none;
+  margin-bottom: 8px;
 }
 
 .model-group:last-child {
   border-bottom: none;
+  margin-bottom: 0;
 }
 
 .model-group-header {
-  padding: 10px 16px;
+  padding: 8px 12px;
   background: var(--bg-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-radius: var(--border-radius);
+  margin-bottom: 2px;
 }
 
 .model-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--bg-color);
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border-radius: var(--border-radius);
+  margin-bottom: 2px;
+  transition: all 0.15s ease;
+}
+
+.model-item:hover {
+  background: var(--bg-hover);
 }
 
 .model-item:last-child {
   border-bottom: none;
+  margin-bottom: 0;
 }
 
 .model-item .model-id {
   flex: 1;
-  font-family: monospace;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
   color: var(--text-color);
+  font-weight: 500;
 }
 
 .model-item .model-name {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .btn-icon.btn-remove {
   width: 24px;
   height: 24px;
   padding: 0;
-  background: none;
+  background: transparent;
   border: none;
+  border-radius: var(--border-radius);
   color: var(--danger-color);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 14px;
   line-height: 1;
-  opacity: 0.6;
-  transition: opacity 0.2s;
+  opacity: 0.7;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-icon.btn-remove:hover {
+  background: rgba(248, 81, 73, 0.15);
   opacity: 1;
 }
 
@@ -5993,17 +6583,28 @@ code ::selection {
   box-sizing: border-box;
 }
 
-/* Provider title edit mode */
+/* Provider title edit mode - APP Style */
 .provider-title-edit {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .provider-title-edit .form-input {
-  width: 200px;
-  padding: 6px 10px;
-  font-size: 14px;
+  width: 240px;
+  padding: 10px 14px;
+  font-size: 16px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  color: var(--text-primary);
+}
+
+.provider-title-edit .form-input:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(47, 129, 247, 0.15);
 }
 
 .provider-title-section {
@@ -6014,13 +6615,18 @@ code ::selection {
 
 .provider-title-section .btn-ghost {
   color: var(--text-secondary);
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
 }
 
 .provider-title-section .btn-ghost:hover {
-  color: var(--primary-color);
-  background: var(--bg-secondary);
+  color: var(--accent-color);
+  background: rgba(47, 129, 247, 0.1);
+  border-color: rgba(47, 129, 247, 0.3);
 }
 
 /* ============================================

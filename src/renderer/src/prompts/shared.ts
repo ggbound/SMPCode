@@ -28,7 +28,7 @@ export function getVersionString(): string {
  */
 export const CHAT_MODE_TOOLS: PromptTool[] = [
   {
-    name: 'file_read',
+    name: 'read_file',  // ✅ 修复：使用正确的工具名称
     description: 'Read file contents. Use when user asks to analyze or view specific files.',
     parameters: {
       path: { type: 'string', description: 'The absolute path to the file', required: true }
@@ -44,7 +44,7 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
     required: []
   },
   {
-    name: 'glob',
+    name: 'search_files',  // ✅ 修复：使用正确的工具名称
     description: 'Find files matching a pattern. Use when user asks to find specific files.',
     parameters: {
       pattern: { type: 'string', description: 'The glob pattern to match', required: true }
@@ -52,7 +52,7 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
     required: ['pattern']
   },
   {
-    name: 'bash',
+    name: 'execute_bash',  // ✅ 修复：使用正确的工具名称
     description: 'Execute shell commands. Use ONLY when user explicitly requests command execution (npm, git, etc.). NEVER use for file operations.',
     parameters: {
       command: { type: 'string', description: 'The bash command to execute', required: true }
@@ -68,7 +68,7 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
 export const AGENT_MODE_TOOLS: PromptTool[] = [
   ...CHAT_MODE_TOOLS,
   {
-    name: 'file_write',
+    name: 'write_file',  // ✅ 修复：使用正确的工具名称
     description: 'Create a new file or overwrite an existing file. Warning: This will overwrite existing files without confirmation.',
     parameters: {
       path: { type: 'string', description: 'The absolute path to the file', required: true },
@@ -88,22 +88,28 @@ When you need to use a tool, you MUST output it in this EXACT format:
 <tool name="tool_name" param1="value1" param2="value2"/>
 
 CRITICAL RULES:
-1. ALWAYS use XML-style tag format <tool name="..." .../>, NEVER use JSON code blocks
-2. The tool call MUST be on its own line, without any markdown formatting or code blocks
-3. Parameter values must be in double quotes
-4. Escape special characters in parameter values
+1. ALWAYS use XML-style tag format <tool name="..." .../>, NEVER use JSON code blocks or markdown code blocks
+2. NEVER wrap tool calls in \`\`\`bash or \`\`\`json code blocks
+3. The tool call MUST be on its own line, without any markdown formatting or code blocks
+4. Parameter values must be in double quotes
+5. Escape special characters in parameter values
 
 CORRECT examples:
-<tool name="file_read" path="/Users/test/project/README.md"/>
+<tool name="read_file" path="/Users/test/project/README.md"/>
 <tool name="list_directory" path="/Users/test/project/src"/>
-<tool name="bash" command="npm install"/>
-<tool name="file_write" path="/path/to/file.txt" content="file content here"/>
+<tool name="execute_bash" command="npm install"/>
+<tool name="write_file" path="/path/to/file.txt" content="file content here"/>
+
+INCORRECT examples (NEVER do these):
+- \`\`\`bash\ncd /path && npm install\n\`\`\` ← WRONG! Don't use markdown code blocks
+- {"tool": "read_file", "path": "/path"} ← WRONG! Don't use JSON
+- read_file(/path/to/file) ← WRONG! Don't use parentheses format
 
 INCORRECT formats (NEVER use these):
-- {"tool": "file_read", "arguments": {"path": "/test"}}  ← WRONG! Don't use JSON
-- file_read: "{\"path\": \"/test\"}"  ← WRONG! Don't use this format
-- - file_read (/path/to/file)  ← WRONG! Don't use list format
-- I'll use file_read to read the file  ← WRONG! Just output the tool call directly
+- {"tool": "read_file", "arguments": {"path": "/test"}}  ← WRONG! Don't use JSON
+- read_file: "{\"path\": \"/test\"}"  ← WRONG! Don't use this format
+- - read_file (/path/to/file)  ← WRONG! Don't use list format
+- I'll use read_file to read the file  ← WRONG! Just output the tool call directly
 
 REMEMBER: Output the tool call directly. Do NOT say "I'll use X tool" - just use it.`
 
@@ -177,7 +183,7 @@ FILE OPERATIONS:
 - For multi-file changes, plan the order: read all first, then write/edit
 
 CODE ANALYSIS:
-- Use search_code to find references, imports, and dependencies
+- Use search_files to find references, imports, and dependencies
 - Use list_directory to understand project structure
 - Read configuration files (package.json, tsconfig.json, etc.) to understand tech stack
 

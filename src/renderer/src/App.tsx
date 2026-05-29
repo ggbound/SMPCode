@@ -140,10 +140,16 @@ function App() {
   
   // Activity Bar click handler
   const handleActivityClick = useCallback((item: ActivityBarItem) => {
-    // Settings 按钮打开设置模态框
+    // Settings 按钮切换设置页面
     if (item === 'settings') {
       setShowSettings(true)
+      setActiveActivity('settings')
       return
+    }
+    
+    // 切换到其他 Activity 时关闭设置
+    if (showSettings) {
+      setShowSettings(false)
     }
     
     // 切换其他 Activity
@@ -151,7 +157,7 @@ function App() {
       setPreviousActivity(activeActivity)
       setActiveActivity(item)
     }
-  }, [activeActivity])
+  }, [activeActivity, showSettings])
   
   // Command Palette state
   const [showCommandPalette, setShowCommandPalette] = useState(false)
@@ -1104,6 +1110,8 @@ function App() {
   
   const handleSettingsClose = () => {
     setShowSettings(false)
+    // 关闭设置后切换回之前的 Activity
+    setActiveActivity(previousActivity)
   }
 
   // Generate unique tab ID
@@ -1784,6 +1792,22 @@ function App() {
 
           {/* Main Content Area */}
           <main className="main-content three-column-layout">
+            {/* Settings Page - 占满整个 main-content 区域，使用 CSS 控制显示 */}
+            <div 
+              className="settings-full-page" 
+              style={{ display: activeActivity === 'settings' ? 'flex' : 'none' }}
+            >
+              <SettingsModal
+                apiKey={apiKey}
+                model={model}
+                defaultModel={defaultModel}
+                permissionMode={permissionMode}
+                providers={providers}
+                onSave={handleSettingsSave}
+                onClose={handleSettingsClose}
+              />
+            </div>
+
             {/* Left: Sidebar (File Explorer or Search) - Unified width */}
             <div className="sidebar-panel-container" style={{ display: activeActivity === 'explorer' ? 'flex' : 'none' }}>
               <FileExplorer
@@ -1838,8 +1862,8 @@ function App() {
               <GitPanel repoPath={projectPath} openFile={openFile} />
             </div>
 
-            {/* Center: File Tabs + File Viewer + Terminal */}
-            <div className="center-column">
+            {/* Center: File Tabs + File Viewer + Terminal - 使用 CSS 控制在设置页面时隐藏 */}
+            <div className="center-column" style={{ display: activeActivity === 'settings' ? 'none' : 'flex' }}>
               {/* File Tabs */}
               <FileTabs
                 tabs={tabs}
@@ -1897,8 +1921,8 @@ function App() {
               />
             </div>
 
-            {/* Right: Chat Area - Kilo Style */}
-            <div className="right-column">
+            {/* Right: Chat Area - Kilo Style - 始终挂载，使用 CSS 控制显示 */}
+            <div className="right-column" style={{ display: activeActivity === 'settings' ? 'none' : 'flex' }}>
               <KiloPage 
                 apiKey={apiKey}
                 model={model}
@@ -1913,19 +1937,7 @@ function App() {
 
 
 
-        {showSettings && (
-          <SettingsModal
-            apiKey={apiKey}
-            model={model}
-            defaultModel={defaultModel}
-            permissionMode={permissionMode}
-            providers={providers}
-            onSave={handleSettingsSave}
-            onClose={handleSettingsClose}
-          />
-        )}
-
-        {/* Command Palette */}
+            {/* Command Palette */}
         <CommandPalette
           isOpen={showCommandPalette}
           onClose={() => setShowCommandPalette(false)}

@@ -77,11 +77,11 @@ CRITICAL: After receiving a tool execution result, you have three options:
 
 OPTION 1 - CONTINUE EXPLORING (Most Common):
 If you need more information, call another tool immediately.
-Example: After list_directory, use file_read to read important files you discovered.
+Example: After list_directory, use read_file to read important files you discovered.
 
 OPTION 2 - MAKE CHANGES:
 If you need to modify files, use write_file or edit_file.
-Example: After reading a file with a bug, use file_write to fix the bug.
+Example: After reading a file with a bug, use write_file to fix the bug.
 
 OPTION 3 - PROVIDE FINAL SUMMARY (Only When Complete):
 ONLY choose this option when:
@@ -124,13 +124,13 @@ const TOOL_USAGE_MANDATORY = `
 CRITICAL: You MUST use tools for ALL file operations and command executions, NEVER output bash commands directly or fabricate results.
 
 WHEN TO USE TOOLS (MANDATORY):
-- Reading files: Use file_read tool with format <tool name="file_read" path="/path/to/file"/>
-- Writing files: Use file_write tool with format <tool name="file_write" path="/path/to/file" content="content"/>
+- Reading files: Use read_file tool with format <tool name="read_file" path="/path/to/file"/>
+- Writing files: Use write_file tool with format <tool name="write_file" path="/path/to/file" content="content"/>
 - Listing directories: Use list_directory tool with format <tool name="list_directory" path="/path/to/dir"/>
-- Finding files: Use glob tool with format <tool name="glob" pattern="**/*.ts"/>
-- Executing commands: Use bash tool with format <tool name="bash" command="command"/>
-- Checking ports/processes: Use bash tool with format <tool name="bash" command="lsof -i :port"/>
-- Starting/stopping services: Use bash tool with format <tool name="bash" command="npm run dev"/>
+- Finding files: Use search_files tool with format <tool name="search_files" pattern="**/*.ts"/>
+- Executing commands: Use execute_bash tool with format <tool name="execute_bash" command="command"/>
+- Checking ports/processes: Use execute_bash tool with format <tool name="execute_bash" command="lsof -i :port"/>
+- Starting/stopping services: Use execute_bash tool with format <tool name="execute_bash" command="npm run dev"/>
 
 FORBIDDEN PATTERNS:
 ❌ NEVER output: \`\`\`bash\ncommand\n\`\`\`
@@ -203,7 +203,7 @@ echo "content" > file.txt
 \`\`\`
 
 ✅ CORRECT (tool call):
-<tool name="file_write" path="file.txt" content="content"/>
+<tool name="write_file" path="file.txt" content="content"/>
 
 ❌ WRONG (bash code block):
 \`\`\`bash
@@ -211,9 +211,9 @@ grep -r "pattern" .
 \`\`\`
 
 ✅ CORRECT (tool call):
-<tool name="glob" pattern="**/*.ts"/>
+<tool name="search_files" pattern="**/*.ts"/>
 
-REMEMBER: ALL file and directory operations AND command executions MUST use XML-style tool calls like <tool name="file_read" path="..."/>, NEVER JSON code blocks, bash code blocks, or fabrication!`
+REMEMBER: ALL file and directory operations AND command executions MUST use XML-style tool calls like <tool name="read_file" path="..."/>, NEVER JSON code blocks, bash code blocks, or fabrication!`
 
 /**
  * 项目上下文使用指南

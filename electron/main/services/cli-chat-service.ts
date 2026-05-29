@@ -166,11 +166,14 @@ When showing code, use proper code blocks with language identifiers.`
 ${systemInfo}
 
 You have access to various tools to help you complete tasks:
-- file_read: Read the contents of a file
-- file_write: Create or overwrite a file
+- read_file: Read the contents of a file
+- write_file: Create or overwrite a file
+- edit_file: Edit specific lines in a file
 - list_directory: List files in a directory
-- bash: Execute shell commands
-- glob: Find files matching a pattern
+- execute_bash: Execute shell commands
+- search_files: Find files matching a pattern
+- delete_file: Delete a file
+- append_file: Append content to a file
 
 CRITICAL INSTRUCTIONS FOR TOOL USAGE:
 
@@ -180,22 +183,23 @@ CRITICAL INSTRUCTIONS FOR TOOL USAGE:
 2. The tool call MUST be on its own line, without any markdown formatting, code blocks, or bullet points.
 
 3. CORRECT examples:
-   <tool name="file_read" path="/Users/test/project/README.md"/>
+   <tool name="read_file" path="/Users/test/project/README.md"/>
    <tool name="list_directory" path="/Users/test/project/src"/>
-   <tool name="bash" command="npm install"/>
+   <tool name="execute_bash" command="npm install"/>
+   <tool name="write_file" path="/Users/test/output.txt" content="Hello World"/>
 
 4. INCORRECT formats (NEVER use these):
-   - file_read: "{\"path\": \"/Users/test/project/README.md\"}"  ← WRONG!
-   - file_read (/Users/test/project/README.md)  ← WRONG!
-   - \`\`\`json
-     {"tool": "file_read", "arguments": {"path": "/Users/test"}}
-     \`\`\`  ← WRONG!
-   - I'll use file_read to read the file  ← WRONG! Just use the tool directly
+   - DO NOT use markdown code blocks like \`\`\`bash ... \`\`\` 
+   - DO NOT use JSON format: {"tool": "read_file", "path": "..."}
+   - DO NOT use parentheses format: read_file(/path/to/file)
+   - DO NOT say "I'll use read_file" - JUST USE THE TOOL DIRECTLY
 
-5. Use the EXACT tool names: file_read, file_write, list_directory, bash, glob
-   Do NOT use: read_file, write_file, execute_bash, search_code, or any other names.
+5. Use the EXACT tool names: read_file, write_file, edit_file, list_directory, execute_bash, search_files, delete_file, append_file
+   Do NOT use: file_read, file_write, bash, glob, or any other names.
 
 6. Output the tool call directly in your response. Do NOT say "I'll use X tool" - just use it.
+
+7. IMPORTANT: When suggesting commands to the user, use the <tool> format above. Do NOT wrap commands in markdown code blocks.
 
 CRITICAL: FOR LONG-RUNNING COMMANDS (servers, watchers, etc.):
 - DO NOT use background execution with & or redirect output to files (>, >>, 2>&1)
@@ -244,6 +248,24 @@ function parseToolCalls(content: string): Array<{ name: string; arguments: Recor
 }
 
 /**
+ * 工具名称别名映射（兼容旧的工具名称）
+ */
+const TOOL_NAME_ALIASES: Record<string, string> = {
+  'file_read': 'read_file',
+  'file_write': 'write_file',
+  'bash': 'execute_bash',
+  'glob': 'search_files',
+  'search_code': 'search_files'
+}
+
+/**
+ * 解析工具名称，支持别名
+ */
+function resolveToolName(toolName: string): string {
+  return TOOL_NAME_ALIASES[toolName] || toolName
+}
+
+/**
  * 执行工具调用
  */
 async function executeToolCall(
@@ -251,11 +273,21 @@ async function executeToolCall(
   args: Record<string, unknown>,
   cwd: string
 ): Promise<{ success: boolean; output: string; error?: string }> {
-  log.debug(`[CLI-Chat Tool] Executing tool: ${toolName}`)
+  // ✅ 修复：解析工具名称别名
+  const resolvedToolName = resolveToolName(toolName)
+  if (resolvedToolName !== toolName) {
+    log.debug(`[CLI-Chat Tool] Resolved alias: ${toolName} -> ${resolvedToolName}`)
+  }
   
-  const tool = toolRegistry.get(toolName)
+  log.debug(`[CLI-Chat Tool] Looking up tool: ${resolvedToolName}`)
+  
+  const tool = toolRegistry.get(resolvedToolName)
   if (!tool) {
-    log.error(`[CLI-Chat Tool] Tool not found: ${toolName}`)
+    // 🔍 调试：列出所有已注册的工具
+    const allTools = toolRegistry.getAll().map(t => t.name).join(', ')
+    log.error(`[CLI-Chat Tool] Tool not found: ${resolvedToolName} (original: ${toolName})`)
+    log.error(`[CLI-Chat Tool] Available tools: ${allTools}`)
+    log.error(`[CLI-Chat Tool] Registry size: ${toolRegistry.getAll().length}`)
     return {
       success: false,
       output: '',
@@ -263,7 +295,7 @@ async function executeToolCall(
     }
   }
 
-  const permission = toolRegistry.isAllowed(toolName)
+  const permission = toolRegistry.isAllowed(resolvedToolName)
   if (!permission.allowed) {
     log.error(`[CLI-Chat Tool] Permission denied: ${permission.reason}`)
     return {
@@ -274,11 +306,11 @@ async function executeToolCall(
   }
 
   try {
-    const result = await toolRegistry.execute(toolName, args, {
+    const result = await toolRegistry.execute(resolvedToolName, args, {
       cwd,
       permissionMode: 'moderate'
     })
-    log.debug(`[CLI-Chat Tool] Tool executed: ${toolName}, success=${result.success}`)
+    log.debug(`[CLI-Chat Tool] Tool executed: ${resolvedToolName}, success=${result.success}`)
     return {
       success: result.success,
       output: result.output,
@@ -309,8 +341,8 @@ function extractToolCallsFromContent(content: string): {
   const toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = []
   let cleanedContent = content
 
-  // 已知工具列表
-  const knownTools = ['file_read', 'file_write', 'list_directory', 'bash', 'glob', 'echo']
+  // 已知工具列表（使用正确的工具名称）
+  const knownTools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'execute_bash', 'search_files', 'delete_file', 'append_file']
 
   // 1. 匹配 <tool name="..." .../> 格式（正确格式）
   const toolRegex = /<tool\s+name="([^"]+)"([^\/>]*)\/>/g
@@ -366,15 +398,15 @@ function extractToolCallsFromContent(content: string): {
   }
 
   // 4. 匹配 - tool_name (...) 列表格式（AI 错误输出的格式）
-  // 例如：- file_read (/path/to/file) 或 - list_directory (/path)
-  const listFormatRegex = /^\s*-\s*(file_read|file_write|list_directory|bash|glob|echo)\s*(?:\(([^)]*)\))?\s*$/gim
+  // 例如：- read_file (/path/to/file) 或 - list_directory (/path)
+  const listFormatRegex = /^\s*-\s*(read_file|write_file|edit_file|list_directory|execute_bash|search_files|delete_file|append_file)\s*(?:\(([^)]*)\))?\s*$/gim
   let listMatch
   while ((listMatch = listFormatRegex.exec(content)) !== null) {
     const toolName = listMatch[1]
     const pathHint = listMatch[2]
     // 根据工具类型构建参数
     const args: Record<string, unknown> = {}
-    if (pathHint && (toolName === 'file_read' || toolName === 'file_write' || toolName === 'list_directory')) {
+    if (pathHint && (toolName === 'read_file' || toolName === 'write_file' || toolName === 'edit_file' || toolName === 'list_directory')) {
       args.path = pathHint.trim()
     }
     toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
@@ -901,6 +933,12 @@ export async function sendCLIMessageStream(
     onChunk({ type: 'done' })
 
   } catch (error) {
+    // ✅ 修复：忽略 AbortError，这是正常的取消操作（如应用退出时）
+    if (error instanceof Error && error.name === 'AbortError') {
+      log.debug('[CLIChatService] Stream aborted during cleanup (normal)')
+      // 不发送 error chunk，直接返回
+      return
+    }
     log.error('[CLIChatService] Error:', error)
     onChunk({
       type: 'error',

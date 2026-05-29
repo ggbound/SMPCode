@@ -190,7 +190,7 @@ export function useChatMode() {
           console.warn(`[useChatMode] Tool ${toolCall.tool} is not allowed in chat mode`)
           toolResults.push({
             tool: toolCall.tool,
-            result: `工具 "${toolCall.tool}" 在智能问答模式中不可用。智能问答模式仅支持只读操作（read_file, list_directory, search_code, execute_bash）。如需文件修改操作，请切换到智能体模式。`,
+            result: `工具 "${toolCall.tool}" 在智能问答模式中不可用。智能问答模式仅支持只读操作（read_file, list_directory, search_files, execute_bash）。如需文件修改操作，请切换到智能体模式。`,
             success: false
           })
         } else {
