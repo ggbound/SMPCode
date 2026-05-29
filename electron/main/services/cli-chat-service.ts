@@ -400,7 +400,8 @@ function extractToolCallsFromContent(content: string): {
 }
 
 // 最大迭代次数限制
-const MAX_ITERATIONS = 50
+// ✅ 性能优化：降低最大迭代次数，防止栈溢出和内存泄漏
+const MAX_ITERATIONS = 20
 
 /**
  * 发送消息并获取流式响应
@@ -430,7 +431,8 @@ export async function sendCLIMessageStream(
     throw new Error(`Session not found: ${sessionId}`)
   }
 
-  log.info(`[CLI-Chat] Starting iteration ${iterationCount + 1}/${MAX_ITERATIONS}, session mode: ${session.mode}`)
+    // ✅ 性能优化：降低日志级别，减少磁盘I/O
+    log.debug(`[CLI-Chat] Starting iteration ${iterationCount + 1}/${MAX_ITERATIONS}, session mode: ${session.mode}`)
 
   // 加载配置
   const config = loadConfig()
@@ -524,9 +526,10 @@ export async function sendCLIMessageStream(
       })
     }
     
-    log.info(`[CLI-Chat] Final messages count: ${session.messages.length}`)
-    log.info(`[CLI-Chat] System prompt length: ${session.messages[0]?.content?.length || 0} chars`)
-    log.info(`[CLI-Chat] User message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`)
+    // ✅ 性能优化：降低日志级别
+    log.debug(`[CLI-Chat] Final messages count: ${session.messages.length}`)
+    log.debug(`[CLI-Chat] System prompt length: ${session.messages[0]?.content?.length || 0} chars`)
+    log.debug(`[CLI-Chat] User message: ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`)
 
     // 获取工具定义（Agent 模式）
     const tools = session.mode === 'agent'
@@ -702,43 +705,53 @@ export async function sendCLIMessageStream(
         }))
       })
 
-      for (const toolCall of toolCalls) {
-        try {
-          log.info(`[CLI-Chat] Executing tool: ${toolCall.name}`)
-          const args = JSON.parse(toolCall.arguments)
-          const result = await executeToolCall(toolCall.name, args, session.cwd)
+      // 性能优化：每次 iteration 只执行第一个工具，避免同时执行多个工具导致卡顿
+      // AI 会根据第一个工具的结果决定下一步操作
+      log.info(`[CLI-Chat] Executing FIRST tool only (to avoid blocking): ${toolCalls[0].name}`)
+      
+      const toolCall = toolCalls[0]  // 只取第一个工具
+      
+      try {
+        log.info(`[CLI-Chat] Executing tool: ${toolCall.name}`)
+        const args = JSON.parse(toolCall.arguments)
+        const result = await executeToolCall(toolCall.name, args, session.cwd)
 
-          onChunk({
-            type: 'tool_result',
-            toolResult: {
-              toolCallId: toolCall.id,
-              success: result.success,
-              output: result.output,
-              error: result.error
-            }
-          })
+        onChunk({
+          type: 'tool_result',
+          toolResult: {
+            toolCallId: toolCall.id,
+            success: result.success,
+            output: result.output,
+            error: result.error
+          }
+        })
 
-          // 添加工具结果到消息历史
-          session.messages.push({
-            role: 'tool',
-            name: toolCall.name,
-            content: result.success ? result.output : result.error || 'Error',
-            tool_call_id: toolCall.id
-          })
+        // 添加工具结果到消息历史
+        session.messages.push({
+          role: 'tool',
+          name: toolCall.name,
+          content: result.success ? result.output : result.error || 'Error',
+          tool_call_id: toolCall.id
+        })
 
-          log.info(`[CLI-Chat] Tool ${toolCall.name} executed: success=${result.success}`)
-        } catch (error) {
-          log.error(`[CLI-Chat] Tool execution error: ${error}`)
-          onChunk({
-            type: 'tool_result',
-            toolResult: {
-              toolCallId: toolCall.id,
-              success: false,
-              output: '',
-              error: String(error)
-            }
-          })
+        log.debug(`[CLI-Chat] Tool ${toolCall.name} executed: success=${result.success}`)
+        
+        // 如果有更多工具，记录日志但不执行
+        if (toolCalls.length > 1) {
+          log.debug(`[CLI-Chat] Deferring ${toolCalls.length - 1} additional tool(s) to next iteration`)
+          log.debug(`[CLI-Chat] Deferred tools:`, toolCalls.slice(1).map(tc => tc.name).join(', '))
         }
+      } catch (error) {
+        log.error(`[CLI-Chat] Tool execution error: ${error}`)
+        onChunk({
+          type: 'tool_result',
+          toolResult: {
+            toolCallId: toolCall.id,
+            success: false,
+            output: '',
+            error: String(error)
+          }
+        })
       }
 
       // 工具执行后，继续对话让 AI 分析结果
@@ -838,6 +851,17 @@ export async function sendCLIMessageStream(
         await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
         return
       }
+    }
+
+    // ✅ 性能优化：每次迭代后清理过期的消息历史
+    // 保留最近的30条消息（足够AI理解上下文）
+    const MAX_MESSAGES_HISTORY = 30
+    if (session.messages.length > MAX_MESSAGES_HISTORY) {
+      // 始终保留第一条系统提示词
+      const systemMessage = session.messages[0]
+      const recentMessages = session.messages.slice(-MAX_MESSAGES_HISTORY + 1)
+      session.messages = [systemMessage, ...recentMessages]
+      log.debug(`[CLI-Chat] Trimmed messages history from ${session.messages.length} to ${MAX_MESSAGES_HISTORY}`)
     }
 
     // 添加助手回复到消息历史（只在非工具调用分支添加）

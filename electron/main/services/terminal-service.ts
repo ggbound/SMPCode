@@ -13,6 +13,8 @@ export interface TerminalSession {
   createdAt: Date
   outputBuffer: string[]  // 存储终端输出
   onDataCallbacks: Set<(data: string) => void>  // 数据监听回调
+  dataFlushTimer?: NodeJS.Timeout  // 批量发送定时器
+  pendingData: string  // 待发送的数据缓冲区
 }
 
 const terminals = new Map<string, TerminalSession>()
@@ -193,12 +195,32 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
         pty: ptyProcess,
         createdAt: new Date(),
         outputBuffer: [],
-        onDataCallbacks: new Set()
+        onDataCallbacks: new Set(),
+        pendingData: ''  // 初始化待发送数据缓冲区
       }
 
       terminals.set(id, session)
 
-      // Handle data from PTY
+      // ✅ 性能优化：定期清理过期的终端会话（防止内存泄漏）
+      const MAX_TERMINALS = 50  // 最多保留50个终端
+      if (terminals.size > MAX_TERMINALS) {
+        // 删除最早的终端
+        const oldestId = Array.from(terminals.keys())[0]
+        const oldestSession = terminals.get(oldestId)
+        if (oldestSession) {
+          log.warn(`[Terminal] Terminal count exceeded ${MAX_TERMINALS}, removing oldest terminal: ${oldestId}`)
+          try {
+            oldestSession.pty.kill()
+          } catch (error) {
+            log.error(`[Terminal] Failed to kill oldest terminal:`, error)
+          }
+          terminals.delete(oldestId)
+        }
+      }
+
+      // Handle data from PTY - 使用批量发送机制减少IPC调用频率
+      const FLUSH_INTERVAL = 50 // 50ms批量发送一次
+      
       ptyProcess.onData((data) => {
         // 存储输出到缓冲区
         session.outputBuffer.push(data)
@@ -206,22 +228,54 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
         if (session.outputBuffer.length > 10000) {
           session.outputBuffer = session.outputBuffer.slice(-5000)
         }
-        // 触发回调
+        // 触发回调（实时）
         session.onDataCallbacks.forEach(callback => callback(data))
-        // 发送到前端
-        if (windowRef && !windowRef.isDestroyed()) {
-          log.debug(`[Terminal] Sending ${data.length} bytes from terminal ${id} to frontend`)
-          windowRef.webContents.send('terminal:data', { id, data })
+        
+        // 批量发送到前端（性能优化）
+        session.pendingData += data
+        
+        if (!session.dataFlushTimer) {
+          session.dataFlushTimer = setTimeout(() => {
+            if (session.pendingData && windowRef && !windowRef.isDestroyed()) {
+              windowRef.webContents.send('terminal:data', { 
+                id: session.id, 
+                data: session.pendingData 
+              })
+              session.pendingData = ''
+            }
+            session.dataFlushTimer = undefined
+          }, FLUSH_INTERVAL)
         }
       })
 
       // Handle exit
       ptyProcess.onExit(({ exitCode }) => {
-        log.info(`Terminal ${id} exited with code ${exitCode}`)
+        log.info(`[Terminal] Terminal ${id} exited with code ${exitCode}`)
         if (windowRef && !windowRef.isDestroyed()) {
           windowRef.webContents.send('terminal:exit', { id, exitCode })
         }
+        // 清理定时器
+        if (session.dataFlushTimer) {
+          clearTimeout(session.dataFlushTimer)
+          session.dataFlushTimer = undefined
+        }
         terminals.delete(id)
+        
+        // 性能优化：在下一个事件循环清理无效进程记录
+        setImmediate(() => {
+          try {
+            // 动态导入避免循环依赖
+            import('./process-terminal-bridge').then(({ processBridge }) => {
+              if (processBridge) {
+                processBridge.cleanupInvalidProcesses()
+              }
+            }).catch(err => {
+              log.error(`[Terminal] Failed to cleanup processes:`, err)
+            })
+          } catch (error) {
+            log.error(`[Terminal] Failed to import process-terminal-bridge:`, error)
+          }
+        })
       })
 
       log.info(`Created terminal ${id} with shell ${shellConfig.command}`)
@@ -252,9 +306,24 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
   ipcMain.handle('terminal:kill', async (_, { id }: { id: string }) => {
     const session = terminals.get(id)
     if (session) {
-      session.pty.kill()
+      log.info(`[Terminal] Killing terminal: ${id}`)
+      // 清理定时器
+      if (session.dataFlushTimer) {
+        clearTimeout(session.dataFlushTimer)
+        session.dataFlushTimer = undefined
+      }
+      // kill PTY进程
+      try {
+        session.pty.kill()
+      } catch (error) {
+        log.error(`[Terminal] Failed to kill PTY for terminal ${id}:`, error)
+      }
       terminals.delete(id)
-      log.info(`Killed terminal ${id}`)
+      log.info(`[Terminal] Killed terminal ${id}`)
+      
+      // 注意：ProcessBridge的清理会在terminal:exit事件中自动触发
+    } else {
+      log.warn(`[Terminal] Terminal ${id} not found, already cleaned up`)
     }
   })
 

@@ -325,7 +325,7 @@ async function* streamOpenAIMessage(
   if (model.toLowerCase().includes('kimi-k2.5') || model.toLowerCase().includes('kimi-k2')) {
     requestBody.temperature = 0.3
     requestBody.top_p = 0.9  // Add top_p constraint for more focused output
-    log.info('[LLM Stream] Set temperature=0.3 and top_p=0.9 for kimi-k2.5 (aggressive loop prevention)')
+    log.debug('[LLM Stream] Set temperature=0.3 and top_p=0.9 for kimi-k2.5 (aggressive loop prevention)')
   }
   
   // CRITICAL: Pass tools to enable OpenAI standard tool calling (like VSCode/Claude Code)
@@ -333,7 +333,7 @@ async function* streamOpenAIMessage(
     requestBody.tools = tools
     requestBody.tool_choice = 'auto'
       
-    log.info(`[LLM Stream] Sending ${tools.length} tools to API`)
+    log.debug(`[LLM Stream] Sending ${tools.length} tools to API`)
   }
 
   const url = getApiUrl(apiUrl, false)
@@ -393,7 +393,7 @@ async function* streamOpenAIMessage(
             
             // Debug log if tool_calls present
             if (delta.tool_calls && delta.tool_calls.length > 0) {
-              log.info('[LLM] Stream: Tool calls detected in chunk:', delta.tool_calls)
+              log.debug('[LLM] Stream: Tool calls detected in chunk:', delta.tool_calls)
             }
           } catch (e) {
             // Ignore parse errors
@@ -428,7 +428,7 @@ async function* streamAnthropicMessage(
   // CRITICAL: Pass tools to enable Anthropic standard tool calling
   if (tools && tools.length > 0) {
     requestBody.tools = tools
-    log.info(`[LLM] Stream (Anthropic): Sending ${tools.length} tools to API`)
+    log.debug(`[LLM] Stream (Anthropic): Sending ${tools.length} tools to API`)
   }
 
   const url = getApiUrl(apiUrl, true)

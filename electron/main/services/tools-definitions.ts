@@ -587,41 +587,81 @@ const executeBashTool: ToolExecutor = {
         }
       }
 
-      log.info(`Executing bash command: ${command} in ${cwd} (base: ${baseCwd})`)
+      log.debug(`Executing bash command: ${command} in ${cwd} (base: ${baseCwd})`)
 
       // Check if command should run in terminal
       const shouldRunInTerminal = processBridge.shouldRunInTerminal(command)
-      log.info(`[execute_bash] shouldRunInTerminal=${shouldRunInTerminal} for command: ${command}`)
-
+      log.debug(`[execute_bash] shouldRunInTerminal=${shouldRunInTerminal} for command: ${command}`)
+      
       // 检测是否包含后台运行符 &
       const isBackgroundCommand = /&\s*$/.test(command.trim()) || /&\s*\n/.test(command)
-
+      
       // 检测是否是长运行的开发服务器类命令（不应该等待进程结束）
-      const isDevServerCommand = /npm\s+run\s+(dev|serve|start)|vite|next\s+dev|nuxt\s+dev|vue-cli-service\s+serve/i.test(command)
-      log.info(`[execute_bash] isBackgroundCommand=${isBackgroundCommand}, isDevServerCommand=${isDevServerCommand}`)
-
-      if (shouldRunInTerminal && !isBackgroundCommand) {
-        log.info(`[execute_bash] Running in terminal via processBridge.startProcess`)
+      const isDevServerCommand = /npm\s+run\s+(dev|serve|start)|vite|next\s+dev|nuxt\s+dev|vue-cli-service\s+serve|php\s+artisan\s+serve/i.test(command)
+      log.debug(`[execute_bash] isBackgroundCommand=${isBackgroundCommand}, isDevServerCommand=${isDevServerCommand}`)
+      
+      // ✅ 核心修复：所有命令都在终端中执行，保证环境一致性
+      // 无论是否是后台命令，都在终端中执行，避免环境不一致问题
+      if (shouldRunInTerminal) {
+        log.debug(`[execute_bash] Running in terminal via processBridge.startProcess`)
         const result = await processBridge.startProcess(command, cwd)
-        log.info(`[execute_bash] processBridge.startProcess result:`, JSON.stringify(result))
+        log.debug(`[execute_bash] processBridge.startProcess result:`, JSON.stringify(result))
         if (result.success) {
-          // 对于开发服务器类命令，不等待进程完成，立即返回
+          // 对于开发服务器类命令，等待足够时间让进程启动并输出结果
           if (isDevServerCommand) {
-            log.info(`[execute_bash] Dev server command started, not waiting for completion: ${result.processId}`)
-            // 等待一小段时间收集初始输出
-            await new Promise(resolve => setTimeout(resolve, 3000))
+            log.debug(`[execute_bash] Dev server command started, waiting for startup output: ${result.processId}`)
+                  
+            // ✅ 增加等待时间到10秒，让进程有足够时间启动和输出
+            // PHP/NPM项目启动通常需要5-8秒
+            const waitTime = 10000
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+                  
+            // ✅ 获取实际终端输出（包括stdout和stderr）
             const initialOutput = processBridge.getProcessOutput(result.processId)
-            const outputText = initialOutput ? initialOutput.join('\n') : 'Process started in terminal'
+            const outputText = initialOutput && initialOutput.length > 0 
+              ? initialOutput.join('\n') 
+              : '(no output yet)'
+                  
+            // ✅ 检查进程是否还在运行
+            const processStatus = await processBridge.checkProcessStatus(result.processId)
+            const isStillRunning = processStatus.isRunning
+                  
+            log.debug(`[execute_bash] Dev server status after ${waitTime}ms: running=${isStillRunning}, output lines=${initialOutput?.length || 0}`)
+                  
+            // ✅ 如果进程已经退出，说明启动失败，返回错误
+            if (!isStillRunning) {
+              const exitCode = processStatus.exitCode ?? -1
+              log.error(`[execute_bash] Dev server process exited early with code ${exitCode}`)
+              return createErrorResult(
+                `Development server failed to start. Process exited with code ${exitCode}.\n\nOutput:\n${outputText}`, 
+                outputText,
+                { processId: result.processId, terminal: true, exitCode, failed: true }
+              )
+            }
+                  
+            // ✅ 进程还在运行，说明启动成功，返回实际输出
+            log.debug(`[execute_bash] Dev server running successfully, returning actual output`)
             return createSuccessResult(
-              `Development server started in terminal.\n\nInitial output:\n${outputText}`,
-              { processId: result.processId, terminal: true, devServer: true }
+              `Development server is running in terminal.\n\nStartup output:\n${outputText}\n\n✅ Server is running and ready.`, 
+              { processId: result.processId, terminal: true, devServer: true, running: true }
             )
           }
-
-          // 等待进程执行完成（对于非开发服务器命令）
-          log.info(`[execute_bash] Waiting for process ${result.processId} to complete...`)
-          const waitResult = await processBridge.waitForProcess(result.processId, 120000)
-
+      
+          // ✅ 性能优化：根据命令类型设置不同的超时时间，避免长时间占用资源
+          // 短命令（检查类）：5秒，普通命令：30秒，长命令：60秒
+          let timeoutMs = 30000  // 默认30秒
+          
+          if (/ps |top |which |whereis |ls |cat |grep |find |head |tail |wc |echo |pwd |whoami/i.test(command)) {
+            timeoutMs = 5000  // 检查类命令只需要5秒
+            log.debug(`[execute_bash] Short command detected, timeout: ${timeoutMs}ms`)
+          } else if (/npm run build|vite build|webpack|tsc |python.*compile|javac/i.test(command)) {
+            timeoutMs = 60000  // 编译类命令需要60秒
+            log.debug(`[execute_bash] Build command detected, timeout: ${timeoutMs}ms`)
+          }
+          
+          log.debug(`[execute_bash] Waiting for process ${result.processId} to complete (timeout: ${timeoutMs}ms)...`)
+          const waitResult = await processBridge.waitForProcess(result.processId, timeoutMs)
+      
           if (waitResult.success) {
             return createSuccessResult(
               waitResult.output,
@@ -638,56 +678,14 @@ const executeBashTool: ToolExecutor = {
         }
       }
 
-      // 对于后台命令或短命令，使用直接执行方式
-      if (isBackgroundCommand) {
-        log.info(`[execute_bash] Background command detected, executing directly: ${command.substring(0, 100)}`)
-      }
-
-      // For short commands, execute directly
-      // Build PATH environment variable with common directories
-      const pathDirs = [
-        '/usr/local/bin',
-        '/usr/bin',
-        '/bin',
-        '/usr/sbin',
-        '/sbin',
-        '/opt/homebrew/bin',
-        '/opt/homebrew/sbin',
-        `${process.env.HOME}/.local/bin`,
-        `${process.env.HOME}/bin`,
-        `${process.env.HOME}/.npm-global/bin`,
-        '/usr/local/share/npm/bin',
-        process.env.PATH || ''
-      ].filter(Boolean)
-
-      const env = {
-        ...process.env,
-        PATH: pathDirs.join(':')
-      }
-
-      log.info(`[execute_bash] Direct execution: command="${command}", cwd="${cwd}"`)
-      log.info(`[execute_bash] Direct execution PATH: ${env.PATH}`)
-
-      try {
-        // 使用 spawnPromise 替代 execPromise，更可靠
-        const { stdout, stderr, exitCode } = await spawnPromise(command, cwd, env)
-        log.info(`[execute_bash] Direct execution completed: exitCode=${exitCode}, stdout="${stdout?.substring(0, 200)}", stderr="${stderr?.substring(0, 200)}"`)
-
-        if (exitCode !== 0) {
-          return createErrorResult(
-            `Command failed with exit code ${exitCode}: ${stderr || stdout || 'Unknown error'}`,
-            stdout
-          )
-        }
-
-        return createSuccessResult(stdout || '(no output)', { stderr: stderr || undefined, exitCode })
-      } catch (execError: any) {
-        log.error(`[execute_bash] Direct execution failed:`, execError)
-        return createErrorResult(
-          execError.message || String(execError),
-          ''
-        )
-      }
+      // ✅ 所有命令都在终端中执行，不再使用直接执行方式
+      // 这样可以保证所有命令在相同的环境中执行，避免环境不一致问题
+      log.warn(`[execute_bash] Command should not run in terminal: ${command}`)
+      return createErrorResult(
+        `This command cannot be executed. Please use the integrated terminal instead.`,
+        '',
+        { shouldRunInTerminal: false }
+      )
     } catch (error: any) {
       return createErrorResult(
         error.message || String(error),

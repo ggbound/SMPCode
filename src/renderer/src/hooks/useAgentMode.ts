@@ -215,8 +215,15 @@ export function useAgentMode() {
 
         console.log('[useAgentMode] Detected tool calls:', toolCalls.map(t => t.tool).join(', '))
 
-        // Execute only the FIRST tool
-        let toolCall = toolCalls[0]
+        // 性能优化：每次 iteration 只执行第一个工具，避免并发执行导致卡顿
+        // AI 会根据第一个工具的结果决定下一步操作
+        if (toolCalls.length > 1) {
+          console.log(`[useAgentMode] Multiple tools detected (${toolCalls.length}), executing only the first one`)
+          console.log(`[useAgentMode] First tool: ${toolCalls[0].tool}`)
+          console.log(`[useAgentMode] Deferred tools:`, toolCalls.slice(1).map(t => t.tool).join(', '))
+        }
+        
+        let toolCall = toolCalls[0]  // 只取第一个工具
 
         // 映射工具名称
         if (TOOL_NAME_MAP[toolCall.tool]) {

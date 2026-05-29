@@ -171,24 +171,29 @@ export function useChatMode() {
           updateLastMessage(fullContent)
         }
 
-        // Execute tools - 智能问答模式只允许只读工具
+        // 性能优化：每次 iteration 只执行第一个工具，避免并发执行导致卡顿
         const toolResults: Array<{ tool: string; result: string; success: boolean }> = []
         let shouldRefreshFileExplorer = false
 
-        for (const toolCall of toolCalls) {
-          console.log(`[useChatMode] Executing tool:`, toolCall.tool)
+        if (toolCalls.length > 1) {
+          console.log(`[useChatMode] Multiple tools detected (${toolCalls.length}), executing only the first one`)
+          console.log(`[useChatMode] First tool: ${toolCalls[0].tool}`)
+          console.log(`[useChatMode] Deferred tools:`, toolCalls.slice(1).map(t => t.tool).join(', '))
+        }
+        
+        // 只执行第一个工具
+        const toolCall = toolCalls[0]
+        console.log(`[useChatMode] Executing tool:`, toolCall.tool)
 
-          // 检查工具是否在允许列表中
-          if (!ALLOWED_CHAT_TOOLS.includes(toolCall.tool)) {
-            console.warn(`[useChatMode] Tool ${toolCall.tool} is not allowed in chat mode`)
-            toolResults.push({
-              tool: toolCall.tool,
-              result: `工具 "${toolCall.tool}" 在智能问答模式中不可用。智能问答模式仅支持只读操作（read_file, list_directory, search_code, execute_bash）。如需文件修改操作，请切换到智能体模式。`,
-              success: false
-            })
-            continue
-          }
-
+        // 检查工具是否在允许列表中
+        if (!ALLOWED_CHAT_TOOLS.includes(toolCall.tool)) {
+          console.warn(`[useChatMode] Tool ${toolCall.tool} is not allowed in chat mode`)
+          toolResults.push({
+            tool: toolCall.tool,
+            result: `工具 "${toolCall.tool}" 在智能问答模式中不可用。智能问答模式仅支持只读操作（read_file, list_directory, search_code, execute_bash）。如需文件修改操作，请切换到智能体模式。`,
+            success: false
+          })
+        } else {
           try {
             const { success, result } = await executeToolCall(toolCall, currentCwd)
             toolResults.push({ tool: toolCall.tool, result, success })

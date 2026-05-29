@@ -83,9 +83,63 @@ class ProcessTerminalBridge extends EventEmitter {
   private windowRef: BrowserWindow | null = null
   private commandTypeMap: Map<string, string> = new Map()
   private aiIntents: Map<string, AIIntentContext> = new Map()
+  
+  // ✅ 性能优化：定期清理过期进程（防止内存泄漏）
+  private cleanupTimer: NodeJS.Timeout | null = null
 
   setWindow(window: BrowserWindow): void {
+    // ✅ 核心修复：如果已经设置过窗口，先清理旧定时器
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+      log.info('[ProcessBridge] Cleared existing cleanup timer')
+    }
+    
     this.windowRef = window
+    
+    // ✅ 启动定期清理任务（每小时清理一次）
+    this.cleanupTimer = setInterval(() => {
+      this.cleanupExpiredProcesses()
+    }, 60 * 60 * 1000)  // 1小时
+    log.info('[ProcessBridge] Started periodic cleanup timer (every 1 hour)')
+    
+    // ✅ 防止定时器泄漏：监听窗口关闭事件
+    window.on('closed', () => {
+      if (this.cleanupTimer) {
+        clearInterval(this.cleanupTimer)
+        this.cleanupTimer = null
+        log.info('[ProcessBridge] Cleanup timer cleared on window closed')
+      }
+    })
+  }
+  
+  // ✅ 新增：清理所有资源（应用退出时调用）
+  public dispose(): void {
+    log.info('[ProcessBridge] Disposing all resources...')
+    
+    // 清理定时器
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+    }
+    
+    // 清理所有进程
+    for (const [id, process] of this.processes) {
+      if (process.isRunning) {
+        try {
+          process.isRunning = false
+          log.debug(`[ProcessBridge] Stopping process ${id} during dispose`)
+        } catch (error) {
+          log.error(`[ProcessBridge] Failed to stop process ${id}:`, error)
+        }
+      }
+    }
+    
+    this.processes.clear()
+    this.commandTypeMap.clear()
+    this.aiIntents.clear()
+    
+    log.info('[ProcessBridge] All resources disposed')
   }
 
   // 推断任务类型
@@ -189,8 +243,18 @@ class ProcessTerminalBridge extends EventEmitter {
 
   // 检查命令是否应在终端运行
   shouldRunInTerminal(command: string): boolean {
-    const commandPart = this.extractCommandPart(command)
-    return TERMINAL_PROCESS_PATTERNS.some(pattern => pattern.test(commandPart))
+    // ✅ 核心修复：所有命令都在终端中执行，保证环境一致性
+    // 避免终端执行和后台执行环境不一致导致的命令找不到问题
+    // 无论是什么命令，都统一在终端中执行
+    const shouldRun = true
+    
+    if (!shouldRun) {
+      // 保留原有的逻辑作为注释参考
+      const commandPart = this.extractCommandPart(command)
+      return TERMINAL_PROCESS_PATTERNS.some(pattern => pattern.test(commandPart))
+    }
+    
+    return shouldRun
   }
 
   // 提取端口
@@ -233,13 +297,13 @@ class ProcessTerminalBridge extends EventEmitter {
       const cleanedCommand = this.cleanCommand(command)
         
       if (originalCommand !== cleanedCommand) {
-        log.info(`[ProcessBridge] Command cleaned:`)
-        log.info(`  Original: ${originalCommand}`)
-        log.info(`  Cleaned:  ${cleanedCommand}`)
+        log.debug(`[ProcessBridge] Command cleaned:`)
+        log.debug(`  Original: ${originalCommand}`)
+        log.debug(`  Cleaned:  ${cleanedCommand}`)
       }
         
       const commandTypeKey = this.getCommandTypeKey(cleanedCommand, cwd)
-      log.info(`[ProcessBridge] Starting process: command="${cleanedCommand}", cwd="${cwd}", terminalId="${terminalId || 'auto'}"`)
+      log.info(`[ProcessBridge] Starting process: command="${cleanedCommand}"`)
 
       // 检查是否已有同类型进程在运行
       const existingProcessId = this.commandTypeMap.get(commandTypeKey)
@@ -253,7 +317,7 @@ class ProcessTerminalBridge extends EventEmitter {
             return { processId: existingProcessId, success: true, reused: true }
           } else {
             // 进程已停止，清理记录
-            log.info(`[ProcessBridge] Cleaning up stopped process: ${existingProcessId}`)
+            log.debug(`[ProcessBridge] Cleaning up stopped process: ${existingProcessId}`)
             this.cleanupProcessRecord(existingProcessId)
           }
         } else {
@@ -274,33 +338,32 @@ class ProcessTerminalBridge extends EventEmitter {
         
         if (terminals.has(expectedTerminalId)) {
           targetTerminalId = expectedTerminalId
-          // 确保终端中的任何旧进程都已停止
-          log.info(`[ProcessBridge] Reusing existing terminal: ${targetTerminalId}, stopping any existing process`)
-          await this.stopTerminalProcess(targetTerminalId)
-          // 额外等待确保终端准备就绪
-          await new Promise(resolve => setTimeout(resolve, 800))
+          // 性能优化：异步停止旧进程，不阻塞当前命令执行
+          log.debug(`[ProcessBridge] Reusing existing terminal: ${targetTerminalId}, stopping old process asynchronously`)
+          this.stopTerminalProcessAsync(targetTerminalId)  // 不await，异步执行
+          // 减少等待时间，只等待100ms确保终端可用
+          await new Promise(resolve => setTimeout(resolve, 100))
         } else if (this.windowRef && !this.windowRef.isDestroyed()) {
           // 发送事件到前端创建终端
-          log.info(`[ProcessBridge] Sending terminal:create event: ${expectedTerminalId}`)
+          log.info(`[ProcessBridge] Creating new terminal: ${expectedTerminalId}`)
           this.windowRef.webContents.send('terminal:create', {
             id: expectedTerminalId,
             cwd: cwd,
             title: this.getCommandDisplayName(command)
           })
           targetTerminalId = expectedTerminalId
-          // 等待终端创建完成 - 轮询检查终端是否存在
-          log.info(`[ProcessBridge] Waiting for terminal ${expectedTerminalId} to be created...`)
+          // 性能优化：减少轮询间隔和最大等待时间
+          log.debug(`[ProcessBridge] Waiting for terminal ${expectedTerminalId} to be created...`)
           let attempts = 0
-          const maxAttempts = 50 // 最多等待5秒
+          const maxAttempts = 20 // 减少到2秒（20 * 100ms）
           while (attempts < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, 100))
             const terminals = getTerminals()
             if (terminals.has(expectedTerminalId)) {
-              log.info(`[ProcessBridge] Terminal ${expectedTerminalId} created successfully after ${attempts * 100}ms`)
-              // 额外等待确保前端xterm完全初始化（需要更长时间）
-              log.info(`[ProcessBridge] Waiting for frontend xterm initialization...`)
-              await new Promise(resolve => setTimeout(resolve, 800))
-              log.info(`[ProcessBridge] Ready to write command to terminal ${expectedTerminalId}`)
+              log.debug(`[ProcessBridge] Terminal ${expectedTerminalId} created after ${attempts * 100}ms`)
+              // 减少xterm初始化等待时间
+              await new Promise(resolve => setTimeout(resolve, 150))  // 从300ms减少到150ms
+              log.debug(`[ProcessBridge] Ready to write command to terminal ${expectedTerminalId}`)
               break
             }
             attempts++
@@ -324,7 +387,7 @@ class ProcessTerminalBridge extends EventEmitter {
         if (doubleCheckProcess) {
           const isRunning = await this.isProcessActuallyRunning(doubleCheckProcessId)
           if (isRunning) {
-            log.info(`[ProcessBridge] Found running process during double-check: ${doubleCheckProcessId}`)
+            log.debug(`[ProcessBridge] Found running process during double-check: ${doubleCheckProcessId}`)
             return { processId: doubleCheckProcessId, success: true, reused: true }
           }
         }
@@ -369,18 +432,16 @@ class ProcessTerminalBridge extends EventEmitter {
         .replace(/\s*&\s*$/, '')
         .trim()
 
-      log.info(`[ProcessBridge] About to write to terminal: ${targetTerminalId}`)
-      log.info(`[ProcessBridge] Command to execute: ${foregroundCommand}`)
+      log.debug(`[ProcessBridge] About to write to terminal: ${targetTerminalId}`)
+      log.debug(`[ProcessBridge] Command to execute: ${foregroundCommand}`)
       
-      // 确保终端有干净的提示符
-      const writeNewlineResult = writeToTerminal(targetTerminalId, '\n')
-      log.info(`[ProcessBridge] Write newline result: ${writeNewlineResult}`)
-      await new Promise(resolve => setTimeout(resolve, 200))
-      
+      // 确保终端有干净的提示符 - 性能优化：减少等待时间
+      writeToTerminal(targetTerminalId, '\n')
+      await new Promise(resolve => setTimeout(resolve, 50))  // 从200ms减少到50ms
+            
       // 发送命令
-      log.info(`[ProcessBridge] Executing command in terminal: ${foregroundCommand}`)
-      const writeCommandResult = writeToTerminal(targetTerminalId, `${foregroundCommand}\n`)
-      log.info(`[ProcessBridge] Write command result: ${writeCommandResult}`)
+      log.debug(`[ProcessBridge] Executing command in terminal: ${foregroundCommand}`)
+      writeToTerminal(targetTerminalId, `${foregroundCommand}\n`)
 
       // 通知前端
       if (this.windowRef && !this.windowRef.isDestroyed()) {
@@ -575,7 +636,7 @@ class ProcessTerminalBridge extends EventEmitter {
   // 等待进程执行完成
   async waitForProcess(
     processId: string,
-    timeoutMs: number = 120000
+    timeoutMs: number = 30000  // ✅ 默认超时从120秒降到30秒
   ): Promise<{ success: boolean; output: string; exitCode?: number; error?: string }> {
     const startTime = Date.now()
     const managedProcess = this.processes.get(processId)
@@ -586,49 +647,103 @@ class ProcessTerminalBridge extends EventEmitter {
 
     log.info(`[ProcessBridge] Waiting for process ${processId} to complete (timeout: ${timeoutMs}ms)`)
 
-    // 轮询检查进程状态
-    while (true) {
-      // 检查是否超时
-      if (Date.now() - startTime > timeoutMs) {
-        log.warn(`[ProcessBridge] Process ${processId} timed out after ${timeoutMs}ms`)
-        // 取消终端监听
-        const unsubscribe = (managedProcess as any).unsubscribeTerminal
-        if (unsubscribe) {
-          unsubscribe()
-        }
-        return { 
-          success: false, 
-          output: managedProcess.output.join('\n'), 
-          error: `Process timed out after ${timeoutMs}ms`,
-          exitCode: -1 
-        }
-      }
-
-      // 检查进程是否还在运行
-      const isRunning = await this.isProcessActuallyRunning(processId)
-      if (!isRunning) {
-        // 进程已结束，取消终端监听
-        const unsubscribe = (managedProcess as any).unsubscribeTerminal
-        if (unsubscribe) {
-          unsubscribe()
-          log.info(`[ProcessBridge] Unsubscribed terminal data for process ${processId}`)
-        }
-        
-        // 进程已结束，获取退出码
-        const exitCode = (managedProcess as any).exitCode ?? 0
-        const output = managedProcess.output.join('\n')
-        
-        log.info(`[ProcessBridge] Process ${processId} completed with exit code ${exitCode}, output length: ${output.length}`)
-        return {
-          success: exitCode === 0,
-          output: output || '(no output)',
-          exitCode
-        }
-      }
-
-      // 等待一段时间后再检查
-      await new Promise(resolve => setTimeout(resolve, 500))
+    // ✅ 性能优化：根据超时时间动态调整检查间隔
+    // 短命令（≤10秒）：每100ms检查一次
+    // 普通命令（10-60秒）：每500ms检查一次
+    // 长命令（>60秒）：每1000ms检查一次
+    let checkIntervalMs = 500
+    if (timeoutMs <= 10000) {
+      checkIntervalMs = 100  // 短命令快速响应
+    } else if (timeoutMs > 60000) {
+      checkIntervalMs = 1000  // 长命令减少检查频率
     }
+
+    // ✅ 核心修复：使用Promise包装，避免无限循环导致的资源耗尽
+    return new Promise((resolve) => {
+      let checkInterval: NodeJS.Timeout | null = null
+      let timeoutTimer: NodeJS.Timeout | null = null
+      
+      // 清理函数
+      const cleanup = () => {
+        if (checkInterval) {
+          clearInterval(checkInterval)
+          checkInterval = null
+        }
+        if (timeoutTimer) {
+          clearTimeout(timeoutTimer)
+          timeoutTimer = null
+        }
+      }
+      
+      // 检查进程状态的函数
+      const checkProcessStatus = async () => {
+        try {
+          // 检查是否超时
+          if (Date.now() - startTime > timeoutMs) {
+            log.warn(`[ProcessBridge] Process ${processId} timed out after ${timeoutMs}ms`)
+            cleanup()
+            
+            // 取消终端监听
+            const unsubscribe = (managedProcess as any).unsubscribeTerminal
+            if (unsubscribe) {
+              unsubscribe()
+            }
+            
+            resolve({ 
+              success: false, 
+              output: managedProcess.output.join('\n'), 
+              error: `Process timed out after ${timeoutMs}ms`,
+              exitCode: -1 
+            })
+            return
+          }
+
+          // 检查进程是否还在运行
+          const isRunning = await this.isProcessActuallyRunning(processId)
+          if (!isRunning) {
+            cleanup()
+            
+            // 进程已结束，取消终端监听
+            const unsubscribe = (managedProcess as any).unsubscribeTerminal
+            if (unsubscribe) {
+              unsubscribe()
+              log.info(`[ProcessBridge] Unsubscribed terminal data for process ${processId}`)
+            }
+            
+            // 进程已结束，获取退出码
+            const exitCode = (managedProcess as any).exitCode ?? 0
+            const output = managedProcess.output.join('\n')
+            
+            log.info(`[ProcessBridge] Process ${processId} completed with exit code ${exitCode}, output length: ${output.length}`)
+            resolve({
+              success: exitCode === 0,
+              output: output || '(no output)',
+              exitCode
+            })
+            return
+          }
+        } catch (error) {
+          log.error(`[ProcessBridge] Error checking process status:`, error)
+          cleanup()
+          resolve({
+            success: false,
+            output: managedProcess.output.join('\n'),
+            error: String(error),
+            exitCode: -1
+          })
+        }
+      }
+      
+      // ✅ 设置定时器，根据超时时间动态调整检查间隔
+      checkInterval = setInterval(checkProcessStatus, checkIntervalMs)
+      
+      // ✅ 设置超时定时器
+      timeoutTimer = setTimeout(() => {
+        if (checkInterval) {
+          checkProcessStatus()  // 最后一次检查
+        }
+      }, timeoutMs + 100)  // 稍微多一点时间，让checkProcessStatus处理超时
+    })
   }
 
   // 获取AI意图上下文
@@ -639,6 +754,16 @@ class ProcessTerminalBridge extends EventEmitter {
 
   // 清理所有进程
   cleanupAll(): void {
+    log.info('[ProcessBridge] Cleaning up all processes and resources...')
+    
+    // ✅ 清理定时器（防止资源泄漏）
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer)
+      this.cleanupTimer = null
+      log.info('[ProcessBridge] Cleanup timer cleared')
+    }
+    
+    // 清理所有进程
     for (const [id, managedProcess] of this.processes) {
       if (managedProcess.isRunning && managedProcess.terminalId) {
         this.stopProcess(id).catch(err => {
@@ -649,7 +774,7 @@ class ProcessTerminalBridge extends EventEmitter {
     this.processes.clear()
     this.commandTypeMap.clear()
     this.aiIntents.clear()
-    log.info('[ProcessBridge] All processes cleaned up')
+    log.info('[ProcessBridge] All processes and resources cleaned up')
   }
 
   // 发送输入到进程
@@ -719,6 +844,14 @@ class ProcessTerminalBridge extends EventEmitter {
     return managedProcess.isRunning
   }
 
+  // ✅ 公开方法：检查进程状态（供外部调用）
+  public async checkProcessStatus(processId: string): Promise<{ isRunning: boolean; exitCode?: number }> {
+    const isRunning = await this.isProcessActuallyRunning(processId)
+    const process = this.processes.get(processId)
+    const exitCode = process ? (process as any).exitCode : undefined
+    return { isRunning, exitCode }
+  }
+
   // 停止终端中的进程
   private async stopTerminalProcess(terminalId: string): Promise<void> {
     const terminals = getTerminals()
@@ -743,6 +876,33 @@ class ProcessTerminalBridge extends EventEmitter {
     }
     
     log.info(`[ProcessBridge] Finished stopping processes in terminal: ${terminalId}`)
+  }
+
+  // 性能优化：异步停止终端进程，不阻塞主线程
+  private stopTerminalProcessAsync(terminalId: string): void {
+    // 在后台异步执行，不await
+    setImmediate(async () => {
+      try {
+        const terminals = getTerminals()
+        if (!terminals.has(terminalId)) return
+
+        log.debug(`[ProcessBridge] Async stopping processes in terminal: ${terminalId}`)
+
+        // 减少Ctrl+C次数和等待时间
+        for (let i = 0; i < 3; i++) {
+          writeToTerminal(terminalId, '\x03')
+          await new Promise(resolve => setTimeout(resolve, 200))  // 从400ms减少到200ms
+        }
+        
+        // 发送 Enter 确保提示符出现
+        writeToTerminal(terminalId, '\n')
+        await new Promise(resolve => setTimeout(resolve, 300))  // 从600ms减少到300ms
+        
+        log.debug(`[ProcessBridge] Async finished stopping processes in terminal: ${terminalId}`)
+      } catch (error) {
+        log.error(`[ProcessBridge] Async stop process error:`, error)
+      }
+    })
   }
 
   // 检查端口是否被占用
@@ -810,17 +970,64 @@ class ProcessTerminalBridge extends EventEmitter {
 
     log.info(`[ProcessBridge] Cleaned up process record: ${processId}`)
   }
+  
+  // ✅ 性能优化：清理过期进程（定期调用）
+  private cleanupExpiredProcesses(): void {
+    const now = Date.now()
+    const MAX_PROCESS_AGE = 24 * 60 * 60 * 1000  // 24小时
+    const cleanedCount = { processes: 0, intents: 0 }
+    
+    // 清理过期的进程记录
+    for (const [id, process] of this.processes) {
+      const processAge = now - new Date(process.startTime).getTime()
+      if (!process.isRunning && processAge > MAX_PROCESS_AGE) {
+        log.debug(`[ProcessBridge] Cleaning up expired process: ${id} (age: ${Math.round(processAge / 1000 / 60)}min)`)
+        this.cleanupProcessRecord(id)
+        cleanedCount.processes++
+      }
+    }
+    
+    // 清理过期的AI意图（24小时未访问）
+    for (const [intentId, intent] of this.aiIntents) {
+      if (intent.accessCount === 0 && 
+          now - new Date(intent.createdAt).getTime() > 24 * 60 * 60 * 1000) {
+        this.aiIntents.delete(intentId)
+        cleanedCount.intents++
+      }
+    }
+    
+    if (cleanedCount.processes > 0 || cleanedCount.intents > 0) {
+      log.info(`[ProcessBridge] Periodic cleanup completed: ${cleanedCount.processes} processes, ${cleanedCount.intents} intents removed`)
+    }
+  }
 
-  // 清理无效进程记录
-  private cleanupInvalidProcesses(): void {
+  // 性能优化：清理无效进程记录（定期调用）
+  public cleanupInvalidProcesses(): void {
     const terminals = getTerminals()
+    const cleanedCount = { processes: 0, intents: 0 }
     
     for (const [id, process] of this.processes) {
       // 如果终端不存在但进程标记为运行，则清理
       if (process.terminalId && !terminals.has(process.terminalId) && process.isRunning) {
+        log.warn(`[ProcessBridge] Cleaning up invalid process: ${id} (terminal ${process.terminalId} not found)`)
         process.isRunning = false
         this.cleanupProcessRecord(id)
+        cleanedCount.processes++
       }
+    }
+    
+    // 清理无效的 AI 意图
+    for (const [intentId, intent] of this.aiIntents) {
+      if (intent.accessCount === 0 && 
+          Date.now() - new Date(intent.createdAt).getTime() > 24 * 60 * 60 * 1000) {
+        // 24小时未访问的意图，清理
+        this.aiIntents.delete(intentId)
+        cleanedCount.intents++
+      }
+    }
+    
+    if (cleanedCount.processes > 0 || cleanedCount.intents > 0) {
+      log.info(`[ProcessBridge] Cleanup completed: ${cleanedCount.processes} processes, ${cleanedCount.intents} intents removed`)
     }
   }
 

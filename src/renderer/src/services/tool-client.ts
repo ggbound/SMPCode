@@ -89,29 +89,12 @@ async function executeBashInTerminal(
     if (result.success) {
       console.log(`[ToolClient] Process started in terminal: ${result.processId}`)
       
-      // 等待进程执行完成并获取结果
-      // 这里我们需要等待进程完成，但 startProcessInTerminal 是异步启动的
-      // 所以我们需要轮询检查进程状态
-      const processId = result.processId
-      let isRunning = true
-      let attempts = 0
-      const maxAttempts = 300 // 最多等待 5 分钟 (300 * 1s)
-      
-      while (isRunning && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        // 获取进程列表检查状态
-        if (window.api?.getRunningProcesses) {
-          const processes = await window.api.getRunningProcesses()
-          const process = processes.find(p => p.id === processId)
-          isRunning = process?.isRunning ?? false
-        }
-        attempts++
-      }
-      
+      // 对于长期运行的命令（如开发服务器），立即返回成功
+      // 不需要等待命令完成，让终端自己管理进程生命周期
+      // 前端可以通过 process:started 事件和终端输出监控进程状态
       return {
         success: true,
-        output: `命令已在终端中执行完成: ${command}`,
+        output: `命令已在终端中启动，正在运行...\n\n进程ID: ${result.processId}\n\n提示：\n- 可以在终端面板中查看实时输出\n- 使用 kill ${result.processId} 停止进程\n- 或在进程面板中管理此进程`,
         error: undefined
       }
     } else {

@@ -264,157 +264,223 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
       // 设置流式监听（实时处理数据块）
       // 注意：后端会处理整个对话流程，包括多次工具调用和继续对话
       // 前端只需要持续接收流式响应直到收到 done 信号
+      
+      // 性能优化：使用 requestAnimationFrame 批量更新 UI
+      let pendingUpdate = false
+      let lastChunkTime = 0
+      const CHUNK_THROTTLE_MS = 16 // 约60fps，每帧最多处理一次
+      
       const unsubscribe = ipcApi.cliChat.onStreamChunk((_event, data) => {
-        if (data.sessionId === sessionId) {
-          const chunk = data.chunk
-          console.log(`[useUnifiedConversation] Received chunk: ${chunk.type}`)
-
-          if (chunk.type === 'text' && chunk.content) {
+        if (data.sessionId !== sessionId) return
+        
+        const chunk = data.chunk
+        const now = Date.now()
+        
+        // 节流：避免过于频繁的处理
+        if (now - lastChunkTime < CHUNK_THROTTLE_MS && chunk.type === 'text') {
+          // 累积内容但不立即处理
+          if (chunk.content) {
             fullContent += chunk.content
-
-            // 解析 thinking 标签
-            const { thinking, cleaned } = parseThinkingTags(fullContent)
-            
-            // 如果检测到 thinking 内容，创建思考步骤
-            if (thinking && thinking.length > 0) {
-              // 检查是否已存在 thinking 步骤
-              const state = useStore.getState()
-              const lastMsg = state.messages[state.messages.length - 1]
-              const hasThinkingStep = lastMsg?.messageSteps?.some(s => s.type === 'thinking')
-              
-              if (!hasThinkingStep) {
-                currentStepId = generateStepId()
-                const thinkingStep: MessageStep = {
-                  id: currentStepId,
-                  type: 'thinking',
-                  title: '分析思考',
-                  content: thinking,
-                  status: 'completed',
-                  timestamp: Date.now()
-                }
-                addMessageStep(thinkingStep)
-              }
+          }
+          return
+        }
+        lastChunkTime = now
+        
+        // 对于文本块，累积内容后批量处理
+        if (chunk.type === 'text' && chunk.content) {
+          fullContent += chunk.content
+          
+          // 使用 requestAnimationFrame 批量更新 UI
+          if (!pendingUpdate) {
+            pendingUpdate = true
+            requestAnimationFrame(() => {
+              pendingUpdate = false
+              processTextChunk(fullContent)
+            })
+          }
+        } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+          // 工具调用需要立即处理
+          handleToolCallChunk(chunk)
+        } else if (chunk.type === 'tool_result' && chunk.toolResult) {
+          // 工具结果需要立即处理
+          handleToolResultChunk(chunk)
+        }
+      })
+      
+      // 提取文本处理逻辑到单独函数
+      const processTextChunk = (content: string) => {
+        // 解析 thinking 标签
+        const { thinking, cleaned } = parseThinkingTags(content)
+        
+        // 如果检测到 thinking 内容，创建思考步骤
+        if (thinking && thinking.length > 0) {
+          // 检查是否已存在 thinking 步骤
+          const state = useStore.getState()
+          const lastMsg = state.messages[state.messages.length - 1]
+          const hasThinkingStep = lastMsg?.messageSteps?.some(s => s.type === 'thinking')
+          
+          if (!hasThinkingStep) {
+            currentStepId = generateStepId()
+            const thinkingStep: MessageStep = {
+              id: currentStepId,
+              type: 'thinking',
+              title: '分析思考',
+              content: thinking,
+              status: 'completed',
+              timestamp: Date.now()
             }
+            addMessageStep(thinkingStep)
+          }
+        }
 
-            // 检测工具调用标记
-            const toolInfo = extractToolCallInfo(chunk.content)
-            if (toolInfo.toolName && !toolInfo.isResult) {
-              // 创建工具调用步骤
-              currentStepId = generateStepId()
-              const toolStep: MessageStep = {
-                id: currentStepId,
-                type: 'tool_call',
-                title: `调用 ${toolInfo.toolName}`,
-                status: 'running',
-                timestamp: Date.now(),
-                toolName: toolInfo.toolName
-              }
-              addMessageStep(toolStep)
-              setExecutionState('executing_tool')
-              updateExecutionPhase('executing_tool')
-            }
-
-            // 更新消息内容（使用清理后的内容）
-            updateLastMessage(cleaned, { executionPhase: 'thinking' })
-            setExecutionState('thinking')
-          } else if (chunk.type === 'tool_call' && chunk.toolCall) {
-            console.log(`[useUnifiedConversation] Received tool_call: ${chunk.toolCall.name}`)
-            setExecutionState('executing_tool')
-            updateExecutionPhase('executing_tool')
-
-            // 完成当前思考步骤
-            if (currentStepId) {
-              updateMessageStep(currentStepId, { status: 'completed' })
-            }
-
+        // 检测工具调用标记（只在必要时解析）
+        if (content.includes('[') || content.includes('tool')) {
+          const toolInfo = extractToolCallInfo(content)
+          if (toolInfo.toolName && !toolInfo.isResult) {
             // 创建工具调用步骤
             currentStepId = generateStepId()
             const toolStep: MessageStep = {
               id: currentStepId,
               type: 'tool_call',
-              title: `调用 ${chunk.toolCall.name}`,
+              title: `调用 ${toolInfo.toolName}`,
               status: 'running',
               timestamp: Date.now(),
-              toolName: chunk.toolCall.name,
-              toolArgs: chunk.toolCall.arguments || {}
+              toolName: toolInfo.toolName
             }
             addMessageStep(toolStep)
-
-            // 注意：不再将工具调用文本添加到内容中
-            // 工具调用信息已经通过步骤化展示（MessageStep）显示
-            // 避免重复显示工具调用信息
-            console.log(`[useUnifiedConversation] Tool call step created for: ${chunk.toolCall.name}`)
-          } else if (chunk.type === 'tool_result' && chunk.toolResult) {
-            console.log(`[useUnifiedConversation] Received tool_result: success=${chunk.toolResult.success}`)
-            setExecutionState('analyzing')
-            updateExecutionPhase('analyzing')
-
-            // 完成工具调用步骤
-            if (currentStepId) {
-              updateMessageStep(currentStepId, {
-                status: chunk.toolResult.success ? 'completed' : 'failed',
-                toolResult: {
-                  success: chunk.toolResult.success,
-                  output: chunk.toolResult.output,
-                  error: chunk.toolResult.error
-                }
-              })
-            }
-
-            // 创建结果分析步骤
-            currentStepId = generateStepId()
-            const resultStep: MessageStep = {
-              id: currentStepId,
-              type: 'tool_result',
-              title: chunk.toolResult.success ? '工具执行成功' : '工具执行失败',
-              status: 'completed',
-              timestamp: Date.now(),
-              toolResult: {
-                success: chunk.toolResult.success,
-                output: chunk.toolResult.output?.slice(0, 500),
-                error: chunk.toolResult.error
-              }
-            }
-            addMessageStep(resultStep)
-
-            // 注意：不再将工具执行结果添加到内容中
-            // 工具结果已经通过步骤化展示（MessageStep）显示
-            // 避免重复显示工具结果
-            console.log(`[useUnifiedConversation] Tool result step created: success=${chunk.toolResult.success}`)
-          } else if (chunk.type === 'error') {
-            console.error('[useUnifiedConversation] Error chunk:', chunk.error)
-            setExecutionState('error')
-            updateExecutionPhase('error')
-
-            // 完成当前步骤并标记为失败
-            if (currentStepId) {
-              updateMessageStep(currentStepId, { status: 'failed' })
-            }
-
-            fullContent += `\n\n**错误：** ${chunk.error || 'Unknown error'}`
-            updateLastMessage(fullContent)
-          } else if (chunk.type === 'done') {
-            console.log('[useUnifiedConversation] Conversation complete')
-            setExecutionState('completed')
-            updateExecutionPhase('completed')
-
-            // 完成当前步骤
-            if (currentStepId) {
-              updateMessageStep(currentStepId, { status: 'completed' })
-            }
-
-            // 添加总结步骤
-            const summaryStep: MessageStep = {
-              id: generateStepId(),
-              type: 'summary',
-              title: '任务完成',
-              status: 'completed',
-              timestamp: Date.now()
-            }
-            addMessageStep(summaryStep)
-
-            streamResolve?.() // 完成时解析
+            setExecutionState('executing_tool')
+            updateExecutionPhase('executing_tool')
           }
+        }
+
+        // 更新消息内容（使用清理后的内容）
+        updateLastMessage(cleaned, { executionPhase: 'thinking' })
+        setExecutionState('thinking')
+      }
+      
+      // 提取工具调用处理逻辑
+      const handleToolCallChunk = (chunk: any) => {
+        console.log(`[useUnifiedConversation] Received tool_call: ${chunk.toolCall.name}`)
+        setExecutionState('executing_tool')
+        updateExecutionPhase('executing_tool')
+
+        // 完成当前思考步骤
+        if (currentStepId) {
+          updateMessageStep(currentStepId, { status: 'completed' })
+        }
+
+        // 创建工具调用步骤
+        currentStepId = generateStepId()
+        const toolStep: MessageStep = {
+          id: currentStepId,
+          type: 'tool_call',
+          title: `调用 ${chunk.toolCall.name}`,
+          status: 'running',
+          timestamp: Date.now(),
+          toolName: chunk.toolCall.name,
+          toolArgs: chunk.toolCall.arguments || {}
+        }
+        addMessageStep(toolStep)
+
+        console.log(`[useUnifiedConversation] Tool call step created for: ${chunk.toolCall.name}`)
+      }
+      
+      // 提取工具结果处理逻辑
+      const handleToolResultChunk = (chunk: any) => {
+        console.log(`[useUnifiedConversation] Received tool_result: success=${chunk.toolResult.success}`)
+        setExecutionState('analyzing')
+        updateExecutionPhase('analyzing')
+
+        // 完成工具调用步骤
+        if (currentStepId) {
+          updateMessageStep(currentStepId, {
+            status: chunk.toolResult.success ? 'completed' : 'failed',
+            toolResult: {
+              success: chunk.toolResult.success,
+              output: chunk.toolResult.output,
+              error: chunk.toolResult.error
+            }
+          })
+        }
+
+        // 创建结果分析步骤
+        currentStepId = generateStepId()
+        const resultStep: MessageStep = {
+          id: currentStepId,
+          type: 'tool_result',
+          title: chunk.toolResult.success ? '工具执行成功' : '工具执行失败',
+          status: 'completed',
+          timestamp: Date.now(),
+          toolResult: {
+            success: chunk.toolResult.success,
+            output: chunk.toolResult.output?.slice(0, 500),
+            error: chunk.toolResult.error
+          }
+        }
+        addMessageStep(resultStep)
+      }
+      
+      // 处理错误和完成信号
+      const handleOtherChunks = (chunk: any) => {
+        if (chunk.type === 'error') {
+          console.error('[useUnifiedConversation] Error chunk:', chunk.error)
+          setExecutionState('error')
+          updateExecutionPhase('error')
+
+          // 完成当前步骤并标记为失败
+          if (currentStepId) {
+            updateMessageStep(currentStepId, { status: 'failed' })
+          }
+
+          fullContent += `\n\n**错误：** ${chunk.error || 'Unknown error'}`
+          updateLastMessage(fullContent)
+        } else if (chunk.type === 'done') {
+          console.log('[useUnifiedConversation] Conversation complete')
+          setExecutionState('completed')
+          updateExecutionPhase('completed')
+
+          // 完成当前步骤
+          if (currentStepId) {
+            updateMessageStep(currentStepId, { status: 'completed' })
+          }
+
+          // 添加总结步骤
+          const summaryStep: MessageStep = {
+            id: generateStepId(),
+            type: 'summary',
+            title: '任务完成',
+            status: 'completed',
+            timestamp: Date.now()
+          }
+          addMessageStep(summaryStep)
+
+          streamResolve?.() // 完成时解析
+        }
+      }
+      
+      // 修改主监听器，调用辅助函数
+      const mainUnsubscribe = ipcApi.cliChat.onStreamChunk((_event, data) => {
+        if (data.sessionId !== sessionId) return
+        
+        const chunk = data.chunk
+        
+        if (chunk.type === 'text' && chunk.content) {
+          fullContent += chunk.content
+          
+          // 使用 requestAnimationFrame 批量更新 UI
+          if (!pendingUpdate) {
+            pendingUpdate = true
+            requestAnimationFrame(() => {
+              pendingUpdate = false
+              processTextChunk(fullContent)
+            })
+          }
+        } else if (chunk.type === 'tool_call' && chunk.toolCall) {
+          handleToolCallChunk(chunk)
+        } else if (chunk.type === 'tool_result' && chunk.toolResult) {
+          handleToolResultChunk(chunk)
+        } else {
+          handleOtherChunks(chunk)
         }
       })
 

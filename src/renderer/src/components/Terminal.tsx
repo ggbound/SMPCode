@@ -67,6 +67,8 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   const [aiHistory, setAIHistory] = useState<AIIntentContext[]>([])
   const containerRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const sessionsRef = useRef<TerminalSession[]>([])
+  // 性能优化：使用Map替代数组查找，O(1)复杂度
+  const sessionsMapRef = useRef<Map<string, TerminalSession>>(new Map())
   const initializedRef = useRef(false)
   const processDataBuffer = useRef<Map<string, string[]>>(new Map())
 
@@ -78,6 +80,11 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Keep ref in sync with state
   useEffect(() => {
     sessionsRef.current = sessions
+    // 同步更新Map
+    sessionsMapRef.current.clear()
+    sessions.forEach(session => {
+      sessionsMapRef.current.set(session.id, session)
+    })
   }, [sessions])
 
   // Load running processes
@@ -154,14 +161,15 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
 
     const removeDataListener = window.api.onProcessData((_, data) => {
       // Handle 'any' terminalId (broadcast to all) or specific terminalId
+      // 性能优化：使用Map查找
       if (data.terminalId === 'any') {
         // Write to active terminal using activeSessionId
-        const activeSession = sessionsRef.current.find(s => s.id === activeSessionId)
+        const activeSession = sessionsMapRef.current.get(activeSessionId || '')
         if (activeSession?.xterm) {
           activeSession.xterm.write(data.data)
         }
       } else {
-        const session = sessionsRef.current.find(s => s.id === data.terminalId)
+        const session = sessionsMapRef.current.get(data.terminalId)
         if (session?.xterm) {
           session.xterm.write(data.data)
         }
@@ -172,13 +180,14 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       setRunningProcesses(prev => prev.map(p =>
         p.id === data.processId ? { ...p, isRunning: false } : p
       ))
+      // 性能优化：使用Map查找
       if (data.terminalId === 'any') {
-        const activeSession = sessionsRef.current.find(s => s.id === activeSessionId)
+        const activeSession = sessionsMapRef.current.get(activeSessionId || '')
         if (activeSession?.xterm) {
           activeSession.xterm.write(`\r\n--- Process exited with code ${data.exitCode} ---\r\n`)
         }
       } else {
-        const session = sessionsRef.current.find(s => s.id === data.terminalId)
+        const session = sessionsMapRef.current.get(data.terminalId)
         if (session?.xterm) {
           session.xterm.write(`\r\n--- Process exited with code ${data.exitCode} ---\r\n`)
         }
@@ -189,13 +198,14 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       setRunningProcesses(prev => prev.map(p =>
         p.id === data.processId ? { ...p, isRunning: false } : p
       ))
+      // 性能优化：使用Map查找
       if (data.terminalId === 'any') {
-        const activeSession = sessionsRef.current.find(s => s.id === activeSessionId)
+        const activeSession = sessionsMapRef.current.get(activeSessionId || '')
         if (activeSession?.xterm) {
           activeSession.xterm.write(`\r\n[Error] ${data.error}\r\n`)
         }
       } else {
-        const session = sessionsRef.current.find(s => s.id === data.terminalId)
+        const session = sessionsMapRef.current.get(data.terminalId)
         if (session?.xterm) {
           session.xterm.write(`\r\n[Error] ${data.error}\r\n`)
         }
@@ -205,8 +215,8 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     // Listen for terminal create requests from main process
     const removeCreateListener = window.api.onTerminalCreateRequest(async (_, data) => {
       console.log('[Terminal] Received terminal create request:', data)
-      // Check if terminal already exists
-      const existingSession = sessionsRef.current.find(s => s.id === data.id)
+      // Check if terminal already exists - 性能优化：使用Map查找
+      const existingSession = sessionsMapRef.current.get(data.id)
       if (!existingSession) {
         console.log('[Terminal] Creating terminal for process:', data.id)
         // 等待终端创建完成
@@ -464,7 +474,8 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
     
     const removeListener = window.api.onTerminalData((_, { id, data }) => {
-      const session = sessionsRef.current.find(s => s.id === id)
+      // 性能优化：使用Map查找，O(1)复杂度
+      const session = sessionsMapRef.current.get(id)
       if (session?.xterm) {
         // xterm已初始化，直接写入
         session.xterm.write(data)
@@ -493,11 +504,25 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     }
     
     const removeListener = window.api.onTerminalExit((_, { id }) => {
-      setSessions(prev => prev.filter(s => s.id !== id))
-      if (activeSessionId === id) {
-        const remaining = sessionsRef.current.filter(s => s.id !== id)
-        setActiveSessionId(remaining.length > 0 ? remaining[0].id : null)
-      }
+      console.log('[Terminal] Terminal exited:', id)
+      
+      // 从sessions中移除
+      setSessions(prev => {
+        const updated = prev.filter(s => s.id !== id)
+        console.log('[Terminal] Sessions after exit:', updated.length)
+        return updated
+      })
+      
+      // 如果退出的是活动终端，切换到其他终端
+      setSessions(prev => {
+        const remaining = prev.filter(s => s.id !== id)
+        if (activeSessionId === id && remaining.length > 0) {
+          setActiveSessionId(remaining[0].id)
+        } else if (remaining.length === 0) {
+          setActiveSessionId(null)
+        }
+        return remaining
+      })
     })
 
     return () => {
@@ -550,8 +575,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       console.log('[Terminal] Project path changed to:', projectPath)
       // Close all existing terminals
       if (window.api?.killTerminal) {
+        const api = window.api
         sessions.forEach(session => {
-          window.api.killTerminal(session.id).catch((err: Error) => {
+          api.killTerminal!(session.id).catch((err: Error) => {
             console.error('[Terminal] Failed to kill terminal:', err)
           })
         })
@@ -569,17 +595,44 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   }, [projectPath, isVisible])
 
   const closeTerminal = async (id: string) => {
+    console.log('[Terminal] Closing terminal:', id)
+    
+    // 先更新UI状态（立即反馈给用户）
+    setSessions(prev => {
+      const updated = prev.filter(s => s.id !== id)
+      console.log('[Terminal] Sessions after close:', updated.length)
+      return updated
+    })
+    
+    // 如果关闭的是活动终端，切换到其他终端
+    if (activeSessionId === id) {
+      setSessions(prev => {
+        const remaining = prev.filter(s => s.id !== id)
+        if (remaining.length > 0) {
+          setActiveSessionId(remaining[0].id)
+        } else {
+          setActiveSessionId(null)
+        }
+        return remaining
+      })
+    }
+    
+    // 异步kill终端（不阻塞UI）
     try {
       if (window.api?.killTerminal) {
-        await window.api.killTerminal(id)
+        // 添加超时机制，避免无限等待
+        const killPromise = window.api.killTerminal(id)
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Kill terminal timeout')), 5000)
+        )
+        
+        await Promise.race([killPromise, timeoutPromise])
+        console.log('[Terminal] Terminal killed successfully:', id)
       }
     } catch (error) {
       console.error('[Terminal] Failed to kill terminal:', error)
-    }
-    setSessions(prev => prev.filter(s => s.id !== id))
-    if (activeSessionId === id) {
-      const remaining = sessions.filter(s => s.id !== id)
-      setActiveSessionId(remaining.length > 0 ? remaining[0].id : null)
+      // 即使kill失败，也需要清理前端状态
+      // 注意：后端会在terminal:exit事件中自动清理
     }
   }
 
@@ -636,6 +689,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Restart a process
   const restartProcess = async (processId: string) => {
     try {
+      if (!window.api?.restartProcess) return
       const result = await window.api.restartProcess(processId)
       if (result.success) {
         setRunningProcesses(prev => prev.filter(p => p.id !== processId))
