@@ -558,22 +558,33 @@ const executeBashTool: ToolExecutor = {
       const commandKey = `${cwd}:${command}`
       const now = Date.now()
 
-      // Check for duplicate command within dedup window
+      // ✅ 修复：改进去重逻辑，只在进程真正运行时才跳过
       const lastExecution = recentCommands.get(commandKey)
       if (lastExecution && (now - lastExecution) < COMMAND_DEDUP_WINDOW) {
-        // Check if there's a running process with similar command in the same directory
-        const runningProcesses = processBridge.getAllProcesses().filter(p => {
+        // 检查是否有正在运行的相同命令进程
+        const allProcesses = processBridge.getAllProcesses()
+        const runningProcess = allProcesses.find(p => {
           if (!p.isRunning || !p.terminalId) return false
-          // Check if the process is running in the same directory
-          return p.cwd === cwd
+          // 检查是否是相同命令和相同目录
+          return p.cwd === cwd && p.command === command
         })
 
-        if (runningProcesses.length > 0) {
-          log.warn(`Duplicate command detected and process is running, skipping: ${command}`)
-          return createSuccessResult(
-            `Command is already running (duplicate detected). Process ID: ${runningProcesses[0].id}`,
-            { processId: runningProcesses[0].id, duplicate: true }
-          )
+        if (runningProcess) {
+          // ✅ 修复：检查进程是否真的在运行（不是卡死状态）
+          const processStatus = await processBridge.checkProcessStatus(runningProcess.id)
+          
+          // 如果进程还在运行，才跳过
+          if (processStatus.isRunning) {
+            log.info(`[execute_bash] Command already running, skipping: ${command}`)
+            return createSuccessResult(
+              `Command is already running. Process ID: ${runningProcess.id}`,
+              { processId: runningProcess.id, duplicate: true, skipped: true }
+            )
+          } else {
+            // 进程已经退出，允许重新执行
+            log.warn(`[execute_bash] Previous process exited, allowing re-execution: ${command}`)
+            // 不清理 recentCommands，让新的执行记录覆盖
+          }
         }
       }
 

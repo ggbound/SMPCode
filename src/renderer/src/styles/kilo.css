@@ -1275,8 +1275,62 @@
 
 .kilo-session-item-content {
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+/* ✅ 新增：标题和时间容器（单行显示） */
+.kilo-session-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
+  gap: 2px;
+}
+
+/* ✅ 新增：编辑和删除按钮容器 */
+.kilo-session-item-actions {
+  display: flex;
   gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.kilo-session-item-modern:hover .kilo-session-item-actions {
+  opacity: 1;
+}
+
+.kilo-session-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.kilo-session-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
+}
+
+.kilo-session-action-btn--delete:hover {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+
+/* ✅ 编辑模式下的按钮容器 */
+.kilo-session-edit-modern .kilo-session-action-btn {
+  opacity: 1;
 }
 
 .kilo-session-item-title {
@@ -1286,11 +1340,13 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  line-height: 1.3;
 }
 
 .kilo-session-item-time {
   font-size: 11px;
   color: var(--text-secondary);
+  line-height: 1.2;
 }
 
 /* 会话重命名编辑 - TRAE 风格 */

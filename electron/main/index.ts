@@ -84,7 +84,8 @@ import {
 } from './services/cli-chat-service'
 
 // Configure logging
-log.transports.file.level = 'info'
+// ✅ 性能优化：文件日志只记录 warn 及以上级别，减少磁盘 I/O 导致的主线程阻塞
+log.transports.file.level = 'warn'
 log.transports.console.level = 'debug'
 log.info('Application starting...')
 
@@ -1512,14 +1513,39 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  log.info('[Main] Application before-quit event triggered')
   isQuitting = true
-  globalShortcut.unregisterAll()
-  cleanupTerminals()
-  processBridge.cleanupAll()
-  stopApiServer()
-  stopAllWatchers()
-  cleanupCLISessions()
-  log.info('Application quitting')
+  
+  // ✅ 修复：按照正确顺序清理所有资源，防止崩溃
+  try {
+    // 1. 停止全局快捷键
+    globalShortcut.unregisterAll()
+    log.info('[Main] Global shortcuts unregistered')
+    
+    // 2. 停止所有CLI会话（防止递归调用继续）
+    cleanupCLISessions()
+    log.info('[Main] CLI sessions cleaned up')
+    
+    // 3. 停止所有文件监听器
+    stopAllWatchers()
+    log.info('[Main] File watchers stopped')
+    
+    // 4. 清理所有进程和终端
+    processBridge.cleanupAll()
+    log.info('[Main] Process bridge cleaned up')
+    
+    // 5. 清理终端服务
+    cleanupTerminals()
+    log.info('[Main] Terminals cleaned up')
+    
+    // 6. 停止API服务器
+    stopApiServer()
+    log.info('[Main] API server stopped')
+    
+    log.info('[Main] All resources cleaned up successfully')
+  } catch (error) {
+    log.error('[Main] Error during cleanup:', error)
+  }
 })
 
 app.on('will-quit', () => {

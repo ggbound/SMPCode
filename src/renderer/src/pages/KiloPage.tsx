@@ -112,17 +112,15 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             }
           })
           
-          // 更新 store 中的会话列表（只添加当前项目的会话）
-          loadedSessions.forEach(session => {
-            store.addSession(session)
-          })
+          // ✅ 修复：按 updatedAt 降序排序（最新的在前面）
+          loadedSessions.sort((a, b) => b.updatedAt - a.updatedAt)
           
-          // 如果有会话，加载第一个（最新的）
+          // ✅ 修复：直接设置整个列表，避免 addSession 破坏排序
+          store.setSessions(loadedSessions)
+          
+          // 如果有会话，设置当前会话为第一个（最新的）
           if (loadedSessions.length > 0) {
-            // 按 updatedAt 降序排序，选择最新的会话
-            loadedSessions.sort((a, b) => b.updatedAt - a.updatedAt)
             const latestSession = loadedSessions[0]
-            
             store.setCurrentSession(latestSession.id)
             // 加载消息
             const msgResult = await window.api.loadConversation(projectPath, latestSession.id)
@@ -485,11 +483,39 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                         </div>
                       ) : (
                         <>
-                          <div className="kilo-session-item-title">
-                            {session.title}
+                          {/* ✅ 单行布局：标题+时间 在左侧，按钮在右侧 */}
+                          <div className="kilo-session-item-info">
+                            <div className="kilo-session-item-title">
+                              {session.title}
+                            </div>
+                            <div className="kilo-session-item-time">
+                              {formatTime(session.updatedAt)}
+                            </div>
                           </div>
-                          <div className="kilo-session-item-time">
-                            {formatTime(session.updatedAt)}
+                          {/* ✅ 编辑和删除按钮 */}
+                          <div className="kilo-session-item-actions">
+                            <button 
+                              className="kilo-session-action-btn"
+                              title="重命名"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                startRenameSession(session, e)
+                              }}
+                            >
+                              <Edit3 size={12} />
+                            </button>
+                            <button 
+                              className="kilo-session-action-btn kilo-session-action-btn--delete"
+                              title="删除"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (confirm(`确定要删除对话「${session.title}」吗？`)) {
+                                  handleDeleteSession(session.id, e)
+                                }
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
                           </div>
                         </>
                       )}

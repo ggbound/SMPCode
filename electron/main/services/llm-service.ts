@@ -402,6 +402,11 @@ async function* streamOpenAIMessage(
       }
     }
   } catch (error) {
+    // ✅ 修复：忽略 AbortError，这是正常的取消操作
+    if (error instanceof Error && error.name === 'AbortError') {
+      log.debug('[LLM] Stream aborted by user (normal cleanup)')
+      return
+    }
     log.error('OpenAI Stream API error:', error)
     throw error
   }
@@ -483,6 +488,11 @@ async function* streamAnthropicMessage(
       }
     }
   } catch (error) {
+    // ✅ 修复：忽略 AbortError，这是正常的取消操作
+    if (error instanceof Error && error.name === 'AbortError') {
+      log.debug('[LLM] Anthropic stream aborted by user (normal cleanup)')
+      return
+    }
     log.error('Anthropic Stream API error:', error)
     throw error
   }

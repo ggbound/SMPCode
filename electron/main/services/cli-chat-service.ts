@@ -251,10 +251,7 @@ async function executeToolCall(
   args: Record<string, unknown>,
   cwd: string
 ): Promise<{ success: boolean; output: string; error?: string }> {
-  log.info(`[CLI-Chat Tool] ========== executeToolCall START ==========`)
-  log.info(`[CLI-Chat Tool] toolName: ${toolName}`)
-  log.info(`[CLI-Chat Tool] args: ${JSON.stringify(args)}`)
-  log.info(`[CLI-Chat Tool] cwd: ${cwd}`)
+  log.debug(`[CLI-Chat Tool] Executing tool: ${toolName}`)
   
   const tool = toolRegistry.get(toolName)
   if (!tool) {
@@ -265,7 +262,6 @@ async function executeToolCall(
       error: `Tool not found: ${toolName}`
     }
   }
-  log.info(`[CLI-Chat Tool] Tool found in registry: ${toolName}`)
 
   const permission = toolRegistry.isAllowed(toolName)
   if (!permission.allowed) {
@@ -276,16 +272,13 @@ async function executeToolCall(
       error: `Permission denied: ${permission.reason}`
     }
   }
-  log.info(`[CLI-Chat Tool] Permission check passed`)
 
   try {
-    log.info(`[CLI-Chat Tool] Executing tool via registry...`)
     const result = await toolRegistry.execute(toolName, args, {
       cwd,
       permissionMode: 'moderate'
     })
-    log.info(`[CLI-Chat Tool] Tool execution result: success=${result.success}, output length=${result.output?.length || 0}`)
-    log.info(`[CLI-Chat Tool] Output preview: ${result.output?.substring(0, 200)}`)
+    log.debug(`[CLI-Chat Tool] Tool executed: ${toolName}, success=${result.success}`)
     return {
       success: result.success,
       output: result.output,
@@ -448,7 +441,7 @@ export async function sendCLIMessageStream(
   // 如果没有找到匹配的供应商，使用第一个启用的供应商
   if (!selectedProvider) {
     selectedProvider = config.providers?.find(p => p.enabled)
-    log.warn(`[CLI-Chat] No provider found for model ${rawModel}, using first enabled provider: ${selectedProvider?.name}`)
+    log.debug(`[CLI-Chat] No provider found for model ${rawModel}, using first enabled provider: ${selectedProvider?.name}`)
   }
   
   const apiKey = selectedProvider?.apiKey || config.apiKey
@@ -458,7 +451,7 @@ export async function sendCLIMessageStream(
   // 应用模型 ID 映射，确保使用有效的模型 ID
   const model = getValidModelId(rawModel, providerName)
   
-  log.info(`[CLI-Chat] Config loaded: provider=${providerName}, model=${model}, hasApiKey=${!!apiKey}, apiUrl=${apiUrl ? 'configured' : 'not set'}`)
+  log.debug(`[CLI-Chat] Config loaded: provider=${providerName}, model=${model}`)
   
   if (!apiKey) {
     log.error('[CLI-Chat] API key not configured')
@@ -473,7 +466,7 @@ export async function sendCLIMessageStream(
     // 构建消息历史
     if (messages && messages.length > 0) {
       // 如果提供了完整消息历史，使用它（前端传来的包含系统提示词）
-      log.info(`[CLI-Chat] Using provided messages: count=${messages.length}, firstRole=${messages[0]?.role}`)
+      log.debug(`[CLI-Chat] Using provided messages: count=${messages.length}`)
       session.messages = messages.map(m => {
         const msg: LLMMessage = { 
           role: m.role as 'system' | 'user' | 'assistant' | 'tool', 
@@ -484,7 +477,7 @@ export async function sendCLIMessageStream(
       })
     } else if (session.messages.length === 0) {
       // 否则，只在会话消息为空时添加系统提示词
-      log.info('[CLI-Chat] Building system prompt for new session')
+      log.debug('[CLI-Chat] Building system prompt for new session')
       session.messages.push({
         role: 'system',
         content: buildSystemPrompt(session.mode, session.cwd)
@@ -501,10 +494,10 @@ export async function sendCLIMessageStream(
       // 前端提供了完整消息历史，且最后一条是用户消息
       // 检查是否与 message 参数相同
       if (lastMessage.content === message) {
-        log.info('[CLI-Chat] Using provided messages, last message matches current message, skipping duplicate')
+        log.debug('[CLI-Chat] Using provided messages, skipping duplicate')
       } else {
         // 最后一条用户消息与当前 message 不同，添加新的用户消息
-        log.info('[CLI-Chat] Using provided messages, but adding new user message')
+        log.debug('[CLI-Chat] Adding new user message to provided history')
         session.messages.push({
           role: 'user',
           content: message
@@ -519,7 +512,7 @@ export async function sendCLIMessageStream(
     } else {
       // 提供了消息历史，但最后一条不是用户消息（可能是 tool 或 assistant）
       // 需要添加用户消息
-      log.info('[CLI-Chat] Using provided messages, but last message is not user, adding new user message')
+      log.debug('[CLI-Chat] Last message is not user, adding new user message')
       session.messages.push({
         role: 'user',
         content: message
@@ -560,13 +553,13 @@ export async function sendCLIMessageStream(
         })
       : undefined
     
-    log.info(`[CLI-Chat] Tools count: ${tools?.length || 0}, mode: ${session.mode}`)
+    log.debug(`[CLI-Chat] Tools count: ${tools?.length || 0}, mode: ${session.mode}`)
 
     // 发送流式请求
     let fullContent = ''
     let toolCalls: Array<{ id: string; name: string; arguments: string }> = []
     
-    log.info(`[CLI-Chat] Sending to LLM: model=${model}, stream=true`)
+    log.debug(`[CLI-Chat] Sending to LLM: model=${model}, stream=true`)
 
     let chunkCount = 0
     // 用于累积 OpenAI 格式的工具调用
@@ -609,9 +602,6 @@ export async function sendCLIMessageStream(
         const text = delta?.content || delta?.text || ''
         if (text) {
           fullContent += text
-          if (chunkCount <= 5 || chunkCount % 20 === 0) {
-            log.info(`[CLI-Chat] Received text chunk #${chunkCount}: ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`)
-          }
           onChunk({
             type: 'text',
             content: text
@@ -644,8 +634,6 @@ export async function sendCLIMessageStream(
             if (toolCallDelta.function?.arguments) {
               pending.arguments += toolCallDelta.function.arguments
             }
-
-            log.info(`[CLI-Chat] Accumulating tool call #${index}: name=${pending.name}, args_len=${pending.arguments.length}`)
           }
         }
       } else if (chunk.type === 'tool_use') {
@@ -656,7 +644,7 @@ export async function sendCLIMessageStream(
           arguments: JSON.stringify((chunk as { input?: unknown }).input || {})
         }
         toolCalls.push(toolCall)
-        log.info(`[CLI-Chat] Received tool_use (Anthropic): name=${toolCall.name}, id=${toolCall.id}`)
+        log.debug(`[CLI-Chat] Received tool_use (Anthropic): name=${toolCall.name}`)
         onChunk({
           type: 'tool_call',
           toolCall
@@ -672,7 +660,7 @@ export async function sendCLIMessageStream(
           name: pending.name,
           arguments: pending.arguments || '{}'
         })
-        log.info(`[CLI-Chat] Finalized tool call: name=${pending.name}, id=${pending.id}`)
+        log.debug(`[CLI-Chat] Finalized tool call: name=${pending.name}`)
         onChunk({
           type: 'tool_call',
           toolCall: {
@@ -684,12 +672,11 @@ export async function sendCLIMessageStream(
       }
     }
     
-    log.info(`[CLI-Chat] Stream complete: chunks=${chunkCount}, fullContentLength=${fullContent.length}, toolCalls=${toolCalls.length}`)
+    log.debug(`[CLI-Chat] Stream complete: chunks=${chunkCount}, contentLength=${fullContent.length}, toolCalls=${toolCalls.length}`)
 
     // 执行工具调用（Agent 模式）
     if (session.mode === 'agent' && toolCalls.length > 0) {
-      log.info(`[CLI-Chat] ========== Executing ${toolCalls.length} tool calls in iteration ${iterationCount + 1} ==========`)
-      log.info(`[CLI-Chat] Tool calls:`, JSON.stringify(toolCalls.map(tc => ({ name: tc.name, id: tc.id }))))
+      log.debug(`[CLI-Chat] Executing ${toolCalls.length} tool calls in iteration ${iterationCount + 1}`)
 
       // 添加助手回复到消息历史（必须包含 tool_calls，否则后续的 tool 消息会报错）
       session.messages.push({
@@ -706,13 +693,12 @@ export async function sendCLIMessageStream(
       })
 
       // 性能优化：每次 iteration 只执行第一个工具，避免同时执行多个工具导致卡顿
-      // AI 会根据第一个工具的结果决定下一步操作
-      log.info(`[CLI-Chat] Executing FIRST tool only (to avoid blocking): ${toolCalls[0].name}`)
+      log.debug(`[CLI-Chat] Executing FIRST tool only: ${toolCalls[0].name}`)
       
       const toolCall = toolCalls[0]  // 只取第一个工具
       
       try {
-        log.info(`[CLI-Chat] Executing tool: ${toolCall.name}`)
+        log.debug(`[CLI-Chat] Executing tool: ${toolCall.name}`)
         const args = JSON.parse(toolCall.arguments)
         const result = await executeToolCall(toolCall.name, args, session.cwd)
 
@@ -739,7 +725,6 @@ export async function sendCLIMessageStream(
         // 如果有更多工具，记录日志但不执行
         if (toolCalls.length > 1) {
           log.debug(`[CLI-Chat] Deferring ${toolCalls.length - 1} additional tool(s) to next iteration`)
-          log.debug(`[CLI-Chat] Deferred tools:`, toolCalls.slice(1).map(tc => tc.name).join(', '))
         }
       } catch (error) {
         log.error(`[CLI-Chat] Tool execution error: ${error}`)
@@ -771,10 +756,29 @@ export async function sendCLIMessageStream(
         content: continuePrompt
       })
 
-      log.info(`[CLI-Chat] Recursing for iteration ${iterationCount + 2}`)
+      log.debug(`[CLI-Chat] Recursing for iteration ${iterationCount + 2}`)
 
-      // 递归调用 sendCLIMessageStream 继续对话，传递 model 参数
-      await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+      // ✅ 修复：检查会话是否仍然活跃
+      const currentSession = sessions.get(sessionId)
+      if (!currentSession || !currentSession.isStreaming) {
+        log.debug(`[CLI-Chat] Session ${sessionId} is no longer active, stopping recursion`)
+        onChunk({ type: 'done' })
+        return
+      }
+
+      // ✅ 修复：使用 try-catch 包裹递归调用，防止栈溢出和未处理异常
+      try {
+        // 递归调用 sendCLIMessageStream 继续对话，传递 model 参数
+        await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+      } catch (recursiveError) {
+        log.error(`[CLI-Chat] Recursive call failed at iteration ${iterationCount + 1}:`, recursiveError)
+        onChunk({
+          type: 'error',
+          error: `Recursive iteration failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`
+        })
+        return
+      }
+      
       // 递归调用内部会处理完成信号，这里直接返回
       return
     }
@@ -783,7 +787,7 @@ export async function sendCLIMessageStream(
     if (session.mode === 'agent' && fullContent.trim()) {
       const { toolCalls: extractedToolCalls, cleanedContent } = extractToolCallsFromContent(fullContent)
       if (extractedToolCalls.length > 0) {
-        log.info(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
+        log.debug(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
 
         // 添加助手回复到消息历史（必须包含 tool_calls）
         // 使用清理后的内容（不包含 JSON 工具调用代码块）
@@ -803,7 +807,7 @@ export async function sendCLIMessageStream(
         // 执行提取的工具调用
         for (const toolCall of extractedToolCalls) {
           try {
-            log.info(`[CLI-Chat] Executing extracted tool: ${toolCall.name}`)
+            log.debug(`[CLI-Chat] Executing extracted tool: ${toolCall.name}`)
             const result = await executeToolCall(toolCall.name, toolCall.arguments, session.cwd)
 
             // 使用工具调用的实际 ID
@@ -847,8 +851,27 @@ export async function sendCLIMessageStream(
           content: continuePrompt
         })
 
-        // 递归调用时传递 model 参数
-        await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+        // ✅ 修复：检查会话是否仍然活跃
+        const currentSession = sessions.get(sessionId)
+        if (!currentSession || !currentSession.isStreaming) {
+          log.debug(`[CLI-Chat] Session ${sessionId} is no longer active, stopping recursion`)
+          onChunk({ type: 'done' })
+          return
+        }
+
+        // ✅ 修复：使用 try-catch 包裹递归调用，防止栈溢出和未处理异常
+        try {
+          // 递归调用时传递 model 参数
+          await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+        } catch (recursiveError) {
+          log.error(`[CLI-Chat] Recursive call failed at iteration ${iterationCount + 1}:`, recursiveError)
+          onChunk({
+            type: 'error',
+            error: `Recursive iteration failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`
+          })
+          return
+        }
+        
         return
       }
     }
@@ -872,7 +895,7 @@ export async function sendCLIMessageStream(
       })
     }
 
-    log.info(`[CLI-Chat] Iteration ${iterationCount + 1} complete, sending done signal`)
+    log.debug(`[CLI-Chat] Iteration ${iterationCount + 1} complete, sending done signal`)
 
     // 发送完成信号
     onChunk({ type: 'done' })
@@ -1021,7 +1044,12 @@ export async function sendCLIMessage(
 export function cleanupCLISessions(): void {
   for (const [sessionId, session] of sessions) {
     if (session.abortController) {
-      session.abortController.abort()
+      try {
+        session.abortController.abort()
+      } catch (error) {
+        // ✅ 修复：忽略 abort 时的错误，这是正常的清理操作
+        log.debug(`[CLIChatService] Error during session cleanup: ${error}`)
+      }
     }
   }
   sessions.clear()

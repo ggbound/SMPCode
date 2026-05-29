@@ -115,6 +115,7 @@ interface KiloState {
   
   // Actions
   setCurrentSession: (id: string | null) => void
+  setSessions: (sessions: KiloSession[]) => void
   addSession: (session: KiloSession) => void
   updateSession: (id: string, updates: Partial<KiloSession>) => void
   deleteSession: (id: string) => void
@@ -159,6 +160,9 @@ export const useKiloStore = create<KiloState>((set, get) => ({
   errorType: null,
   
   setCurrentSession: (id) => set({ currentSession: id }),
+  
+  // ✅ 新增：直接设置整个会话列表（用于加载时保持排序）
+  setSessions: (sessions) => set({ sessions }),
   
   addSession: (session) => set((state) => ({
     sessions: [session, ...state.sessions],
