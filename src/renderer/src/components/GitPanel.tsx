@@ -410,12 +410,16 @@ const CommitHistoryItem: React.FC<CommitHistoryItemProps> = ({ commit, isCurrent
         const api = (window as any).api
         if (api?.gitCommitDetails) {
           const details = await api.gitCommitDetails(repoPath, commit.hash)
-          if (details?.files) {
+          console.log('[GitPanel] Commit details:', details)
+          if (details?.files && details.files.length > 0) {
             const files: CommitFile[] = details.files.map((f: string) => ({
               path: f,
               status: 'modified' // Default status, could be enhanced
             }))
             setCommitFiles(files)
+          } else {
+            console.log('[GitPanel] No files found in commit:', commit.hash)
+            setCommitFiles([])
           }
         }
       } catch (err) {

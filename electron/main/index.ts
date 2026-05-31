@@ -35,6 +35,7 @@ import {
   push,
   pull,
   getFileDiff,
+  getCommitFileDiff,
   getStashList,
   stashChanges,
   popStash,
@@ -609,6 +610,10 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('git:diff', async (_event, { repoPath, filePath, staged }: { repoPath: string; filePath: string; staged?: boolean }) => {
     return await getFileDiff(repoPath, filePath, staged)
+  })
+
+  ipcMain.handle('git:commit-diff', async (_event, { repoPath, filePath, commitHash }: { repoPath: string; filePath: string; commitHash: string }) => {
+    return await getCommitFileDiff(repoPath, filePath, commitHash)
   })
 
   ipcMain.handle('git:stash-list', async (_event, repoPath: string) => {

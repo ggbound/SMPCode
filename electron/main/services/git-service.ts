@@ -361,7 +361,7 @@ export async function pull(repoPath: string, remote = 'origin', branch?: string)
   }
 }
 
-// Get file diff
+// Get file diff (working directory vs HEAD)
 export async function getFileDiff(repoPath: string, filePath: string, staged = false): Promise<string> {
   try {
     const git = initGit(repoPath)
@@ -371,6 +371,22 @@ export async function getFileDiff(repoPath: string, filePath: string, staged = f
     return diff || ''
   } catch (error) {
     log.error('Failed to get file diff:', error)
+    return ''
+  }
+}
+
+// Get commit file diff (specific commit vs its parent)
+export async function getCommitFileDiff(repoPath: string, filePath: string, commitHash: string): Promise<string> {
+  try {
+    const git = initGit(repoPath)
+    if (!git) return ''
+
+    // Get diff between commit and its parent for specific file
+    // Format: git diff <parent-commit> <commit-hash> -- <file-path>
+    const diff = await git.diff([`${commitHash}^..${commitHash}`, '--', filePath])
+    return diff || ''
+  } catch (error) {
+    log.error('Failed to get commit file diff:', error)
     return ''
   }
 }
@@ -850,22 +866,27 @@ export async function getCommitDetails(repoPath: string, commitHash: string): Pr
     const git = initGit(repoPath)
     if (!git) return null
 
-    const logResult = await git.log({ from: commitHash, to: commitHash, maxCount: 1 })
-    const commit = logResult.latest
+    // Use show to get commit info and files in one command
+    const showResult = await git.show(['--name-only', '--pretty=format:%H|%s|%an|%ae|%ad|%b', commitHash])
+    
+    if (!showResult) return null
 
-    if (!commit) return null
+    const lines = showResult.split('\n')
+    const headerLine = lines[0]
+    const [hash, message, author, email, date, ...bodyParts] = headerLine.split('|')
+    
+    if (!hash) return null
 
-    // Get files changed in this commit
-    const diffResult = await git.show(['--name-only', '--pretty=format:', commitHash])
-    const files = diffResult.split('\n').filter(f => f.trim())
+    // Get files from remaining lines
+    const files = lines.slice(1).filter(f => f.trim())
 
     return {
-      hash: commit.hash,
-      message: commit.message,
-      author: commit.author_name,
-      email: commit.author_email,
-      date: commit.date,
-      body: commit.body || '',
+      hash,
+      message,
+      author,
+      email,
+      date,
+      body: bodyParts.join('\n') || '',
       files
     }
   } catch (error) {

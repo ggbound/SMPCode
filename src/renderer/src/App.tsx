@@ -121,13 +121,6 @@ function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   
-  // Diff viewer state
-  const [diffView, setDiffView] = useState<{
-    filePath: string
-    commitHash?: string
-    repoPath: string
-  } | null>(null)
-  
   // Editor reference for jumping to lines
   const editorRef = useRef<any>(null)
   
@@ -1119,18 +1112,44 @@ function App() {
     return `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   }, [])
 
-  // Listen for git:openDiff event
+  // Listen for git:openDiff event - open diff as a tab
   useEffect(() => {
     const handleOpenDiff = (event: CustomEvent<{ filePath: string; commitHash?: string; repoPath: string }>) => {
       const { filePath, commitHash, repoPath } = event.detail
-      setDiffView({ filePath, commitHash, repoPath })
+      const fileName = filePath.split('/').pop() || filePath
+      
+      // Check if diff tab already exists for this file+commit
+      const existingTab = tabs.find(tab => 
+        tab.isDiff && tab.path === filePath && tab.diffCommitHash === commitHash
+      )
+      
+      if (existingTab) {
+        setActiveTabId(existingTab.id)
+        return
+      }
+      
+      // Create new diff tab
+      const newTab: Tab = {
+        id: generateTabId(),
+        path: filePath,
+        name: commitHash ? `${fileName} (${commitHash.substring(0, 7)})` : fileName,
+        content: '',
+        isDirty: false,
+        isPreview: false,
+        language: 'diff',
+        isDiff: true,
+        diffCommitHash: commitHash
+      }
+      
+      setTabs(prev => [...prev, newTab])
+      setActiveTabId(newTab.id)
     }
     
     window.addEventListener('git:openDiff', handleOpenDiff as EventListener)
     return () => {
       window.removeEventListener('git:openDiff', handleOpenDiff as EventListener)
     }
-  }, [])
+  }, [tabs, generateTabId])
 
   // Get file language from path (using unified language map)
   const getFileLanguage = useCallback((path: string): string => {
@@ -1880,12 +1899,12 @@ function App() {
               
               {/* File Viewer / Diff Viewer / Browser View */}
               <div className="file-viewer-container">
-                {diffView ? (
+                {activeTab?.isDiff ? (
                   <DiffViewer
-                    filePath={diffView.filePath}
-                    commitHash={diffView.commitHash}
-                    repoPath={diffView.repoPath}
-                    onClose={() => setDiffView(null)}
+                    filePath={activeTab.path}
+                    commitHash={activeTab.diffCommitHash}
+                    repoPath={projectPath || ''}
+                    onClose={() => handleTabClose(activeTab.id)}
                   />
                 ) : activeTab?.isBrowser ? (
                   <BrowserView 

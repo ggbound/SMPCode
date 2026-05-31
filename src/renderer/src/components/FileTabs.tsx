@@ -12,6 +12,8 @@ export interface Tab {
   lastModified?: number  // Timestamp for external content changes
   isBrowser?: boolean  // 标识是否为浏览器标签
   browserUrl?: string    // 浏览器标签的URL
+  isDiff?: boolean     // 标识是否为 diff 标签
+  diffCommitHash?: string // diff 标签的 commit hash
 }
 
 interface FileTabsProps {
@@ -28,7 +30,19 @@ interface FileTabsProps {
 }
 
 // VSCode-style file icon component for tabs
-const FileIcon = ({ filename, isBrowser }: { filename: string; isBrowser?: boolean }) => {
+const FileIcon = ({ filename, isBrowser, isDiff }: { filename: string; isBrowser?: boolean; isDiff?: boolean }) => {
+  // Diff 标签使用对比图标
+  if (isDiff) {
+    return (
+      <svg className="tab-file-icon" viewBox="0 0 16 16" fill="none">
+        <rect x="2" y="2" width="12" height="12" rx="1" fill="#6B8E23"/>
+        <path d="M5 6L7 8L5 10" stroke="white" strokeWidth="1.5" fill="none"/>
+        <path d="M11 6L9 8L11 10" stroke="white" strokeWidth="1.5" fill="none"/>
+        <line x1="8" y1="4" x2="8" y2="12" stroke="white" strokeWidth="1" strokeDasharray="2 1"/>
+      </svg>
+    )
+  }
+  
   // 浏览器标签使用地球图标
   if (isBrowser) {
     return (
@@ -255,7 +269,7 @@ function FileTabs({
               onMouseDown={(e) => handleMouseDown(e, tab.id)}
               title={getTabTooltip(tab)}
             >
-              <span className="tab-icon"><FileIcon filename={tab.name} isBrowser={tab.isBrowser} /></span>
+              <span className="tab-icon"><FileIcon filename={tab.name} isBrowser={tab.isBrowser} isDiff={tab.isDiff} /></span>
               <span className="tab-name">{displayName}</span>
               {tab.isDirty && <span className="tab-dirty-indicator">●</span>}
               <button

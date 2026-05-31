@@ -167,6 +167,7 @@ const api = {
   gitPush: (repoPath: string, remote?: string, branch?: string) => ipcRenderer.invoke('git:push', { repoPath, remote, branch }),
   gitPull: (repoPath: string, remote?: string, branch?: string) => ipcRenderer.invoke('git:pull', { repoPath, remote, branch }),
   gitDiff: (repoPath: string, filePath: string, staged?: boolean) => ipcRenderer.invoke('git:diff', { repoPath, filePath, staged }),
+  gitCommitDiff: (repoPath: string, filePath: string, commitHash: string) => ipcRenderer.invoke('git:commit-diff', { repoPath, filePath, commitHash }),
   gitStashList: (repoPath: string) => ipcRenderer.invoke('git:stash-list', repoPath),
   gitStash: (repoPath: string, message?: string) => ipcRenderer.invoke('git:stash', { repoPath, message }),
   gitStashPop: (repoPath: string, index?: number) => ipcRenderer.invoke('git:stash-pop', { repoPath, index }),

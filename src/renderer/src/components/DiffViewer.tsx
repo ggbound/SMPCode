@@ -132,14 +132,8 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, re
             setCommitFiles(filesList)
           }
           
-          // 获取当前文件内容作为对比
-          const currentResult = await api?.fsReadFile?.(filePath)
-          if (currentResult?.success) {
-            setNewContent(currentResult.content || '')
-          }
-          
-          // 获取 diff - 使用 git diff 比较提交和当前版本
-          const diffResult = await api?.gitDiff?.(repoPath, relativePath, false)
+          // 获取提交中的文件 diff（该提交与父提交的对比）
+          const diffResult = await api?.gitCommitDiff?.(repoPath, relativePath, commitHash)
           if (diffResult) {
             setDiffContent(diffResult)
             setParsedDiff(parseDiff(diffResult))
@@ -192,11 +186,6 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, re
               {commitHash.substring(0, 7)}
             </span>
           )}
-        </div>
-        <div className="vscode-diff-header-right">
-          <button className="vscode-diff-close-btn" onClick={onClose} title="关闭">
-            <X size={16} />
-          </button>
         </div>
       </div>
       
