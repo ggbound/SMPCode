@@ -512,6 +512,16 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     const session = store.sessions.find(s => s.id === store.currentSession)
     if (!session) return
     
+    // 跳过飞书专用对话会话，避免覆盖飞书消息
+    // 检查会话ID是否以 feishu-session- 开头，或者标题包含飞书
+    const isFeishuSession = session.id.startsWith('feishu-session-') || 
+                            session.title?.includes('飞书') ||
+                            session.title === '飞书专用对话'
+    if (isFeishuSession) {
+      console.log('[useKiloConversation] Skipping save for Feishu session:', session.id, 'Title:', session.title)
+      return
+    }
+    
     try {
       // 更新会话的 updatedAt 和时间戳
       const now = Date.now()
@@ -532,6 +542,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       }))
       
       // 保存到文件（主进程会自动更新 updatedAt）
+      console.log('[useKiloConversation] Saving conversation:', session.id, 'Title:', session.title, 'Messages:', messagesToSave.length)
       await window.api.saveConversation(projectPath, session.id, messagesToSave, session.title)
       console.log('[useKiloConversation] Conversation saved successfully')
     } catch (err) {

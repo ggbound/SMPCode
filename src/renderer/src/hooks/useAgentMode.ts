@@ -283,9 +283,14 @@ export function useAgentMode() {
       updateTokens(content.length / 4, fullContent.length / 4)
 
       if (currentSession && projectPath) {
-        const updatedMessages = [...useStore.getState().messages]
         const session = localSessions.find(s => s.id === currentSession)
-        await saveConversation(projectPath, currentSession, updatedMessages, session?.title)
+        // 跳过飞书会话，避免覆盖飞书消息
+        if (session?.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
+          console.log('[useAgentMode] Skipping save for Feishu session:', currentSession)
+        } else {
+          const updatedMessages = [...useStore.getState().messages]
+          await saveConversation(projectPath, currentSession, updatedMessages, session?.title)
+        }
       }
 
       return { success: true }

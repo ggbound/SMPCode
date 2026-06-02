@@ -263,6 +263,35 @@ const api = {
       ipcRenderer.on('cli-chat:stream', callback)
       return () => ipcRenderer.removeListener('cli-chat:stream', callback)
     }
+  },
+
+  // Feishu WebSocket
+  feishu: {
+    // 启动 WebSocket 连接
+    startWebSocket: (config: { appId: string; appSecret: string; botEnabled?: boolean }) => 
+      ipcRenderer.invoke('feishu:ws:start', config),
+    // 停止 WebSocket 连接
+    stopWebSocket: () => 
+      ipcRenderer.invoke('feishu:ws:stop'),
+    // 获取连接状态
+    getWebSocketStatus: () => 
+      ipcRenderer.invoke('feishu:ws:status'),
+    // 发送消息
+    sendMessage: (content: string, chatId: string, chatType: 'group' | 'p2p') => 
+      ipcRenderer.invoke('feishu:ws:send', { content, chatId, chatType }),
+    // 回复消息（用于回复特定消息）
+    replyMessage: (content: string, messageId: string, chatId: string, chatType: 'group' | 'p2p') => 
+      ipcRenderer.invoke('feishu:ws:reply', { content, messageId, chatId, chatType }),
+    // 监听接收到的消息
+    onMessage: (callback: (event: unknown, data: any) => void) => {
+      ipcRenderer.on('feishu:ws:message', callback)
+      return () => ipcRenderer.removeListener('feishu:ws:message', callback)
+    },
+    // 监听状态变化
+    onStatusChange: (callback: (event: unknown, status: any) => void) => {
+      ipcRenderer.on('feishu:ws:status', callback)
+      return () => ipcRenderer.removeListener('feishu:ws:status', callback)
+    }
   }
 }
 

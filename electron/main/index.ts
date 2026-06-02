@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, dialog, nativeTheme } from 'electron'
 import { join, dirname } from 'path'
-import { readFileSync, existsSync, readFile, writeFileSync, mkdirSync, readdir, unlink } from 'fs'
+import { readFileSync, existsSync, readFile, writeFileSync, mkdirSync, readdir, unlink, statSync } from 'fs'
 import { promisify } from 'util'
 
 const readdirAsync = promisify(readdir)
@@ -18,6 +18,12 @@ import {
 import { initTerminalService, cleanupTerminals } from './services/terminal-service'
 import { processBridge } from './services/process-terminal-bridge'
 import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
+import { 
+  initFeishuWebSocketService, 
+  getFeishuWebSocketService,
+  updateFeishuWebSocketConfig,
+  type FeishuConfig 
+} from './services/feishu-ws-service'
 import {
   getGitStatus,
   isGitRepository,
@@ -86,7 +92,7 @@ import {
 
 // Configure logging
 // ✅ 性能优化：文件日志只记录 warn 及以上级别，减少磁盘 I/O 导致的主线程阻塞
-log.transports.file.level = 'warn'
+log.transports.file.level = 'info'
 log.transports.console.level = 'debug'
 log.info('Application starting...')
 
@@ -923,6 +929,103 @@ function setupProcessBridgeHandlers(): void {
   log.info('Process bridge handlers registered')
 }
 
+// Feishu WebSocket handlers
+function setupFeishuWebSocketHandlers(): void {
+  // 启动飞书 WebSocket 连接
+  ipcMain.handle('feishu:ws:start', async (_event, config: FeishuConfig) => {
+    try {
+      const wsService = await initFeishuWebSocketService(
+        config,
+        async (event) => {
+          // 将接收到的消息发送到渲染进程
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('feishu:ws:message', event)
+          }
+          // 不返回确认消息，由渲染进程处理完 AI 回复后主动发送
+          return null
+        },
+        (status) => {
+          // 将状态变化发送到渲染进程
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('feishu:ws:status', status)
+          }
+        }
+      )
+      
+      const success = await wsService.start()
+      log.info(`[IPC] Feishu WebSocket started: ${success}`)
+      return { success }
+    } catch (error) {
+      log.error('[IPC] Failed to start Feishu WebSocket:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 停止飞书 WebSocket 连接
+  ipcMain.handle('feishu:ws:stop', async () => {
+    try {
+      const wsService = getFeishuWebSocketService()
+      if (wsService) {
+        await wsService.stop()
+        log.info('[IPC] Feishu WebSocket stopped')
+      }
+      return { success: true }
+    } catch (error) {
+      log.error('[IPC] Failed to stop Feishu WebSocket:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 获取 WebSocket 连接状态
+  ipcMain.handle('feishu:ws:status', () => {
+    const wsService = getFeishuWebSocketService()
+    if (wsService) {
+      return { success: true, status: wsService.status }
+    }
+    return { success: false, status: null }
+  })
+
+  // 发送消息到飞书
+  ipcMain.handle('feishu:ws:send', async (_event, { content, chatId, chatType }: { content: string; chatId: string; chatType: 'group' | 'p2p' }) => {
+    try {
+      const wsService = getFeishuWebSocketService()
+      if (!wsService) {
+        log.error('[IPC] WebSocket service not initialized')
+        return { success: false, error: 'WebSocket service not initialized' }
+      }
+      
+      log.info('[IPC] Sending Feishu message:', { chatId, chatType, contentLength: content.length })
+      const result = await wsService.sendMessage(content, chatId, chatType)
+      log.info('[IPC] Send message result:', result)
+      return result
+    } catch (error) {
+      log.error('[IPC] Failed to send Feishu message:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 回复飞书消息
+  ipcMain.handle('feishu:ws:reply', async (_event, { content, messageId, chatId, chatType }: { content: string; messageId: string; chatId: string; chatType: 'group' | 'p2p' }) => {
+    try {
+      const wsService = getFeishuWebSocketService()
+      if (!wsService) {
+        log.error('[IPC] WebSocket service not initialized')
+        return { success: false, error: 'WebSocket service not initialized' }
+      }
+      
+      log.info('[IPC] Replying Feishu message:', { messageId, chatId, chatType })
+      const result = await wsService.replyMessage(messageId, chatId, content, chatType)
+      log.info('[IPC] Reply message result:', result)
+      return result
+    } catch (error) {
+      log.error('[IPC] Failed to reply Feishu message:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  log.info('Feishu WebSocket handlers registered')
+}
+
 // Conversation storage handlers - TRAE风格项目级对话存储
 function setupConversationHandlers(): void {
   const CONVERSATION_DIR = '.smp-code/conversations'
@@ -952,6 +1055,8 @@ function setupConversationHandlers(): void {
       const dir = ensureConversationDir(projectPath)
       const filePath = join(dir, `${sessionId}.json`)
       
+      log.info(`[conversation:save] Saving to ${filePath}, messages count: ${messages.length}`)
+      
       const data = {
         sessionId,
         title: sessionTitle || `会话 ${new Date().toLocaleString()}`,
@@ -959,8 +1064,24 @@ function setupConversationHandlers(): void {
         updatedAt: new Date().toISOString()
       }
       
-      writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
-      log.info(`Conversation saved to ${filePath}`)
+      const jsonData = JSON.stringify(data, null, 2)
+      log.info(`[conversation:save] JSON data length: ${jsonData.length} bytes, messages in data: ${data.messages.length}`)
+      
+      writeFileSync(filePath, jsonData, 'utf-8')
+      
+      // 验证文件是否写入成功
+      if (existsSync(filePath)) {
+        const stats = statSync(filePath)
+        log.info(`[conversation:save] File saved successfully: ${filePath}, size: ${stats.size} bytes`)
+        
+        // 读取文件验证内容
+        const savedContent = readFileSync(filePath, 'utf-8')
+        const savedData = JSON.parse(savedContent)
+        log.info(`[conversation:save] Verified: messages in file: ${savedData.messages.length}`)
+      } else {
+        log.error(`[conversation:save] File not found after write: ${filePath}`)
+      }
+      
       return { success: true }
     } catch (error) {
       log.error('Failed to save conversation:', error)
@@ -1476,6 +1597,9 @@ app.whenReady().then(async () => {
 
   // Setup process bridge IPC handlers
   setupProcessBridgeHandlers()
+  
+  // Setup Feishu WebSocket handlers
+  setupFeishuWebSocketHandlers()
   
   // Setup conversation storage handlers
   setupConversationHandlers()

@@ -22,6 +22,7 @@ import { ModelSelector } from '../components/ModelSelector'
 import { KiloMessageInline } from '../components/KiloMessageInline'
 import { useKiloConversation } from '../hooks/useKiloConversation'
 import { useKiloStore, KiloSession } from '../store/kiloStore'
+import { useStore as useMainStore, type Session as MainSession } from '../store'
 import { AgentMode, AGENT_MODE_CONFIGS } from '../types/agent'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -51,6 +52,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const [editingTitle, setEditingTitle] = useState('')
   
   const store = useKiloStore()
+  const mainStore = useMainStore()
   const conversation = useKiloConversation({ apiKey, model, projectPath })
   
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
@@ -112,11 +114,31 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             }
           })
           
+          // ✅ 修复：合并内存中的会话（保留未保存到磁盘的会话）
+          const memorySessions = store.sessions.filter(s => 
+            // 保留内存中独有的会话（未保存到磁盘）
+            !loadedSessions.some(ls => ls.id === s.id) && s.messageCount > 0
+          )
+          const allSessions = [...loadedSessions, ...memorySessions]
+          
           // ✅ 修复：按 updatedAt 降序排序（最新的在前面）
-          loadedSessions.sort((a, b) => b.updatedAt - a.updatedAt)
+          allSessions.sort((a, b) => b.updatedAt - a.updatedAt)
           
           // ✅ 修复：直接设置整个列表，避免 addSession 破坏排序
-          store.setSessions(loadedSessions)
+          store.setSessions(allSessions)
+          
+          console.log('[KiloPage] Loaded sessions from disk:', loadedSessions.length, 'Memory sessions:', memorySessions.length, 'Total:', allSessions.length)
+          
+          // ✅ 修复：同步到主 store，确保 Sidebar 能显示所有会话（包括飞书会话）
+          const mainSessions: MainSession[] = sessionsToLoad.map(s => ({
+            id: s.id,
+            title: s.title,
+            createdAt: typeof s.updatedAt === 'string' ? s.updatedAt : new Date(s.updatedAt).toISOString(),
+            messageCount: s.messageCount,
+            projectPath: projectPath
+          }))
+          mainStore.setSessions(mainSessions)
+          console.log('[KiloPage] Synced sessions to main store:', mainSessions.length)
           
           // 如果有会话，设置当前会话为第一个（最新的）
           if (loadedSessions.length > 0) {
@@ -151,6 +173,113 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
     
     loadSessions()
   }, [projectPath])
+  
+  // 监听飞书会话更新事件，自动刷新会话列表
+  useEffect(() => {
+    const handleFeishuSessionUpdate = (event: CustomEvent<{ sessionId: string }>) => {
+      const { sessionId } = event.detail
+      console.log('[KiloPage] Feishu session updated, sessionId:', sessionId)
+      
+      // 延迟一点执行，确保文件已写入
+      setTimeout(() => {
+        if (projectPath && window.api?.listSessions) {
+          window.api.listSessions(projectPath).then(result => {
+            if (result.success && result.sessions) {
+              // 过滤掉空会话
+              const sessionsToLoad = result.sessions.filter((s: { messageCount: number }) => s.messageCount > 0)
+              
+              // 获取当前 store 中的会话（保留现有会话）
+              const currentSessions = store.sessions
+              const currentSessionIds = new Set(currentSessions.map(s => s.id))
+              
+              // 转换为 KiloSession 格式，只添加新会话或更新现有会话
+              const updatedSessions: KiloSession[] = [...currentSessions]
+              
+              for (const s of sessionsToLoad) {
+                const updatedAtTime = typeof s.updatedAt === 'string' 
+                  ? new Date(s.updatedAt).getTime() 
+                  : s.updatedAt
+                
+                const sessionData: KiloSession = {
+                  id: s.id,
+                  title: s.title,
+                  createdAt: updatedAtTime,
+                  updatedAt: updatedAtTime,
+                  messageCount: s.messageCount,
+                  mode: 'code' as AgentMode
+                }
+                
+                const existingIndex = updatedSessions.findIndex(es => es.id === s.id)
+                if (existingIndex >= 0) {
+                  // 更新现有会话
+                  updatedSessions[existingIndex] = sessionData
+                } else {
+                  // 添加新会话
+                  updatedSessions.push(sessionData)
+                }
+              }
+              
+              // 合并内存中的会话（保留未保存到磁盘的会话）
+              const memorySessions = store.sessions.filter(s => 
+                !updatedSessions.some(us => us.id === s.id) && s.messageCount > 0
+              )
+              const allSessions = [...updatedSessions, ...memorySessions]
+              
+              // 按时间排序
+              allSessions.sort((a, b) => b.updatedAt - a.updatedAt)
+              
+              // 更新 store（合并而不是替换）
+              store.setSessions(allSessions)
+              
+              // 同步到主 store
+              const mainSessions: MainSession[] = allSessions.map(s => ({
+                id: s.id,
+                title: s.title,
+                createdAt: new Date(s.updatedAt).toISOString(),
+                messageCount: s.messageCount,
+                projectPath: projectPath
+              }))
+              mainStore.setSessions(mainSessions)
+              
+              console.log('[KiloPage] Sessions merged after Feishu update:', allSessions.length, 'From disk:', sessionsToLoad.length, 'From memory:', memorySessions.length)
+              
+              // 如果当前正在查看飞书会话，自动刷新消息列表
+              const currentSessionId = store.currentSession
+              if (currentSessionId === sessionId) {
+                console.log('[KiloPage] Auto-refreshing Feishu session messages:', sessionId)
+                // 重新加载会话消息
+                if (window.api?.loadConversation) {
+                  window.api.loadConversation(projectPath, sessionId).then(result => {
+                    if (result.success && result.messages) {
+                      store.clearMessages()
+                      result.messages.forEach((msg: any) => {
+                        store.addMessage({
+                          id: msg.id || uuidv4(),
+                          role: msg.role,
+                          content: msg.content,
+                          timestamp: msg.timestamp || Date.now(),
+                          mode: 'ask',
+                          isStreaming: false
+                        })
+                      })
+                      console.log('[KiloPage] Feishu session messages refreshed:', result.messages.length)
+                    }
+                  }).catch(err => {
+                    console.error('[KiloPage] Failed to refresh Feishu session messages:', err)
+                  })
+                }
+              }
+            }
+          }).catch(err => {
+            console.error('[KiloPage] Failed to reload sessions:', err)
+          })
+        }
+      }, 500)
+    }
+    
+    window.addEventListener('feishu:session-updated', handleFeishuSessionUpdate as EventListener)
+    return () => window.removeEventListener('feishu:session-updated', handleFeishuSessionUpdate as EventListener)
+  }, [projectPath, store, mainStore])
   
   // 初始化时创建默认会话 - 只有在加载完成后且没有会话时才创建
   useEffect(() => {
@@ -200,9 +329,46 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     if (!projectPath) return
     
+    const session = store.sessions.find(s => s.id === sessionId)
+    
+    // 检查是否是飞书会话，如果是则以只读模式加载
+    if (session?.title === '飞书专用对话') {
+      console.log('[KiloPage] Loading Feishu session in read-only mode:', sessionId)
+      // 注意：不要设置 store.setCurrentSession，否则会导致其他 hooks 尝试保存飞书会话
+      // 只加载消息到 store 中显示，但不改变当前会话状态
+      
+      // 加载飞书会话消息（简单格式转换）
+      if (window.api?.loadConversation) {
+        try {
+          const result = await window.api.loadConversation(projectPath, sessionId)
+          if (result.success && result.messages) {
+            store.clearMessages()
+            result.messages.forEach((msg: any) => {
+              // 飞书消息格式：{ role, content, timestamp }
+              // 转换为 KiloMessage 格式，但不添加 Kilo 特有字段
+              store.addMessage({
+                id: msg.id || uuidv4(),
+                role: msg.role,
+                content: msg.content,
+                timestamp: msg.timestamp || Date.now(),
+                mode: 'ask', // 飞书对话使用 ask 模式（只读）
+                isStreaming: false
+              })
+            })
+          } else {
+            store.clearMessages()
+          }
+        } catch (error) {
+          console.error('Failed to load Feishu conversation:', error)
+          store.clearMessages()
+        }
+      }
+      return
+    }
+    
     store.setCurrentSession(sessionId)
     
-    // 加载会话消息
+    // 加载普通会话消息
     if (window.api?.loadConversation) {
       try {
         const result = await window.api.loadConversation(projectPath, sessionId)

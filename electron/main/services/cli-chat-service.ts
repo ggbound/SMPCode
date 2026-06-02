@@ -187,12 +187,14 @@ CRITICAL INSTRUCTIONS FOR TOOL USAGE:
    <tool name="list_directory" path="/Users/test/project/src"/>
    <tool name="execute_bash" command="npm install"/>
    <tool name="write_file" path="/Users/test/output.txt" content="Hello World"/>
+   <tool name="delete_file" path="/Users/test/project/old-file.txt"/>
 
 4. INCORRECT formats (NEVER use these):
    - DO NOT use markdown code blocks like \`\`\`bash ... \`\`\` 
    - DO NOT use JSON format: {"tool": "read_file", "path": "..."}
    - DO NOT use parentheses format: read_file(/path/to/file)
-   - DO NOT say "I'll use read_file" - JUST USE THE TOOL DIRECTLY
+   - DO NOT say "I'll use read_file" or "让我查看" - JUST USE THE TOOL DIRECTLY
+   - DO NOT explain what you're going to do - JUST DO IT
 
 5. Use the EXACT tool names: read_file, write_file, edit_file, list_directory, execute_bash, search_files, delete_file, append_file
    Do NOT use: file_read, file_write, bash, glob, or any other names.
@@ -200,6 +202,10 @@ CRITICAL INSTRUCTIONS FOR TOOL USAGE:
 6. Output the tool call directly in your response. Do NOT say "I'll use X tool" - just use it.
 
 7. IMPORTANT: When suggesting commands to the user, use the <tool> format above. Do NOT wrap commands in markdown code blocks.
+
+8. CRITICAL: When user asks you to perform an action (like delete file, read file, etc.), you MUST use the appropriate tool IMMEDIATELY. Do NOT ask for confirmation or explain what you're going to do. Just output the tool call.
+
+9. For file operations, ALWAYS use the EXACT path provided by the user. If user says "delete test file", use <tool name="list_directory" path="..."/> first to find it, then <tool name="delete_file" path="..."/>.
 
 CRITICAL: FOR LONG-RUNNING COMMANDS (servers, watchers, etc.):
 - DO NOT use background execution with & or redirect output to files (>, >>, 2>&1)
@@ -344,22 +350,61 @@ function extractToolCallsFromContent(content: string): {
   // 已知工具列表（使用正确的工具名称）
   const knownTools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'execute_bash', 'search_files', 'delete_file', 'append_file']
 
+  log.debug(`[CLI-Chat] Extracting tool calls from content: ${content.substring(0, 200)}...`)
+
   // 1. 匹配 <tool name="..." .../> 格式（正确格式）
-  const toolRegex = /<tool\s+name="([^"]+)"([^\/>]*)\/>/g
+  // 使用更健壮的正则，支持多行属性和特殊字符
+  const toolRegex = /<tool\s+name="([^"]+)"((?:\s+\w+="[^"]*")*)\s*\/>/g
   let toolMatch
   while ((toolMatch = toolRegex.exec(content)) !== null) {
     const toolName = toolMatch[1]
     const attrsContent = toolMatch[2]
     const args: Record<string, unknown> = {}
+    
+    // 匹配所有属性 key="value"
     const attrRegex = /(\w+)="([^"]*)"/g
     let attrMatch
     while ((attrMatch = attrRegex.exec(attrsContent)) !== null) {
-      args[attrMatch[1]] = attrMatch[2].replace(/\\"/g, '"').replace(/\\n/g, '\n')
+      // 解码转义字符
+      const value = attrMatch[2]
+        .replace(/\\"/g, '"')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\\\/g, '\\')
+      args[attrMatch[1]] = value
     }
+    
     if (knownTools.includes(toolName)) {
       toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
-      log.info(`[CLI-Chat] Extracted tool call from <tool> tag: ${toolName}`)
+      log.info(`[CLI-Chat] Extracted tool call from <tool> tag: ${toolName}, args=${JSON.stringify(args)}`)
       cleanedContent = cleanedContent.replace(toolMatch[0], '')
+    } else {
+      log.debug(`[CLI-Chat] Unknown tool name in <tool> tag: ${toolName}`)
+    }
+  }
+  
+  // 如果没有匹配到，尝试更宽松的匹配（处理 AI 可能输出的格式错误）
+  if (toolCalls.length === 0) {
+    // 尝试匹配 <tool name="..." 任意内容 />
+    const looseToolRegex = /<tool\s+name="([^"]+)"(.*?)\/>/gs
+    let looseMatch
+    while ((looseMatch = looseToolRegex.exec(content)) !== null) {
+      const toolName = looseMatch[1]
+      const attrsContent = looseMatch[2]
+      const args: Record<string, unknown> = {}
+      
+      // 尝试提取所有 key="value" 或 key='value'
+      const attrRegex = /(\w+)=(["'])([^"']*)\2/g
+      let attrMatch
+      while ((attrMatch = attrRegex.exec(attrsContent)) !== null) {
+        args[attrMatch[1]] = attrMatch[3]
+      }
+      
+      if (knownTools.includes(toolName)) {
+        toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
+        log.info(`[CLI-Chat] Extracted tool call from loose <tool> tag: ${toolName}, args=${JSON.stringify(args)}`)
+        cleanedContent = cleanedContent.replace(looseMatch[0], '')
+      }
     }
   }
 
@@ -705,6 +750,7 @@ export async function sendCLIMessageStream(
     }
     
     log.debug(`[CLI-Chat] Stream complete: chunks=${chunkCount}, contentLength=${fullContent.length}, toolCalls=${toolCalls.length}`)
+    log.debug(`[CLI-Chat] Session mode: ${session.mode}, fullContent preview: ${fullContent.substring(0, 100)}...`)
 
     // 执行工具调用（Agent 模式）
     if (session.mode === 'agent' && toolCalls.length > 0) {
@@ -816,10 +862,12 @@ export async function sendCLIMessageStream(
     }
 
     // 检查 AI 响应中是否包含 JSON 工具调用（从文本内容中提取）
+    log.debug(`[CLI-Chat] Checking for tool calls in content: mode=${session.mode}, hasContent=${!!fullContent.trim()}`)
     if (session.mode === 'agent' && fullContent.trim()) {
       const { toolCalls: extractedToolCalls, cleanedContent } = extractToolCallsFromContent(fullContent)
+      log.debug(`[CLI-Chat] Extraction result: ${extractedToolCalls.length} tool calls found`)
       if (extractedToolCalls.length > 0) {
-        log.debug(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
+        log.info(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
 
         // 添加助手回复到消息历史（必须包含 tool_calls）
         // 使用清理后的内容（不包含 JSON 工具调用代码块）

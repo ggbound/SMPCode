@@ -1,6 +1,8 @@
 /// <reference types="./env" />
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useStore, type ProviderConfig, type Session, type Step, type ImageContent } from './store'
+import { useStore, type ProviderConfig, type Session, type Step, type ImageContent, type FeishuConfig, type SyncStatus } from './store'
+import { useKiloStore } from './store/kiloStore'
+import { initFeishuService, getFeishuService, updateFeishuConfig } from './services/feishuService'
 import KiloPage from './pages/KiloPage'
 import SettingsModal from './components/SettingsModal'
 import TitleBar from './components/TitleBar'
@@ -206,7 +208,11 @@ function App() {
     setSessions,
     setCurrentProjectPath,
     addStepToMessage,
-    updateStepStatus
+    updateStepStatus,
+    feishuConfig,
+    syncStatus,
+    setFeishuConfig,
+    setSyncStatus
   } = useStore()
 
   // Initialize mode-specific hooks
@@ -311,6 +317,38 @@ function App() {
             setPermissionMode(config.permissionMode || 'workspace-write')
             setProviders(config.providers || [])
             console.log(`Config loaded: ${config.providers?.length || 0} providers`)
+          }
+        }
+        
+        // 加载飞书配置
+        const savedFeishuConfig = localStorage.getItem('feishuConfig')
+        if (savedFeishuConfig) {
+          try {
+            const parsedConfig = JSON.parse(savedFeishuConfig)
+            setFeishuConfig(parsedConfig)
+            // 初始化飞书服务
+            initFeishuService(parsedConfig, (status) => {
+              setSyncStatus({ ...syncStatus, ...status })
+            })
+            console.log('Feishu config loaded:', parsedConfig)
+
+            // 如果启用了机器人功能，初始化 WebSocket 长连接
+            if (parsedConfig.botEnabled && window.api?.feishu) {
+              // 启动 WebSocket 连接
+              window.api.feishu.startWebSocket({
+                appId: parsedConfig.appId,
+                appSecret: parsedConfig.appSecret,
+                botEnabled: parsedConfig.botEnabled
+              }).then((result: any) => {
+                if (result.success) {
+                  console.log('[App] Feishu WebSocket started successfully')
+                } else {
+                  console.error('[App] Failed to start Feishu WebSocket:', result.error)
+                }
+              })
+            }
+          } catch (error) {
+            console.error('Failed to parse Feishu config:', error)
           }
         }
       } catch (error) {
@@ -921,6 +959,12 @@ function App() {
       const session = localSessions.find(s => s.id === currentSession)
       if (!session) return
       
+      // 跳过飞书会话，避免覆盖飞书消息
+      if (session.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
+        console.log('[AutoSave] Skipping save for Feishu session:', currentSession)
+        return
+      }
+      
       // 如果会话有 projectPath 属性，验证是否匹配当前项目
       if (session.projectPath && session.projectPath !== projectPath) {
         console.log('[AutoSave] Skipping save - session belongs to different project:', session.projectPath)
@@ -1265,6 +1309,40 @@ function App() {
         model
       })
 
+      // 飞书机器人：如果开启了机器人功能，等待 AI 回复后发送到飞书
+      if (feishuConfig.botEnabled && feishuConfig.chatId) {
+        // 延迟检查 AI 回复
+        setTimeout(() => {
+          const sendToFeishu = async () => {
+            try {
+              const feishuService = getFeishuService()
+              if (!feishuService) {
+                console.log('[FeishuBot] Feishu service not initialized')
+                return
+              }
+
+              // 获取最后一条助手消息
+              const state = useStore.getState()
+              const lastAssistantMessage = state.messages
+                .filter(m => m.role === 'assistant')
+                .pop()
+
+              if (lastAssistantMessage && typeof lastAssistantMessage.content === 'string') {
+                await feishuService.sendMessage(
+                  lastAssistantMessage.content,
+                  feishuConfig.chatId,
+                  feishuConfig.chatType || 'group'
+                )
+                console.log('[FeishuBot] AI reply sent to Feishu')
+              }
+            } catch (error) {
+              console.error('[FeishuBot] Failed to send AI reply:', error)
+            }
+          }
+          sendToFeishu()
+        }, 5000) // 等待 5 秒让 AI 生成回复
+      }
+
     } catch (error) {
       console.error('[handleSendMessage] Error caught:', error)
       updateLastMessage(`Error: ${String(error)}`)
@@ -1289,6 +1367,358 @@ function App() {
       }
     }
   }
+
+  // ==================== 飞书机器人消息处理 ====================
+  
+  // 处理从飞书接收到的消息
+  const handleFeishuMessage = useCallback(async (content: string, chatId: string, chatType: 'group' | 'user' | 'p2p', messageId?: string) => {
+    if (!content.trim()) return null
+
+    console.log('[FeishuBot] Received message:', { content, chatId, chatType, messageId })
+
+    // 获取当前项目路径
+    const state = useStore.getState()
+    const currentProjectPath = state.currentProjectPath
+    
+    if (!currentProjectPath) {
+      const errorReply = '请先打开一个项目，才能使用工具功能'
+      if (window.api?.feishu) {
+        await window.api.feishu.sendMessage(errorReply, chatId, chatType as 'group' | 'p2p')
+      }
+      return errorReply
+    }
+
+    // 使用 cliChat 进行对话（支持工具调用）
+    try {
+      const ipcApi = (window as unknown as {
+        api?: {
+          cliChat?: {
+            createSession: (mode: 'chat' | 'agent', cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+            sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>, model?: string) => Promise<{ success: boolean; error?: string }>
+            onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
+            stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+          }
+        }
+      }).api
+
+      if (!ipcApi?.cliChat) {
+        throw new Error('CLI Chat IPC API not available')
+      }
+
+      // 创建临时会话（agent 模式支持工具调用）
+      const createResult = await ipcApi.cliChat.createSession('agent', currentProjectPath!)
+      if (!createResult.success || !createResult.sessionId) {
+        throw new Error(createResult.error || 'Failed to create CLI session')
+      }
+
+      const sessionId = createResult.sessionId
+      console.log('[FeishuBot] Created CLI session:', sessionId)
+
+      // 收集 AI 回复内容
+      let aiReply = ''
+      let isComplete = false
+      let hasError = false
+      let errorMsg = ''
+      const toolResults: Array<{ name: string; success: boolean; output: string; error?: string }> = []
+      let lastActivityTime = Date.now()
+      let doneCount = 0
+
+      // 设置流式监听
+      const unsubscribe = ipcApi.cliChat.onStreamChunk((_, data) => {
+        if (data.sessionId !== sessionId) return
+
+        const chunk = data.chunk
+        lastActivityTime = Date.now()
+        
+        switch (chunk.type) {
+          case 'text':
+            if (chunk.content) {
+              aiReply += chunk.content
+            }
+            break
+          case 'tool_call':
+            console.log('[FeishuBot] Tool call:', chunk.toolCall?.name)
+            // 记录工具调用
+            if (chunk.toolCall?.name) {
+              toolResults.push({
+                name: chunk.toolCall.name,
+                success: false,
+                output: '',
+                error: '等待执行结果...'
+              })
+            }
+            break
+          case 'tool_result':
+            console.log('[FeishuBot] Tool result received:', chunk.toolResult)
+            // 更新最后一个工具调用结果
+            if (toolResults.length > 0 && chunk.toolResult) {
+              const lastTool = toolResults[toolResults.length - 1]
+              lastTool.success = chunk.toolResult.success
+              lastTool.output = chunk.toolResult.output
+              lastTool.error = chunk.toolResult.error
+            }
+            break
+          case 'done':
+            doneCount++
+            console.log(`[FeishuBot] Conversation complete (done #${doneCount})`)
+            // 如果有工具调用且执行成功，继续等待 AI 的最终回复
+            const hasSuccessfulTool = toolResults.some(t => t.success)
+            if (!hasSuccessfulTool || doneCount >= 2) {
+              // 没有成功执行的工具，或者已经收到第二个 done（AI 最终回复完成）
+              isComplete = true
+            }
+            break
+          case 'error':
+            console.error('[FeishuBot] Stream error:', chunk.error)
+            hasError = true
+            errorMsg = chunk.error || 'Unknown error'
+            break
+        }
+      })
+
+      // 发送消息
+      const sendResult = await ipcApi.cliChat.sendMessage(sessionId, content, undefined, model)
+      if (!sendResult.success) {
+        throw new Error(sendResult.error || 'Failed to send message')
+      }
+
+      // 等待对话完成（最多等待 3 分钟）
+      const startTime = Date.now()
+      const maxWaitTime = 180000 // 3 minutes
+      const activityTimeout = 30000 // 30 秒无活动则认为完成
+      
+      while (!isComplete && !hasError && Date.now() - startTime < maxWaitTime) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+        
+        // 如果 30 秒没有新活动，且至少收到过一个 done，则认为完成
+        if (doneCount > 0 && Date.now() - lastActivityTime > activityTimeout) {
+          console.log('[FeishuBot] No activity for 30s, considering complete')
+          isComplete = true
+        }
+      }
+
+      // 取消监听
+      unsubscribe()
+
+      // 停止会话
+      await ipcApi.cliChat.stopSession(sessionId)
+
+      if (hasError) {
+        throw new Error(errorMsg)
+      }
+
+      if (!isComplete) {
+        console.warn('[FeishuBot] Conversation timed out, using partial reply')
+      }
+
+      // 如果没有收到文本回复，但有工具执行结果，生成工具执行摘要
+      if (!aiReply.trim() && toolResults.length > 0) {
+        // 根据工具执行结果生成回复
+        const successTools = toolResults.filter(t => t.success)
+        const failedTools = toolResults.filter(t => !t.success)
+        
+        if (successTools.length > 0) {
+          aiReply = `✅ 工具执行成功！\n\n`
+          for (const tool of successTools) {
+            aiReply += `**${tool.name}**:\n${tool.output}\n\n`
+          }
+        }
+        
+        if (failedTools.length > 0) {
+          aiReply += `\n❌ 部分工具执行失败:\n\n`
+          for (const tool of failedTools) {
+            aiReply += `**${tool.name}**: ${tool.error || '未知错误'}\n`
+          }
+        }
+      }
+      
+      // 如果仍然没有回复，使用默认消息
+      if (!aiReply.trim()) {
+        aiReply = '抱歉，我没有收到回复'
+      }
+
+      console.log('[FeishuBot] AI reply:', aiReply.substring(0, 200) + '...')
+
+      // 发送回复到飞书
+      if (window.api?.feishu) {
+        let success = false
+        let errorMsg = ''
+        if (chatType === 'group' && messageId) {
+          // 群聊中回复原消息
+          const result = await window.api.feishu.replyMessage(aiReply, messageId, chatId, chatType as 'group' | 'p2p')
+          success = result.success
+          errorMsg = result.error || ''
+          console.log('[FeishuBot] Reply sent to group message:', success, errorMsg)
+        } else {
+          // 私聊直接发送
+          const result = await window.api.feishu.sendMessage(aiReply, chatId, chatType as 'group' | 'p2p')
+          success = result.success
+          errorMsg = result.error || ''
+          console.log('[FeishuBot] Message sent to user:', success, errorMsg)
+        }
+        
+        if (!success) {
+          console.error('[FeishuBot] Failed to send message to Feishu:', errorMsg)
+        }
+      } else {
+        console.error('[FeishuBot] Feishu API not available')
+      }
+
+      // 将飞书对话保存到"飞书专用对话"会话中
+      const feishuSession = state.sessions.find(s => s.title === '飞书专用对话')
+      
+      // 构建新消息（使用与 Kilo 兼容的格式）
+      const userMessage = { 
+        id: `msg-${Date.now()}-user`,
+        role: 'user', 
+        content, 
+        timestamp: Date.now(),
+        mode: 'code' as const
+      }
+      const assistantMessage = { 
+        id: `msg-${Date.now()}-assistant`,
+        role: 'assistant', 
+        content: aiReply, 
+        timestamp: Date.now(),
+        mode: 'code' as const
+      }
+      
+      console.log('[FeishuBot] Current project path:', currentProjectPath)
+      console.log('[FeishuBot] Feishu session found:', feishuSession?.id, 'Title:', feishuSession?.title, 'MessageCount:', feishuSession?.messageCount)
+      
+      if (feishuSession) {
+        // 如果已存在"飞书专用对话"会话，更新消息数并保存
+        const updatedSession: Session = {
+          ...feishuSession,
+          messageCount: feishuSession.messageCount + 2
+        }
+        setSessions(state.sessions.map(s => s.id === feishuSession.id ? updatedSession : s))
+        setLocalSessions(prev => prev.map(s => s.id === feishuSession.id ? updatedSession : s))
+        
+        // ✅ 修复：同步更新 kiloStore，确保 KiloPage 能显示飞书会话
+        const kiloStore = useKiloStore.getState()
+        const existingKiloSession = kiloStore.sessions.find(s => s.id === feishuSession.id)
+        if (existingKiloSession) {
+          kiloStore.updateSession(feishuSession.id, {
+            messageCount: updatedSession.messageCount,
+            updatedAt: Date.now()
+          })
+        } else {
+          // 如果 kiloStore 中没有这个会话，添加它
+          kiloStore.addSession({
+            id: feishuSession.id,
+            title: feishuSession.title || '飞书专用对话',
+            createdAt: new Date(feishuSession.createdAt).getTime(),
+            updatedAt: Date.now(),
+            messageCount: updatedSession.messageCount,
+            mode: 'code'
+          })
+        }
+        
+        // 持久化保存：先加载现有消息，再追加新消息
+        if (window.api?.saveConversation && currentProjectPath) {
+          try {
+            console.log('[FeishuBot] Saving to session:', feishuSession.id, 'Project:', currentProjectPath)
+            // 加载现有消息
+            const loadResult = await window.api.loadConversation(currentProjectPath, feishuSession.id)
+            console.log('[FeishuBot] Loaded existing messages:', loadResult.success, 'count:', loadResult.messages?.length || 0, 'Error:', loadResult.error)
+            const existingMessages = loadResult.success && loadResult.messages ? loadResult.messages : []
+            // 追加新消息并保存
+            const allMessages = [...existingMessages, userMessage, assistantMessage]
+            console.log('[FeishuBot] Saving messages:', allMessages.length, 'Existing:', existingMessages.length, 'New: 2')
+            const saveResult = await window.api.saveConversation(currentProjectPath, feishuSession.id, allMessages, feishuSession.title)
+            console.log('[FeishuBot] Save result:', saveResult.success, 'Session:', feishuSession.id, 'Total messages:', allMessages.length)
+            
+            // 触发事件通知 KiloPage 刷新会话列表
+            window.dispatchEvent(new CustomEvent('feishu:session-updated', { detail: { sessionId: feishuSession.id } }))
+          } catch (error) {
+            console.error('[FeishuBot] Failed to save conversation:', error)
+          }
+        } else {
+          console.warn('[FeishuBot] Cannot save conversation: projectPath is empty or saveConversation API not available')
+        }
+      } else {
+        // 如果不存在，创建新的"飞书专用对话"会话
+        const newSessionId = `feishu-session-${Date.now()}`
+        const now = Date.now()
+        const newSession: Session = {
+          id: newSessionId,
+          title: '飞书专用对话',
+          createdAt: new Date().toISOString(),
+          messageCount: 2,
+          projectPath: currentProjectPath || undefined
+        }
+        addSession(newSession)
+        
+        // ✅ 修复：同时添加到 kiloStore，确保 KiloPage 能显示飞书会话
+        const kiloStore = useKiloStore.getState()
+        kiloStore.addSession({
+          id: newSessionId,
+          title: '飞书专用对话',
+          createdAt: now,
+          updatedAt: now,
+          messageCount: 2,
+          mode: 'code'
+        })
+        
+        // 持久化保存新会话和消息
+        if (window.api?.saveConversation && currentProjectPath) {
+          try {
+            await window.api.saveConversation(currentProjectPath, newSessionId, [userMessage, assistantMessage], '飞书专用对话')
+            console.log('[FeishuBot] Created new session and saved messages:', newSessionId)
+            
+            // 触发事件通知 KiloPage 刷新会话列表
+            window.dispatchEvent(new CustomEvent('feishu:session-updated', { detail: { sessionId: newSessionId } }))
+          } catch (error) {
+            console.error('[FeishuBot] Failed to save conversation:', error)
+          }
+        } else {
+          console.warn('[FeishuBot] Cannot save conversation: projectPath is empty or saveConversation API not available')
+        }
+      }
+
+      return aiReply
+    } catch (error) {
+      console.error('[FeishuBot] Error processing message:', error)
+      const errorReply = `处理消息时出错: ${error instanceof Error ? error.message : '未知错误'}`
+      
+      // 发送错误回复
+      if (window.api?.feishu) {
+        await window.api.feishu.sendMessage(errorReply, chatId, chatType as 'group' | 'p2p')
+      }
+      
+      return errorReply
+    }
+  }, [providers, model, addSession, projectPath])
+
+  // 飞书消息监听 useEffect - 在 handleFeishuMessage 定义之后
+  useEffect(() => {
+    if (!window.api?.feishu) return
+
+    // 监听飞书消息
+    const unsubscribe = window.api.feishu.onMessage((_: unknown, event: any) => {
+      console.log('[App] Received Feishu message:', event)
+      const messageText = event.message?.content ? JSON.parse(event.message.content).text : ''
+      const chatId = event.message?.chat_id
+      const chatType = event.message?.chat_type
+      const messageId = event.message?.message_id
+
+      if (messageText && chatId) {
+        // 使用 handleFeishuMessage 处理飞书消息（包含回复逻辑）
+        handleFeishuMessage(messageText, chatId, chatType as 'group' | 'user' | 'p2p', messageId)
+      }
+    })
+
+    // 监听状态变化
+    const unsubscribeStatus = window.api.feishu.onStatusChange((_: unknown, status: any) => {
+      console.log('[App] Feishu WebSocket status:', status)
+    })
+
+    return () => {
+      unsubscribe()
+      unsubscribeStatus()
+    }
+  }, [handleFeishuMessage])
 
   // Track last saved config to avoid redundant saves
   const lastSavedConfigRef = useRef<{
@@ -1372,6 +1802,19 @@ function App() {
     setShowSettings(false)
     // 关闭设置后切换回之前的 Activity
     setActiveActivity(previousActivity)
+  }
+
+  // 处理飞书配置保存
+  const handleFeishuSave = async (newConfig: FeishuConfig) => {
+    setFeishuConfig(newConfig)
+    updateFeishuConfig(newConfig)
+    
+    // 保存到 localStorage
+    try {
+      localStorage.setItem('feishuConfig', JSON.stringify(newConfig))
+    } catch (error) {
+      console.error('Failed to save Feishu config:', error)
+    }
   }
 
   // Generate unique tab ID
@@ -2206,7 +2649,10 @@ function App() {
                 defaultModel={defaultModel}
                 permissionMode={permissionMode}
                 providers={providers}
+                feishuConfig={feishuConfig}
+                syncStatus={syncStatus}
                 onSave={handleSettingsSave}
+                onSaveFeishu={handleFeishuSave}
                 onClose={handleSettingsClose}
               />
             </div>

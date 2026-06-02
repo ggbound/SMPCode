@@ -529,9 +529,14 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
 
       // 保存对话
       if (projectPath && currentSession) {
-        const updatedMessages = [...useStore.getState().messages]
         const session = localSessions.find(s => s.id === currentSession)
-        await saveConversation(projectPath, currentSession, updatedMessages, session?.title)
+        // 跳过飞书会话，避免覆盖飞书消息
+        if (session?.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
+          console.log('[useUnifiedConversation] Skipping save for Feishu session:', currentSession)
+        } else {
+          const updatedMessages = [...useStore.getState().messages]
+          await saveConversation(projectPath, currentSession, updatedMessages, session?.title)
+        }
       }
 
     } catch (error) {

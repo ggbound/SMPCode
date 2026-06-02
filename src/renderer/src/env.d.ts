@@ -158,6 +158,17 @@ declare global {
         deleteSession: (sessionId: string) => Promise<{ success: boolean }>
         onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
       }
+
+      // Feishu WebSocket API
+      feishu: {
+        startWebSocket: (config: { appId: string; appSecret: string; botEnabled?: boolean }) => Promise<{ success: boolean; error?: string }>
+        stopWebSocket: () => Promise<{ success: boolean; error?: string }>
+        getWebSocketStatus: () => Promise<{ success: boolean; status?: any; error?: string }>
+        sendMessage: (content: string, chatId: string, chatType: 'group' | 'p2p') => Promise<{ success: boolean; error?: string }>
+        replyMessage: (content: string, messageId: string, chatId: string, chatType: 'group' | 'p2p') => Promise<{ success: boolean; error?: string }>
+        onMessage: (callback: (event: unknown, data: any) => void) => () => void
+        onStatusChange: (callback: (event: unknown, status: any) => void) => () => void
+      }
     }
   }
 }

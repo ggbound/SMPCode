@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Eye, EyeOff, X, Trash2, Plus, Edit2, Check, Loader2, ChevronDown } from 'lucide-react'
-import type { ProviderConfig, ModelConfig } from '../store'
+import { Eye, EyeOff, X, Trash2, Plus, Edit2, Check, Loader2, ChevronDown, Cloud, CloudOff, MessageSquare } from 'lucide-react'
+import type { ProviderConfig, ModelConfig, FeishuConfig, SyncStatus } from '../store'
 import { t } from '../i18n'
 
 // 检测状态类型
@@ -12,7 +12,10 @@ interface SettingsModalProps {
   defaultModel: string
   permissionMode: string
   providers: ProviderConfig[]
+  feishuConfig: FeishuConfig
+  syncStatus: SyncStatus
   onSave: (apiKey: string, model: string, defaultModel: string, permissionMode: string, providers: ProviderConfig[]) => void
+  onSaveFeishu: (config: FeishuConfig) => void
   onClose: () => void
 }
 
@@ -28,13 +31,14 @@ const DEFAULT_API_URLS: Record<string, string> = {
   custom: ''
 }
 
-function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers, onSave, onClose }: SettingsModalProps) {
+function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers, feishuConfig, syncStatus, onSave, onSaveFeishu, onClose }: SettingsModalProps) {
   const [localApiKey, setLocalApiKey] = useState(apiKey)
   const [localModel, setLocalModel] = useState(model)
   const [localDefaultModel, setLocalDefaultModel] = useState(defaultModel)
   const [localPermissionMode, setLocalPermissionMode] = useState(permissionMode)
   const [localProviders, setLocalProviders] = useState<ProviderConfig[]>(providers)
-  const [activeTab, setActiveTab] = useState<'general' | 'providers'>('providers')
+  const [localFeishuConfig, setLocalFeishuConfig] = useState<FeishuConfig>(feishuConfig)
+  const [activeTab, setActiveTab] = useState<'general' | 'providers' | 'feishu'>('providers')
   const [selectedProviderId, setSelectedProviderId] = useState<string>(providers[0]?.id || '')
   const [showAddProviderModal, setShowAddProviderModal] = useState(false)
   const [showAddModelModal, setShowAddModelModal] = useState(false)
@@ -70,6 +74,11 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
   useEffect(() => {
     setLocalModel(model)
   }, [model])
+
+  // 当 feishuConfig prop 变化时同步状态
+  useEffect(() => {
+    setLocalFeishuConfig(feishuConfig)
+  }, [feishuConfig])
 
   // 当 providers 变化时，如果没有设置默认模型，自动选择第一个可用模型
   useEffect(() => {
@@ -116,6 +125,8 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
     // Create deep copy of providers to ensure we're passing the latest data
     const providersCopy = JSON.parse(JSON.stringify(localProviders))
     onSave(localApiKey, localModel, localDefaultModel, localPermissionMode, providersCopy)
+    // 保存飞书配置
+    onSaveFeishu(localFeishuConfig)
   }
 
   const handleSave = async () => {
@@ -376,10 +387,21 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
         >
           {t('providers')}
         </button>
+        <button 
+          className={`tab-btn ${activeTab === 'feishu' ? 'active' : ''}`}
+          onClick={() => setActiveTab('feishu')}
+        >
+          飞书同步
+        </button>
       </div>
 
       <div className="modal-body">
-          {activeTab === 'general' ? (
+          {activeTab === 'feishu' ? (
+            <FeishuSettings
+              config={localFeishuConfig}
+              onChange={setLocalFeishuConfig}
+            />
+          ) : activeTab === 'general' ? (
             <div className="general-settings">
               <div className="form-group">
                 <label className="form-label">{t('defaultModel')}</label>
@@ -772,6 +794,190 @@ function AddProviderModal({ onAdd, onClose }: AddProviderModalProps) {
           <button className="btn btn-secondary" onClick={onClose}>{t('cancel')}</button>
           <button className="btn btn-primary" onClick={handleSubmit}>{t('confirm')}</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// 飞书设置组件
+function FeishuSettings({ config, onChange }: { config: FeishuConfig; onChange: (config: FeishuConfig) => void }) {
+  const [localConfig, setLocalConfig] = useState<FeishuConfig>(config)
+  const [testStatus, setTestStatus] = useState<TestStatus>('idle')
+  const [testMessage, setTestMessage] = useState('')
+
+  const updateConfig = (updater: (prev: FeishuConfig) => FeishuConfig) => {
+    const newConfig = updater(localConfig)
+    setLocalConfig(newConfig)
+    onChange(newConfig)
+  }
+
+  // 测试连接
+  const testConnection = async () => {
+    if (!localConfig.appId || !localConfig.appSecret) {
+      setTestStatus('error')
+      setTestMessage('请先填写 App ID 和 App Secret')
+      return
+    }
+
+    setTestStatus('testing')
+    setTestMessage('')
+
+    try {
+      const response = await fetch('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_id: localConfig.appId,
+          app_secret: localConfig.appSecret
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.code === 0) {
+        setTestStatus('success')
+        setTestMessage('连接成功！')
+        // 保存访问令牌
+        updateConfig(prev => ({
+          ...prev,
+          accessToken: data.tenant_access_token,
+          tokenExpiry: Date.now() + (data.expire || 7200) * 1000
+        }))
+      } else {
+        setTestStatus('error')
+        setTestMessage(data.msg || '连接失败')
+      }
+    } catch (error) {
+      setTestStatus('error')
+      setTestMessage('网络错误')
+    }
+  }
+
+  return (
+    <div className="feishu-settings">
+      <div className="feishu-header">
+        <h3 className="feishu-title">
+          {localConfig.botEnabled ? (
+            <Cloud size={20} className="feishu-icon enabled" />
+          ) : (
+            <CloudOff size={20} className="feishu-icon disabled" />
+          )}
+          飞书机器人配置
+        </h3>
+        <div className="feishu-status">
+          <span className={`status-badge ${localConfig.botEnabled ? 'enabled' : 'disabled'}`}>
+            {localConfig.botEnabled ? '已启用' : '已禁用'}
+          </span>
+        </div>
+      </div>
+
+      <div className="feishu-content">
+        {/* 启用机器人开关 */}
+        <div className="form-group feishu-enable-group">
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
+            <div className={`toggle-switch ${localConfig.botEnabled ? 'enabled' : ''}`}>
+              <input
+                type="checkbox"
+                checked={localConfig.botEnabled}
+                onChange={(e) => updateConfig(prev => ({ ...prev, botEnabled: e.target.checked }))}
+              />
+              <span className="toggle-slider"></span>
+            </div>
+            <span>启用飞书机器人</span>
+          </label>
+          <span className="form-hint">
+            开启后，可以在飞书群聊中 @机器人进行 AI 对话，AI 回复会自动发送到飞书
+          </span>
+        </div>
+
+        {localConfig.botEnabled && (
+          <>
+            {/* App ID */}
+            <div className="form-group">
+              <label className="form-label">飞书 App ID</label>
+              <input
+                type="text"
+                className="form-input"
+                value={localConfig.appId}
+                onChange={(e) => updateConfig(prev => ({ ...prev, appId: e.target.value }))}
+                placeholder="cli_xxxxxxxxxxxxxxxx"
+              />
+              <span className="form-hint">在飞书开放平台创建应用后获取</span>
+            </div>
+
+            {/* App Secret */}
+            <div className="form-group">
+              <label className="form-label">飞书 App Secret</label>
+              <div className="input-with-action">
+                <input
+                  type="password"
+                  className="form-input"
+                  value={localConfig.appSecret}
+                  onChange={(e) => updateConfig(prev => ({ ...prev, appSecret: e.target.value }))}
+                  placeholder="输入 App Secret"
+                />
+                <button
+                  className={`btn btn-sm btn-test ${testStatus === 'testing' ? 'testing' : ''} ${testStatus === 'success' ? 'success' : ''} ${testStatus === 'error' ? 'error' : ''}`}
+                  onClick={testConnection}
+                  disabled={testStatus === 'testing'}
+                >
+                  {testStatus === 'testing' ? (
+                    <>
+                      <Loader2 size={14} className="spin" />
+                      测试中...
+                    </>
+                  ) : testStatus === 'success' ? (
+                    <>
+                      <Check size={14} />
+                      连接成功
+                    </>
+                  ) : testStatus === 'error' ? (
+                    <>
+                      <X size={14} />
+                      连接失败
+                    </>
+                  ) : (
+                    '测试连接'
+                  )}
+                </button>
+              </div>
+              {testMessage && (
+                <span className={`test-message ${testStatus}`}>{testMessage}</span>
+              )}
+              <span className="form-hint">用于获取访问令牌，请妥善保管</span>
+            </div>
+
+            {/* 默认 Chat ID */}
+            <div className="form-group">
+              <label className="form-label">默认 Chat ID（可选）</label>
+              <input
+                type="text"
+                className="form-input"
+                value={localConfig.chatId || ''}
+                onChange={(e) => updateConfig(prev => ({ ...prev, chatId: e.target.value || undefined }))}
+                placeholder="oc_xxxxxxxxxxxxxxxx 或 ou_xxxxxxxxxxxxxxxx"
+              />
+              <span className="form-hint">默认发送消息的群聊 ID 或用户 ID，留空则根据消息来源回复</span>
+            </div>
+
+            {/* 使用说明 */}
+            <div className="feishu-bot-instructions">
+              <h5>配置步骤：</h5>
+              <ol>
+                <li>在飞书开放平台创建企业自建应用</li>
+                <li>在应用详情页获取 App ID 和 App Secret</li>
+                <li>在机器人页面开启机器人功能</li>
+                <li>在事件订阅页面选择"使用长连接接收事件"</li>
+                <li>添加订阅事件 "im.message.receive_v1"（接收消息）</li>
+                <li>发布应用并通知管理员审核</li>
+                <li>在群聊中添加机器人并 @它发送消息</li>
+              </ol>
+              <p className="feishu-note">
+                注意：使用长连接方式不需要公网服务器和域名
+              </p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

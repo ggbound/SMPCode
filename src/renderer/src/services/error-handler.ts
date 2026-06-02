@@ -246,9 +246,30 @@ export function setupGlobalErrorHandler(): void {
 
   // 处理全局错误
   window.addEventListener('error', (event) => {
-    console.error('[GlobalError] Global error:', event.error)
+    // 忽略 ResizeObserver 警告（这是一个已知的 Chrome 警告，不影响功能）
+    if (event.message && event.message.includes('ResizeObserver loop completed with undelivered notifications')) {
+      event.preventDefault()
+      return
+    }
+
+    // 收集更多上下文信息
+    const errorInfo = {
+      message: event.message,
+      filename: event.filename,
+      lineno: event.lineno,
+      colno: event.colno,
+      error: event.error,
+      target: event.target instanceof HTMLElement ? event.target.tagName : 'unknown'
+    }
+    
+    if (event.error) {
+      console.error('[GlobalError] Global error:', event.error)
+    } else {
+      // 可能是资源加载错误
+      console.error('[GlobalError] Resource or script error:', errorInfo)
+    }
     event.preventDefault()
-  })
+  }, true) // 使用捕获阶段以捕获更多错误
 
   console.log('[ErrorHandler] Global error handlers installed')
 }

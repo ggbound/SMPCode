@@ -10848,3 +10848,291 @@ code ::selection {
 .builder-content-simple > *:first-child {
   margin-top: 0;
 }
+
+/* ==================== 飞书同步设置样式 ==================== */
+
+.feishu-settings {
+  padding: 24px;
+  max-width: 600px;
+}
+
+.feishu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.feishu-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.feishu-icon {
+  transition: color 0.2s ease;
+}
+
+.feishu-icon.enabled {
+  color: var(--success-color);
+}
+
+.feishu-icon.disabled {
+  color: var(--text-secondary);
+}
+
+.feishu-status {
+  display: flex;
+  align-items: center;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.status-badge.enabled {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--success-color);
+}
+
+.status-badge.disabled {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.feishu-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.feishu-enable-group {
+  background: var(--bg-secondary);
+  padding: 16px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--bg-tertiary);
+  transition: 0.3s;
+  border-radius: 24px;
+  border: 1px solid var(--border-color);
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-secondary);
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+.toggle-switch.enabled .toggle-slider,
+input:checked + .toggle-slider {
+  background-color: rgba(63, 185, 80, 0.2);
+  border-color: var(--success-color);
+}
+
+.toggle-switch.enabled .toggle-slider:before,
+input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+  background-color: var(--success-color);
+}
+
+/* Sync Status Info */
+.sync-status-info {
+  background: var(--bg-secondary);
+  padding: 16px;
+  border-radius: var(--border-radius);
+  border: 1px solid var(--border-color);
+  margin-top: 8px;
+}
+
+.sync-status-info h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.sync-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sync-status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sync-status-item:last-child {
+  border-bottom: none;
+}
+
+.sync-status-item.error {
+  background: rgba(248, 81, 73, 0.1);
+  padding: 8px 12px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid rgba(248, 81, 73, 0.3);
+}
+
+.sync-status-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.sync-status-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.sync-status-item.error .sync-status-value {
+  color: var(--danger-color);
+}
+
+/* Feishu Footer */
+.feishu-footer {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.feishu-footer .btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Test Button States */
+.btn-test.testing {
+  background: var(--warning-color) !important;
+  color: var(--dark-color) !important;
+}
+
+.btn-test.success {
+  background: var(--success-color) !important;
+  color: white !important;
+}
+
+.btn-test.error {
+  background: var(--danger-color) !important;
+  color: white !important;
+}
+
+/* Form hint for Feishu */
+.feishu-settings .form-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Input with action button */
+.input-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-with-action .form-input {
+  flex: 1;
+}
+
+.input-with-action .btn {
+  white-space: nowrap;
+}
+
+/* ==================== 飞书机器人交互样式 ==================== */
+
+.feishu-bot-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-color);
+}
+
+.feishu-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 16px 0;
+}
+
+.feishu-section-title svg {
+  color: var(--accent-color);
+}
+
+.feishu-bot-instructions {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.feishu-bot-instructions h5 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 12px 0;
+}
+
+.feishu-bot-instructions ol {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.feishu-bot-instructions li {
+  margin-bottom: 8px;
+}
+
+.feishu-bot-instructions li:last-child {
+  margin-bottom: 0;
+}

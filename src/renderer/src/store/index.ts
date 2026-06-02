@@ -147,6 +147,26 @@ export interface ProviderConfig {
   models: ModelConfig[]
 }
 
+// 飞书同步配置
+export interface FeishuConfig {
+  // 机器人交互配置
+  botEnabled: boolean  // 是否启用机器人交互
+  appId: string
+  appSecret: string
+  accessToken?: string
+  tokenExpiry?: number
+  chatId?: string  // 默认发送消息的群聊/用户 ID
+  chatType?: 'group' | 'user' | 'thread' | 'p2p'  // 聊天类型
+}
+
+// 同步状态
+export interface SyncStatus {
+  isSyncing: boolean
+  lastSyncTime: number
+  lastError?: string
+  pendingCount: number
+}
+
 interface AppState {
   apiKey: string
   model: string
@@ -195,6 +215,10 @@ interface AppState {
   } | null
   copilotEnabled: boolean
   
+  // 飞书同步配置
+  feishuConfig: FeishuConfig
+  syncStatus: SyncStatus
+  
   setApiKey: (apiKey: string) => void
   setModel: (model: string) => void
   setDefaultModel: (model: string) => void
@@ -240,6 +264,10 @@ interface AppState {
   
   // 添加迭代消息（用于显示执行进度）
   addIterationMessage: (content: string, needsAction?: boolean) => void
+  
+  // 飞书同步配置方法
+  setFeishuConfig: (config: FeishuConfig) => void
+  setSyncStatus: (status: SyncStatus) => void
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -273,7 +301,30 @@ export const useStore = create<AppState>((set) => ({
   inlineEditSuggestions: [],
   codeContext: null,
   copilotEnabled: true,
-
+    
+  // 飞书同步配置
+  feishuConfig: {
+    enabled: false,
+    appId: '',
+    appSecret: '',
+    accessToken: undefined,
+    tokenExpiry: undefined,
+    documentId: undefined,
+    lastSyncTime: undefined,
+    botEnabled: false,
+    encryptKey: undefined,
+    verificationToken: undefined,
+    webhookUrl: undefined,
+    chatId: undefined,
+    chatType: undefined
+  },
+  syncStatus: {
+    isSyncing: false,
+    lastSyncTime: 0,
+    lastError: undefined,
+    pendingCount: 0
+  },
+  
   setApiKey: (apiKey) => set({ apiKey }),
   setModel: (model) => set({ model }),
   setDefaultModel: (defaultModel) => set({ defaultModel }),
@@ -282,7 +333,7 @@ export const useStore = create<AppState>((set) => ({
   setSessions: (sessions) => set({ sessions }),
 
   addSession: (session) => set((state) => ({
-    sessions: [...state.sessions, session],
+    sessions: [session, ...state.sessions],
     currentSession: session.id
   })),
 
@@ -392,6 +443,10 @@ export const useStore = create<AppState>((set) => ({
   // TRAE风格：流式消息控制
   startStreaming: (streamingMessageId) => set({ streamingMessageId }),
   stopStreaming: () => set({ streamingMessageId: null }),
+  
+  // 飞书同步配置方法
+  setFeishuConfig: (feishuConfig) => set({ feishuConfig }),
+  setSyncStatus: (syncStatus) => set({ syncStatus }),
   
   // 添加迭代消息（用于显示执行进度）
   addIterationMessage: (content, needsAction = false) => {
