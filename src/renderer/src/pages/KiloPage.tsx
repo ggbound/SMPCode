@@ -329,13 +329,40 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     if (!projectPath) return
     
+    // 先保存当前会话的消息（如果不是飞书会话）
+    const currentSessionId = store.currentSession
+    if (currentSessionId && store.messages.length > 0 && window.api?.saveConversation) {
+      const currentSession = store.sessions.find(s => s.id === currentSessionId)
+      if (currentSession && currentSession.title !== '飞书专用对话' && !currentSessionId.startsWith('feishu-session-')) {
+        console.log('[KiloPage] Saving current session before switch:', currentSessionId)
+        try {
+          const messagesToSave = store.messages.map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: m.timestamp,
+            mode: m.mode,
+            blocks: m.blocks,
+            toolCalls: m.toolCalls,
+            reasoning: m.reasoning
+          }))
+          await window.api.saveConversation(projectPath, currentSessionId, messagesToSave, currentSession.title)
+          console.log('[KiloPage] Current session saved before switch')
+        } catch (err) {
+          console.error('[KiloPage] Failed to save current session before switch:', err)
+        }
+      }
+    }
+    
     const session = store.sessions.find(s => s.id === sessionId)
     
     // 检查是否是飞书会话，如果是则以只读模式加载
     if (session?.title === '飞书专用对话') {
       console.log('[KiloPage] Loading Feishu session in read-only mode:', sessionId)
-      // 注意：不要设置 store.setCurrentSession，否则会导致其他 hooks 尝试保存飞书会话
-      // 只加载消息到 store 中显示，但不改变当前会话状态
+      
+      // ✅ 关键修复：设置当前会话为飞书会话，但添加特殊标记
+      // 这样保存逻辑可以正确识别并跳过保存
+      store.setCurrentSession(sessionId)
       
       // 加载飞书会话消息（简单格式转换）
       if (window.api?.loadConversation) {
