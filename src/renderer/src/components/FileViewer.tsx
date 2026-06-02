@@ -70,20 +70,24 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     }
   }, [tab?.path, editedContent])
 
-  // Update content when tab content changes externally
+  // Update content when tab content changes externally (e.g., AI operations)
   useEffect(() => {
-    if (tab && tab.content !== lastSavedContentRef.current) {
+    if (!tab) return
+    
+    // Always update when tab.content changes from external source
+    // Compare with editedContent to detect external changes
+    if (tab.content !== editedContent) {
       console.log('[FileViewer] External content change detected')
       console.log('[FileViewer] Tab content length:', tab.content.length)
-      console.log('[FileViewer] Last saved content length:', lastSavedContentRef.current.length)
-      console.log('[FileViewer] Edited content length:', editedContent.length)
-
+      console.log('[FileViewer] Current edited content length:', editedContent.length)
+      
+      // Update edited content to match external content
       setEditedContent(tab.content)
       lastSavedContentRef.current = tab.content
       setSaveStatus(tab.isDirty ? 'unsaved' : 'saved')
-      console.log('[FileViewer] Content updated successfully')
+      console.log('[FileViewer] Content updated from external source')
     }
-  }, [tab?.content, tab?.lastModified])
+  }, [tab?.content, tab?.lastModified, tab?.id])
 
   // Perform save
   const performSave = useCallback(async (content: string) => {

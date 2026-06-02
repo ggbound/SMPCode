@@ -1,0 +1,278 @@
+/**
+ * File Conflict Dialog Styles - VSCode-style conflict resolution dialog
+ */
+
+.conflict-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(2px);
+}
+
+.conflict-dialog {
+  background-color: var(--vscode-panel-bg, #1e1e1e);
+  border: 1px solid var(--vscode-border, #3c3c3c);
+  border-radius: 6px;
+  width: 800px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.conflict-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--vscode-border, #3c3c3c);
+  background-color: var(--vscode-header-bg, #252526);
+}
+
+.conflict-dialog-icon {
+  color: #d29922;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.conflict-dialog-title h3 {
+  margin: 0 0 4px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.conflict-dialog-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #858585);
+}
+
+/* File Info */
+.conflict-dialog-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background-color: var(--vscode-input-bg, #3c3c3c);
+  border-bottom: 1px solid var(--vscode-border, #3c3c3c);
+  color: var(--vscode-foreground, #cccccc);
+  font-size: 12px;
+}
+
+.conflict-dialog-file-info .file-path {
+  font-family: var(--vscode-font-family, 'Consolas', monospace);
+  opacity: 0.8;
+}
+
+/* Comparison */
+.conflict-dialog-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 20px 24px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.conflict-version {
+  border: 1px solid var(--vscode-border, #3c3c3c);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.version-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background-color: var(--vscode-header-bg, #252526);
+  border-bottom: 1px solid var(--vscode-border, #3c3c3c);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.version-header svg {
+  opacity: 0.7;
+}
+
+.version-stats {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.6;
+  font-weight: normal;
+}
+
+.version-content {
+  padding: 12px;
+  background-color: var(--vscode-input-bg, #3c3c3c);
+  max-height: 200px;
+  overflow: auto;
+}
+
+.version-content pre {
+  margin: 0;
+  font-family: var(--vscode-font-family, 'Consolas', monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vscode-foreground, #cccccc);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.version-more {
+  padding: 8px 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #858585);
+  border-top: 1px solid var(--vscode-border, #3c3c3c);
+  margin-top: 8px;
+}
+
+/* Options */
+.conflict-dialog-options {
+  padding: 20px 24px;
+  border-top: 1px solid var(--vscode-border, #3c3c3c);
+}
+
+.conflict-dialog-options h4 {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--vscode-border, #3c3c3c);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.option-item:hover {
+  background-color: var(--vscode-list-hover-bg, #2a2d2e);
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.option-item.selected {
+  background-color: var(--vscode-list-active-bg, #37373d);
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.option-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.option-radio {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-focusBorder, #007acc);
+}
+
+.radio-circle {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--vscode-border, #3c3c3c);
+  border-radius: 50%;
+  transition: border-color 0.15s ease;
+}
+
+.option-item:hover .radio-circle {
+  border-color: var(--vscode-focusBorder, #007acc);
+}
+
+.option-content {
+  flex: 1;
+}
+
+.option-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vscode-foreground, #cccccc);
+  margin-bottom: 4px;
+}
+
+.option-description {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #858585);
+}
+
+/* Actions */
+.conflict-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--vscode-border, #3c3c3c);
+  background-color: var(--vscode-panel-bg, #1e1e1e);
+}
+
+.conflict-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.conflict-btn-secondary {
+  background-color: var(--vscode-button-secondary-bg, #3c3c3c);
+  color: var(--vscode-button-secondary-foreground, #cccccc);
+}
+
+.conflict-btn-secondary:hover {
+  background-color: var(--vscode-button-secondary-hover-bg, #484848);
+}
+
+.conflict-btn-primary {
+  background-color: var(--vscode-button-bg, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.conflict-btn-primary:hover {
+  background-color: var(--vscode-button-hover-bg, #1177bb);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .conflict-dialog-comparison {
+    grid-template-columns: 1fr;
+    max-height: 400px;
+  }
+  
+  .conflict-dialog {
+    width: 95vw;
+    max-height: 95vh;
+  }
+}

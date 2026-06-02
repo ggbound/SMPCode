@@ -29,6 +29,7 @@ import { useCodeIntelligence } from './hooks/useCodeIntelligence'
 import FileWriteIndicator, { useFileWriteStatus } from './components/FileWriteIndicator'
 import './styles/completion.css'
 import { getLanguageFromPath } from './utils/languageMap'
+import { saveWorkspaceState, loadWorkspaceState } from './utils/workspaceState'
 
 // API_BASE 已移除 - 现在使用 IPC 通信替代 HTTP API
 // const API_BASE = 'http://localhost:3847/api'
@@ -120,6 +121,11 @@ function App() {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTabId, setActiveTabId] = useState<string | null>(null)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+  
+  // Pending workspace state for restoring tabs after file tree loads
+  const pendingWorkspaceStateRef = useRef<any>(null)
+  // Ref to track current project path for preventing cross-project saves
+  const currentProjectPathRef = useRef<string | null>(null)
   
   // Editor reference for jumping to lines
   const editorRef = useRef<any>(null)
@@ -311,14 +317,81 @@ function App() {
     
     loadConfig()
     
+    // Restore workspace state on app launch if projectPath exists
+    const restoreWorkspaceOnLaunch = async () => {
+      const savedProjectPath = localStorage.getItem('current-project-path')
+      // Check if already restored to prevent infinite loop
+      if (savedProjectPath && savedProjectPath !== projectPath) {
+        console.log('[App] Restoring workspace on launch:', savedProjectPath)
+
+        // Initialize the ref with the saved path
+        currentProjectPathRef.current = savedProjectPath
+
+        const workspaceState = loadWorkspaceState(savedProjectPath)
+        if (workspaceState) {
+          console.log('[App] Found workspace state:', workspaceState)
+
+          // Restore activity
+          if (workspaceState.activeActivity) {
+            setActiveActivity(workspaceState.activeActivity)
+          }
+
+          // Restore selected file path
+          if (workspaceState.selectedFilePath) {
+            setSelectedFilePath(workspaceState.selectedFilePath)
+          }
+
+          // Store for later tab restoration after projectPath is set
+          pendingWorkspaceStateRef.current = workspaceState
+        }
+
+        // Trigger project path change to restore sessions and tabs
+        // Use setTimeout to ensure all state is ready
+        setTimeout(() => {
+          handleProjectPathChange(savedProjectPath)
+        }, 100)
+      }
+    }
+    
+    // Only restore if projectPath is not already set
+    if (!projectPath) {
+      restoreWorkspaceOnLaunch()
+    }
+    
     const unsubOpenSettings = window.api?.onOpenSettings?.(() => {
       setShowSettings(true)
     })
 
+    // Save workspace state before page unload
+    // Use refs to always get the latest state (closures capture old values)
+    const handleBeforeUnload = () => {
+      // Get the current project path from localStorage (most reliable)
+      const currentProjectPath = localStorage.getItem('current-project-path')
+      if (currentProjectPath) {
+        console.log('[App] Saving workspace state before unload:', currentProjectPath)
+        console.log('[App] Current tabs count from ref:', latestTabsRef.current.length)
+        const openTabs = latestTabsRef.current.map(tab => ({
+          path: tab.path,
+          name: tab.name,
+          type: tab.language === 'browser' ? 'browser' : 'file' as 'file' | 'diff' | 'browser',
+          browserUrl: tab.browserUrl
+        }))
+        saveWorkspaceState(currentProjectPath, {
+          expandedPaths: [],
+          openTabs,
+          activeTabId: latestActiveTabIdRef.current,
+          selectedFilePath: latestSelectedFilePathRef.current,
+          activeActivity: latestActiveActivityRef.current
+        })
+      }
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
     return () => {
       unsubOpenSettings?.()
+      window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [setApiKey, setModel, setDefaultModel, setPermissionMode, setProviders])
+  }, [setApiKey, setModel, setDefaultModel, setPermissionMode, setProviders, projectPath, tabs, activeTabId, selectedFilePath, activeActivity])
 
   // Stop generation handler
   const handleStopGeneration = () => {
@@ -511,15 +584,197 @@ function App() {
 
   // Handle project path change - auto load associated session from local storage
   const handleProjectPathChange = useCallback(async (newPath: string) => {
+    // Prevent duplicate processing of the same path
+    if (newPath === projectPath) {
+      console.log('[handleProjectPathChange] Path already set, skipping:', newPath)
+      return
+    }
+
     console.log('[handleProjectPathChange] New project path:', newPath)
     console.log('[handleProjectPathChange] Path length:', newPath.length)
     console.log('[handleProjectPathChange] Path chars:', newPath.split('').map(c => c.charCodeAt(0)))
+
+    // Save current project state before switching
+    // Use refs to get the latest state, not the stale closure values
+    // Fallback to projectPath state if ref is not set (e.g., first time opening folder)
+    const currentPath = currentProjectPathRef.current || projectPath
+    console.log('[handleProjectPathChange] Current path for saving:', currentPath, 'ref:', currentProjectPathRef.current, 'state:', projectPath)
+    console.log('[handleProjectPathChange] New path:', newPath, 'tabs count:', latestTabsRef.current.length)
+    if (currentPath && currentPath !== newPath) {
+      console.log('[handleProjectPathChange] Saving current project state:', currentPath)
+      const openTabs = latestTabsRef.current.map(tab => ({
+        path: tab.path,
+        name: tab.name,
+        type: tab.language === 'browser' ? 'browser' : 'file' as 'file' | 'diff' | 'browser',
+        browserUrl: tab.browserUrl
+      }))
+      console.log('[handleProjectPathChange] Saving tabs:', openTabs.length, 'tabs')
+      saveWorkspaceState(currentPath, {
+        expandedPaths: [],
+        openTabs,
+        activeTabId: latestActiveTabIdRef.current,
+        selectedFilePath: latestSelectedFilePathRef.current,
+        activeActivity: latestActiveActivityRef.current
+      })
+    } else {
+      console.log('[handleProjectPathChange] Skipping save: currentPath=', currentPath, 'newPath=', newPath)
+    }
+
+    // Reset the saved state refs to prevent auto-save from saving old tabs to new project
+    // This is crucial: we reset lastSavedProjectRef so the effect will skip saving
+    // until both projectPath and tabs have been updated
+    lastSavedProjectRef.current = null
+    console.log('[handleProjectPathChange] Reset lastSavedProjectRef to prevent cross-project save')
+
+    // 先清空当前会话和消息，防止旧消息被保存到新项目
+    clearMessages()
+    setLocalSessions([])
+
+    // 清空当前打开的文件标签和选中状态
+    setTabs([])
+    setActiveTabId(null)
+    setSelectedFilePath(null)
+
     setProjectPath(newPath)
     setCurrentProjectPath(newPath)
+    // Update the ref immediately to prevent auto-save from using old project
+    currentProjectPathRef.current = newPath
+    
+    // Save project path to localStorage for app launch restoration
+    localStorage.setItem('current-project-path', newPath)
 
     if (!newPath) {
-      setLocalSessions([])
       return
+    }
+
+    // Load workspace state for this project
+    const workspaceState = loadWorkspaceState(newPath)
+    console.log('[handleProjectPathChange] Workspace state loaded:', workspaceState, 'for path:', newPath)
+    
+    // Always clear tabs first, then restore if there's saved state
+    // This ensures old project tabs are cleared even if new project has no saved state
+    if (!workspaceState || !workspaceState.openTabs || workspaceState.openTabs.length === 0) {
+      console.log('[handleProjectPathChange] No saved tabs for this project, ensuring tabs are cleared')
+      setTabs([])
+      setActiveTabId(null)
+      setSelectedFilePath(null)
+    }
+    
+    if (workspaceState) {
+      console.log('[handleProjectPathChange] Loading workspace state:', workspaceState)
+      
+      // Restore active activity
+      if (workspaceState.activeActivity) {
+        setActiveActivity(workspaceState.activeActivity)
+      }
+      
+      // Restore selected file path
+      if (workspaceState.selectedFilePath) {
+        setSelectedFilePath(workspaceState.selectedFilePath)
+      }
+      
+      // Restore open tabs immediately
+      if (workspaceState.openTabs && workspaceState.openTabs.length > 0) {
+        console.log('[handleProjectPathChange] Restoring tabs:', workspaceState.openTabs.length)
+        
+        const restoredTabs: Tab[] = []
+        // Map to track old ID -> new ID for active tab restoration
+        const idMapping: Map<string, string> = new Map()
+        
+        for (const savedTab of workspaceState.openTabs) {
+          try {
+            if (savedTab.type === 'file' && savedTab.path) {
+              // Try to read file content
+              const api = window.api as any
+              if (api?.fsReadFile) {
+                console.log('[handleProjectPathChange] Reading file:', savedTab.path)
+                const result = await api.fsReadFile(savedTab.path)
+                if (result.success) {
+                  // Generate new ID but keep track of the mapping
+                  const newId = `tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+                  // Store mapping from saved path to new ID (for finding active tab)
+                  idMapping.set(savedTab.path, newId)
+                  
+                  const newTab: Tab = {
+                    id: newId,
+                    name: savedTab.name,
+                    path: savedTab.path,
+                    content: result.content,
+                    language: getLanguageFromPath(savedTab.path),
+                    isDirty: false,
+                    isPreview: false
+                  }
+                  restoredTabs.push(newTab)
+                  console.log('[handleProjectPathChange] Restored tab:', savedTab.name, 'new ID:', newId)
+                } else {
+                  console.error('[handleProjectPathChange] Failed to read file:', savedTab.path, result.error)
+                }
+              }
+            } else if (savedTab.type === 'browser' && savedTab.browserUrl) {
+              const newId = `browser-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+              idMapping.set(savedTab.path, newId)
+              
+              const newTab: Tab = {
+                id: newId,
+                name: savedTab.name || 'Browser',
+                path: 'browser://' + savedTab.browserUrl,
+                content: '',
+                language: 'browser',
+                isDirty: false,
+                browserUrl: savedTab.browserUrl,
+                isPreview: false
+              }
+              restoredTabs.push(newTab)
+              console.log('[handleProjectPathChange] Restored browser tab:', savedTab.name)
+            }
+          } catch (error) {
+            console.error('[handleProjectPathChange] Failed to restore tab:', savedTab, error)
+          }
+        }
+        
+        console.log('[handleProjectPathChange] Restored tabs count:', restoredTabs.length)
+        
+        // Always set tabs to clear old project tabs, even if restoredTabs is empty
+        setTabs(restoredTabs)
+        
+        if (restoredTabs.length > 0) {
+          // Restore active tab - find by path since IDs are regenerated
+          if (workspaceState.activeTabId) {
+            // Find the saved active tab by looking up which tab had this ID
+            const savedActiveTab = workspaceState.openTabs.find(t => {
+              // Try to match by path since we can't match by regenerated ID
+              return t.path === workspaceState.selectedFilePath
+            })
+            
+            if (savedActiveTab) {
+              // Find the restored tab with the same path
+              const activeTab = restoredTabs.find(t => t.path === savedActiveTab.path)
+              if (activeTab) {
+                setActiveTabId(activeTab.id)
+                setSelectedFilePath(activeTab.path)
+                console.log('[handleProjectPathChange] Restored active tab by path:', activeTab.id, activeTab.path)
+              } else {
+                setActiveTabId(restoredTabs[0].id)
+                setSelectedFilePath(restoredTabs[0].path)
+                console.log('[handleProjectPathChange] Set first tab as active:', restoredTabs[0].id)
+              }
+            } else {
+              setActiveTabId(restoredTabs[0].id)
+              setSelectedFilePath(restoredTabs[0].path)
+              console.log('[handleProjectPathChange] Set first tab as active:', restoredTabs[0].id)
+            }
+          } else {
+            setActiveTabId(restoredTabs[0].id)
+            setSelectedFilePath(restoredTabs[0].path)
+            console.log('[handleProjectPathChange] Set first tab as active:', restoredTabs[0].id)
+          }
+        } else {
+          // No tabs to restore, clear active tab
+          setActiveTabId(null)
+          setSelectedFilePath(null)
+          console.log('[handleProjectPathChange] No tabs to restore, cleared active tab')
+        }
+      }
     }
 
     // Working directory is now managed by projectPath, no need to sync with backend
@@ -659,13 +914,22 @@ function App() {
     const autoSave = async () => {
       if (!projectPath || !currentSession || messages.length === 0) return
       
+      // 验证当前会话是否属于当前项目（防止切换项目时保存旧消息到新项目）
+      const session = localSessions.find(s => s.id === currentSession)
+      if (!session) return
+      
+      // 如果会话有 projectPath 属性，验证是否匹配当前项目
+      if (session.projectPath && session.projectPath !== projectPath) {
+        console.log('[AutoSave] Skipping save - session belongs to different project:', session.projectPath)
+        return
+      }
+      
       if (window.api?.saveConversation) {
-        const session = localSessions.find(s => s.id === currentSession)
         await window.api.saveConversation(
           projectPath, 
           currentSession, 
           messages, 
-          session?.title || `会话 ${new Date().toLocaleString()}`
+          session.title || `会话 ${new Date().toLocaleString()}`
         )
       }
     }
@@ -1175,9 +1439,12 @@ function App() {
 
   // Open file in tab
   const openFile = useCallback((path: string, content: string) => {
+    console.log('[App] openFile called:', path)
+    
     // Check if file is already open
     const existingTab = tabs.find(tab => tab.path === path)
     if (existingTab) {
+      console.log('[App] File already open, switching to tab:', existingTab.id)
       setActiveTabId(existingTab.id)
       setSelectedFilePath(path)
       return
@@ -1185,6 +1452,7 @@ function App() {
 
     // Create new tab
     const fileName = path.split('/').pop() || path
+    console.log('[App] Creating new tab:', fileName)
     const newTab: Tab = {
       id: generateTabId(),
       path,
@@ -1198,6 +1466,7 @@ function App() {
     setTabs(prev => [...prev, newTab])
     setActiveTabId(newTab.id)
     setSelectedFilePath(path)
+    console.log('[App] New tab created:', newTab.id)
   }, [tabs, generateTabId, getFileLanguage])
 
   // Handle file selection from FileExplorer
@@ -1279,6 +1548,83 @@ function App() {
       return newTabs
     })
   }, [activeTabId])
+
+  // Save workspace state when tabs, activeTabId, selectedFilePath, or activeActivity changes
+  // Use a ref to track the last saved state to avoid unnecessary saves
+  const lastSavedTabsRef = useRef<string>('')
+  const lastSavedProjectRef = useRef<string | null>(null)
+  // Refs to always have access to latest state for beforeunload
+  const latestTabsRef = useRef<Tab[]>(tabs)
+  const latestActiveTabIdRef = useRef<string | null>(activeTabId)
+  const latestSelectedFilePathRef = useRef<string | null>(selectedFilePath)
+  const latestActiveActivityRef = useRef<'explorer' | 'search' | 'git' | 'settings'>(activeActivity)
+
+  // Update refs whenever state changes
+  useEffect(() => {
+    latestTabsRef.current = tabs
+  }, [tabs])
+
+  useEffect(() => {
+    latestActiveTabIdRef.current = activeTabId
+  }, [activeTabId])
+
+  useEffect(() => {
+    latestSelectedFilePathRef.current = selectedFilePath
+  }, [selectedFilePath])
+
+  useEffect(() => {
+    latestActiveActivityRef.current = activeActivity
+  }, [activeActivity])
+
+  useEffect(() => {
+    if (!projectPath) return
+
+    // CRITICAL: Check if projectPath matches the ref (which is updated immediately in handleProjectPathChange)
+    // This prevents saving when projectPath state hasn't caught up with the ref yet
+    if (projectPath !== currentProjectPathRef.current) {
+      console.log('[App] Project path mismatch, skipping save. State:', projectPath, 'Ref:', currentProjectPathRef.current)
+      return
+    }
+
+    // Create a signature of current state
+    const tabsSignature = tabs.map(t => t.path).join(',')
+    const stateSignature = `${projectPath}|${tabsSignature}|${activeTabId}|${selectedFilePath}`
+
+    // Skip if state hasn't changed
+    if (stateSignature === lastSavedTabsRef.current) {
+      return
+    }
+
+    // Skip if project changed (prevents saving old tabs to new project)
+    // This happens when projectPath updates before tabs update
+    if (projectPath !== lastSavedProjectRef.current && lastSavedProjectRef.current !== null) {
+      console.log('[App] Project changed, skipping save until tabs update. Current:', projectPath, 'Last:', lastSavedProjectRef.current)
+      return
+    }
+
+    // Save tabs state
+    const openTabs = tabs.map(tab => ({
+      path: tab.path,
+      name: tab.name,
+      type: tab.language === 'browser' ? 'browser' : 'file' as 'file' | 'diff' | 'browser',
+      browserUrl: tab.browserUrl
+    }))
+
+    // Always save workspace state (even when empty, to clear previous state)
+    saveWorkspaceState(projectPath, {
+      expandedPaths: [], // Will be populated by FileExplorer
+      openTabs,
+      activeTabId,
+      selectedFilePath,
+      activeActivity
+    })
+
+    // Update refs
+    lastSavedTabsRef.current = stateSignature
+    lastSavedProjectRef.current = projectPath
+
+    console.log('[App] Workspace state saved:', openTabs.length, 'tabs, activeTab:', activeTabId)
+  }, [projectPath, tabs, activeTabId, selectedFilePath, activeActivity])
 
   // Handle open file in browser
   const handleOpenInBrowser = useCallback((filePath: string) => {
@@ -1415,7 +1761,8 @@ function App() {
       try {
         const folderPath = await window.api?.selectFolder()
         if (folderPath) {
-          setProjectPath(folderPath)
+          // Use handleProjectPathChange to properly handle project switch
+          handleProjectPathChange(folderPath)
         }
       } catch (error) {
         console.error('Failed to open folder:', error)
@@ -1478,10 +1825,8 @@ function App() {
     
     // Refresh File Tree
     const unsubFileRefresh = window.api?.onFileRefresh?.(() => {
-      // Trigger re-render of FileExplorer by temporarily changing projectPath
-      const currentPath = projectPath
-      setProjectPath(null)
-      setTimeout(() => setProjectPath(currentPath), 100)
+      // Dispatch custom event to FileExplorer for refresh
+      window.dispatchEvent(new CustomEvent('file-operation-completed'))
     })
     
     // Listen for file system changes (for auto-refresh opened files)
@@ -1830,6 +2175,7 @@ function App() {
             {/* Left: Sidebar (File Explorer or Search) - Unified width */}
             <div className="sidebar-panel-container" style={{ display: activeActivity === 'explorer' ? 'flex' : 'none' }}>
               <FileExplorer
+                projectPath={projectPath}
                 onFileSelect={handleFileSelect}
                 selectedPath={selectedFilePath}
                 onRootPathChange={handleProjectPathChange}

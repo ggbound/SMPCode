@@ -4,6 +4,7 @@ import { t } from '../i18n'
 import { gitIPC } from './GitStatusBar'
 import { getFileIconSVG } from '../utils/fileIconTheme'
 import { getSetiIconInfo } from '../utils/setiIconTheme'
+import { explorerState } from '../utils/explorerState'
 import '../styles/fileExplorer.css'
 import '../styles/vscode-sidebar.css'
 
@@ -28,6 +29,7 @@ interface FileExplorerProps {
   openFile?: (path: string, content: string) => void
   onFileRenamed?: (oldPath: string, newPath: string, newName: string) => void
   onFileDeleted?: (path: string) => void
+  projectPath?: string | null // 外部传入的项目路径，用于同步更新
 }
 
 // VSCode-style file icon component using Seti-UI font icons
@@ -82,7 +84,7 @@ const GitStatusBadge = ({ status }: { status?: string | null }) => {
   )
 }
 
-function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, onFileRenamed, onFileDeleted }: FileExplorerProps) {
+function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, onFileRenamed, onFileDeleted, projectPath }: FileExplorerProps) {
   const [rootPath, setRootPath] = useState<string>('')
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -158,6 +160,21 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [isSearching, selectedPath, fileTree])
+
+  // Sync with external projectPath prop
+  useEffect(() => {
+    if (projectPath && projectPath !== rootPath) {
+      console.log('[FileExplorer] Project path changed from', rootPath, 'to', projectPath)
+      setRootPath(projectPath)
+      // 停止旧路径的监听
+      if (isWatchingRef.current && rootPath) {
+        const { api } = window as any
+        api?.fsUnwatch(rootPath)
+        isWatchingRef.current = false
+      }
+      // 文件树将在下面的 useEffect 中通过 rootPath 变化自动加载
+    }
+  }, [projectPath, rootPath])
 
   // File watching - auto refresh on file changes
   useEffect(() => {
@@ -238,6 +255,16 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
       }
     }
   }, [rootPath, refreshProjectContext])
+
+  // Load file tree when rootPath changes (e.g., when opening a new folder)
+  useEffect(() => {
+    if (rootPath) {
+      console.log('[FileExplorer] Loading file tree for:', rootPath)
+      handleRefreshNoExpansion()
+    } else {
+      setFileTree([])
+    }
+  }, [rootPath])
 
   // Listen for file operation events from AI tools (separate useEffect to avoid circular deps)
   useEffect(() => {
@@ -333,7 +360,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     return updatedNodes
   }, [])
 
-  // Toggle directory open/close with lazy loading (VSCode-style)
+  // VSCode-style toggle directory - state managed by explorerState
   const toggleDirectory = useCallback(async (node: FileNode, tree: FileNode[], path: string[]) => {
     const newTree = [...tree]
     let current = newTree
@@ -344,6 +371,14 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
 
       if (i === path.length - 1) {
         const isOpening = !current[index].isOpen
+        
+        // Update explorer state (this will trigger save)
+        if (isOpening) {
+          explorerState.expand(node.path)
+        } else {
+          explorerState.collapse(node.path)
+        }
+        
         current[index] = { ...current[index], isOpen: isOpening, isExpanded: isOpening }
 
         if (isOpening && (!current[index].children || current[index].children.length === 0)) {
@@ -378,6 +413,9 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
           setFileTree(prev => updateTree(prev))
           return
         }
+        
+        // For collapsing or when children already loaded, update tree immediately
+        setFileTree(newTree)
       } else {
         current = current[index].children!
       }
@@ -468,17 +506,21 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     } else {
       // Load file content
       try {
+        console.log('[FileExplorer] Opening file:', node.path)
         const res = await fetch(`${API_BASE}/fs/read?path=${encodeURIComponent(node.path)}`)
         if (res.ok) {
           const data = await res.json()
+          console.log('[FileExplorer] File content loaded, calling openFile')
           if (openFile) {
             openFile(node.path, data.content || '')
           } else {
             onFileSelect(node.path, data.content || '')
           }
+        } else {
+          console.error('[FileExplorer] Failed to read file:', res.status, res.statusText)
         }
       } catch (error) {
-        console.error('Failed to read file:', error)
+        console.error('[FileExplorer] Failed to read file:', error)
       }
     }
   }, [onFileSelect, openFile, toggleDirectory])
@@ -744,21 +786,77 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
     }
   }, [rootPath, loadDirectory])
 
-  // Refresh without expanding any folders (for initial load)
+  // Refresh and restore expansion state from explorer state (VSCode-style)
   const handleRefreshNoExpansion = useCallback(async () => {
     if (rootPath) {
+      // Initialize explorer state for this project
+      explorerState.setProjectPath(rootPath)
+      
       const items = await loadDirectory(rootPath)
-      const closeAll = (nodes: FileNode[]): FileNode[] => {
+      
+      // Get expanded paths from explorer state
+      const expandedPaths = explorerState.getExpandedPaths()
+      
+      // Apply expansion state to loaded items
+      const applyExpansion = (nodes: FileNode[]): FileNode[] => {
         return nodes.map(node => {
           if (node.isDirectory) {
-            return { ...node, isOpen: false, children: undefined }
+            const shouldExpand = expandedPaths.includes(node.path)
+            return { 
+              ...node, 
+              isOpen: shouldExpand, 
+              isExpanded: shouldExpand,
+              children: shouldExpand ? undefined : node.children
+            }
           }
           return node
         })
       }
-      setFileTree(closeAll(items))
+      
+      setFileTree(applyExpansion(items))
+      
+      // Load children for expanded directories
+      const loadExpandedChildren = async (nodes: FileNode[]) => {
+        for (const node of nodes) {
+          if (node.isDirectory && expandedPaths.includes(node.path) && (!node.children || node.children.length === 0)) {
+            try {
+              const children = await loadDirectory(node.path)
+              const gitRoot = await gitIPC.findRoot(rootPath)
+              let processedChildren = children
+              if (gitRoot) {
+                processedChildren = await getGitStatusForFiles(children, gitRoot)
+              }
+              
+              // Update the tree with loaded children
+              const updateTreeWithChildren = (treeNodes: FileNode[]): FileNode[] => {
+                return treeNodes.map(n => {
+                  if (n.path === node.path) {
+                    return { ...n, children: applyExpansion(processedChildren) }
+                  }
+                  if (n.children) {
+                    return { ...n, children: updateTreeWithChildren(n.children) }
+                  }
+                  return n
+                })
+              }
+              
+              setFileTree(prev => updateTreeWithChildren(prev))
+              
+              // Recursively load children for nested expanded directories
+              await loadExpandedChildren(processedChildren)
+            } catch (error) {
+              console.error('[FileExplorer] Failed to load expanded directory:', node.path, error)
+            }
+          }
+          if (node.children) {
+            await loadExpandedChildren(node.children)
+          }
+        }
+      }
+      
+      await loadExpandedChildren(items)
     }
-  }, [rootPath, loadDirectory])
+  }, [rootPath, loadDirectory, getGitStatusForFiles])
 
   // Refresh while preserving current expansion state
   const handleRefreshPreserveExpansion = useCallback(async () => {
