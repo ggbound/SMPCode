@@ -182,6 +182,21 @@ function createWindow(): void {
       ]
     },
     {
+      label: '文件',
+      submenu: [
+        { label: '新建文件', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('file:new') },
+        { label: '打开文件...', accelerator: 'CmdOrCtrl+Shift+F', click: () => mainWindow?.webContents.send('file:open') },
+        { label: '打开文件夹...', accelerator: 'CmdOrCtrl+Shift+O', click: () => mainWindow?.webContents.send('folder:open') },
+        { type: 'separator' },
+        { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('file:save') },
+        { label: '另存为...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow?.webContents.send('file:save-as') },
+        { type: 'separator' },
+        { label: '刷新文件树', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow?.webContents.send('file:refresh') },
+        { type: 'separator' },
+        { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', role: 'close' }
+      ]
+    },
+    {
       label: '编辑',
       submenu: [
         { label: '撤销', accelerator: 'CmdOrCtrl+Z', role: 'undo' },
@@ -208,40 +223,6 @@ function createWindow(): void {
       ]
     },
     {
-      label: '会话',
-      submenu: [
-        { label: '新建会话', accelerator: 'CmdOrCtrl+Shift+N', click: () => mainWindow?.webContents.send('new-session') },
-        { label: '打开会话', accelerator: 'CmdOrCtrl+Shift+O', click: () => mainWindow?.webContents.send('open-session') }
-      ]
-    },
-    {
-      label: '文件',
-      submenu: [
-        { label: '新建文件', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('file:new') },
-        { label: '打开文件...', accelerator: 'CmdOrCtrl+Shift+F', click: () => mainWindow?.webContents.send('file:open') },
-        { label: '打开文件夹...', accelerator: 'CmdOrCtrl+Shift+O', click: () => mainWindow?.webContents.send('folder:open') },
-        { type: 'separator' },
-        { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => mainWindow?.webContents.send('file:save') },
-        { label: '另存为...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow?.webContents.send('file:save-as') },
-        { type: 'separator' },
-        { label: '刷新文件树', accelerator: 'CmdOrCtrl+Shift+R', click: () => mainWindow?.webContents.send('file:refresh') },
-        { type: 'separator' },
-        { label: '关闭标签页', accelerator: 'CmdOrCtrl+W', role: 'close' }
-      ]
-    },
-    {
-      label: 'Copilot',
-      submenu: [
-        { label: '触发内联编辑', accelerator: 'CmdOrCtrl+I', click: () => mainWindow?.webContents.send('copilot-inline-edit') },
-        { label: '解释选中代码', accelerator: 'CmdOrCtrl+Shift+E', click: () => mainWindow?.webContents.send('copilot-explain') },
-        { label: '重构选中代码', accelerator: 'CmdOrCtrl+Alt+R', click: () => mainWindow?.webContents.send('copilot-refactor') },
-        { type: 'separator' },
-        { label: '切换 Copilot', accelerator: 'CmdOrCtrl+Shift+C', click: () => mainWindow?.webContents.send('copilot-toggle') },
-        { label: '接受补全', accelerator: 'Tab', click: () => mainWindow?.webContents.send('copilot-accept') },
-        { label: '取消补全', accelerator: 'Esc', click: () => mainWindow?.webContents.send('copilot-dismiss') }
-      ]
-    },
-    {
       label: '窗口',
       submenu: [
         { label: '最小化', accelerator: 'CmdOrCtrl+M', role: 'minimize' },
@@ -253,11 +234,11 @@ function createWindow(): void {
       submenu: [
         {
           label: '文档',
-          click: async () => { await shell.openExternal('https://github.com/instructkr/claw-code') }
+          click: async () => { await shell.openExternal('https://github.com/ggbound/SMPCode') }
         },
         {
           label: '报告问题',
-          click: async () => { await shell.openExternal('https://github.com/instructkr/claw-code/issues') }
+          click: async () => { await shell.openExternal('https://github.com/ggbound/SMPCode/issues') }
         }
       ]
     }
