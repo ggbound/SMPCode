@@ -34,6 +34,11 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
       setEditedContent(tab.content)
       lastSavedContentRef.current = tab.content
       setSaveStatus(tab.isDirty ? 'unsaved' : 'saved')
+    } else {
+      // Reset when tab is closed
+      setEditedContent('')
+      lastSavedContentRef.current = ''
+      setSaveStatus('saved')
     }
   }, [tab?.id])
 
@@ -71,23 +76,27 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
   }, [tab?.path, editedContent])
 
   // Update content when tab content changes externally (e.g., AI operations)
+  // Only update if the content change is from external source (AI), not from user editing
+  // User editing updates are handled via onContentChange callback
   useEffect(() => {
     if (!tab) return
     
-    // Always update when tab.content changes from external source
-    // Compare with editedContent to detect external changes
-    if (tab.content !== editedContent) {
-      console.log('[FileViewer] External content change detected')
+    // Only update if:
+    // 1. Content is different from current edited content
+    // 2. Tab is NOT dirty (dirty means user has unsaved changes)
+    // 3. OR the content is significantly different (indicating external change, not user edit)
+    if (tab.content !== editedContent && !tab.isDirty) {
+      console.log('[FileViewer] External content change detected (tab not dirty)')
       console.log('[FileViewer] Tab content length:', tab.content.length)
       console.log('[FileViewer] Current edited content length:', editedContent.length)
       
       // Update edited content to match external content
       setEditedContent(tab.content)
       lastSavedContentRef.current = tab.content
-      setSaveStatus(tab.isDirty ? 'unsaved' : 'saved')
+      setSaveStatus('saved')
       console.log('[FileViewer] Content updated from external source')
     }
-  }, [tab?.content, tab?.lastModified, tab?.id])
+  }, [tab?.content, tab?.lastModified, tab?.id, tab?.isDirty])
 
   // Perform save
   const performSave = useCallback(async (content: string) => {

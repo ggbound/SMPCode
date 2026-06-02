@@ -130,6 +130,9 @@ function App() {
   // Editor reference for jumping to lines
   const editorRef = useRef<any>(null)
   
+  // Ref to track latest edited content for each tab (for menu save)
+  const latestTabContentRef = useRef<Map<string, string>>(new Map())
+  
   // Session sidebar state - 已移动到顶部，不再需要侧边栏
   const [localSessions, setLocalSessions] = useState<Session[]>([])
   
@@ -1485,6 +1488,9 @@ function App() {
 
   // Handle tab close
   const handleTabClose = useCallback((tabId: string) => {
+    // Clean up the content ref for this tab
+    latestTabContentRef.current.delete(tabId)
+    
     setTabs(prev => {
       const tabIndex = prev.findIndex(t => t.id === tabId)
       const newTabs = prev.filter(t => t.id !== tabId)
@@ -1520,6 +1526,8 @@ function App() {
 
   // Handle close all tabs
   const handleTabCloseAll = useCallback(() => {
+    // Clear all content refs
+    latestTabContentRef.current.clear()
     setTabs([])
     setActiveTabId(null)
     setSelectedFilePath(null)
@@ -1679,6 +1687,9 @@ function App() {
 
   // Handle tab content change
   const handleTabContentChange = useCallback((tabId: string, content: string) => {
+    // Update the ref with latest content for menu save
+    latestTabContentRef.current.set(tabId, content)
+    console.log('[App] handleTabContentChange called, tabId:', tabId, 'content length:', content.length)
     setTabs(prev => prev.map(tab => 
       tab.id === tabId ? { ...tab, content, isDirty: true, isPreview: false } : tab
     ))
@@ -1686,8 +1697,22 @@ function App() {
 
   // Handle tab save via IPC
   const handleTabSave = useCallback(async (tabId: string, content: string): Promise<boolean> => {
+    console.log('[App] handleTabSave called, tabId:', tabId, 'content length:', content?.length)
     const tab = tabs.find(t => t.id === tabId)
     if (!tab) return false
+
+    // Prevent saving undefined or null content
+    if (content === undefined || content === null) {
+      console.error('[App] handleTabSave - content is undefined or null, aborting save')
+      return false
+    }
+
+    // Prevent saving empty content if file originally had content
+    // This prevents accidental file truncation
+    if (content === '' && tab.content && tab.content.length > 0) {
+      console.error('[App] handleTabSave - attempting to save empty content when file has content, aborting save')
+      return false
+    }
 
     try {
       // 使用 IPC 写入文件
@@ -1705,6 +1730,10 @@ function App() {
           setTabs(prev => prev.map(t => 
             t.id === tabId ? { ...t, content, isDirty: false } : t
           ))
+          // Clear the ref since content is now saved and in sync
+          latestTabContentRef.current.delete(tabId)
+          // Trigger file operation event to refresh Git status and file tree
+          window.dispatchEvent(new CustomEvent('file-operation-completed'))
           return true
         }
       }
@@ -1771,10 +1800,16 @@ function App() {
     
     // Save File
     const unsubFileSave = window.api?.onFileSave?.(() => {
+      console.log('[App] Menu save triggered, activeTabId:', activeTabId)
       if (activeTabId) {
         const tab = tabs.find(t => t.id === activeTabId)
+        const refContent = latestTabContentRef.current.get(activeTabId)
+        console.log('[App] Menu save - tab.isDirty:', tab?.isDirty, 'ref content length:', refContent?.length, 'tab content length:', tab?.content?.length)
         if (tab && tab.isDirty) {
-          handleTabSave(tab.id, tab.content)
+          // Use latest content from ref to ensure we save the most recent edits
+          const latestContent = refContent || tab.content || ''
+          console.log('[App] Menu save - using content length:', latestContent?.length)
+          handleTabSave(tab.id, latestContent)
         }
       }
     })
@@ -2027,7 +2062,9 @@ function App() {
       category: 'File',
       execute: async () => {
         if (activeTab && activeTab.isDirty) {
-          await handleTabSave(activeTab.id, activeTab.content || '')
+          // Use latest content from ref to ensure we save the most recent edits
+          const latestContent = latestTabContentRef.current.get(activeTab.id) || activeTab.content || ''
+          await handleTabSave(activeTab.id, latestContent)
         }
       }
     },
@@ -2130,7 +2167,9 @@ function App() {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault()
         if (activeTab && activeTab.isDirty) {
-          handleTabSave(activeTab.id, activeTab.content || '')
+          // Use latest content from ref to ensure we save the most recent edits
+          const latestContent = latestTabContentRef.current.get(activeTab.id) || activeTab.content || ''
+          handleTabSave(activeTab.id, latestContent)
         }
         return
       }
@@ -2264,8 +2303,9 @@ function App() {
                       ))
                     }}
                   />
-                ) : (
+                ) : activeTab ? (
                   <FileViewer
+                    key={activeTab.id}
                     tab={activeTab}
                     onContentChange={handleTabContentChange}
                     onSave={handleTabSave}
@@ -2276,7 +2316,7 @@ function App() {
                       console.log('[App] Editor mounted')
                     }}
                   />
-                )}
+                ) : null}
               </div>
               <Terminal 
                 ref={terminalRef} 
