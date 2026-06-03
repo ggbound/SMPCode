@@ -75,6 +75,17 @@ export const AGENT_MODE_TOOLS: PromptTool[] = [
       content: { type: 'string', description: 'The complete content to write', required: true }
     },
     required: ['path', 'content']
+  },
+  {
+    name: 'browse_website',
+    description: 'Open a website URL and extract its content for analysis. Use this when you need to read web pages, documentation, or any online content. The tool will load the page in a hidden browser, wait for JavaScript to execute, and extract the main text content.',
+    parameters: {
+      url: { type: 'string', description: 'The URL to open. Can be a full URL (https://example.com) or just the domain (example.com)', required: true },
+      wait_for_selector: { type: 'string', description: 'Optional CSS selector to wait for before extracting content. Useful for pages that load content dynamically.', required: false },
+      timeout: { type: 'number', description: 'Maximum time to wait for page load in milliseconds. Default is 30000 (30 seconds).', required: false },
+      max_length: { type: 'number', description: 'Maximum length of content to return in characters. Default is 50000.', required: false }
+    },
+    required: ['url']
   }
 ]
 
@@ -99,6 +110,8 @@ CORRECT examples:
 <tool name="list_directory" path="/Users/test/project/src"/>
 <tool name="execute_bash" command="npm install"/>
 <tool name="write_file" path="/path/to/file.txt" content="file content here"/>
+<tool name="browse_website" url="https://example.com"/>
+<tool name="browse_website" url="https://github.com/user/repo" wait_for_selector=".repository-content"/>
 
 INCORRECT examples (NEVER do these):
 - \`\`\`bash\ncd /path && npm install\n\`\`\` ← WRONG! Don't use markdown code blocks

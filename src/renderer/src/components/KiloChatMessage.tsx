@@ -28,7 +28,8 @@ import {
   Wrench,
   Zap,
   Code2,
-  Eye
+  Eye,
+  Globe
 } from 'lucide-react'
 
 interface KiloChatMessageProps {
@@ -91,6 +92,12 @@ const toolConfig: Record<string, {
     label: '追加',
     color: '#f97316',
     bgColor: 'rgba(249, 115, 22, 0.1)'
+  },
+  'browse_website': { 
+    icon: <Globe size={14} />, 
+    label: '浏览网页',
+    color: '#0ea5e9',
+    bgColor: 'rgba(14, 165, 233, 0.1)'
   }
 }
 
@@ -104,9 +111,18 @@ function getToolInfo(toolName: string) {
   }
 }
 
-// 格式化路径
+// 格式化路径或 URL
 function formatPath(path: string): string {
   if (!path) return ''
+  // 如果是 URL，显示域名部分
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    try {
+      const url = new URL(path)
+      return url.hostname
+    } catch {
+      return path
+    }
+  }
   const parts = path.split('/')
   if (parts.length > 4) {
     return parts.slice(-4).join('/')
@@ -117,7 +133,7 @@ function formatPath(path: string): string {
 // 工具调用卡片 - Kilo 风格
 const ToolCallCard = memo(function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
   const config = getToolInfo(toolCall.name)
-  const path = toolCall.args?.path || toolCall.args?.file_path || toolCall.args?.directory || toolCall.args?.command || ''
+  const path = toolCall.args?.path || toolCall.args?.file_path || toolCall.args?.directory || toolCall.args?.command || toolCall.args?.url || ''
   
   return (
     <div 

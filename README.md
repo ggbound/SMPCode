@@ -71,6 +71,14 @@ Claw Code 是一款对标 VSCode 的现代化 AI 辅助代码编辑器，采用 
 | **WebSocket** | Native | 飞书长连接消息接收 |
 | **EventSource** | Native | 飞书事件订阅 |
 
+### 浏览器工具
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| **Electron BrowserWindow** | Native | 隐藏浏览器窗口 |
+| **WebContents** | Native | 页面内容提取 |
+| **Offscreen Rendering** | Native | 离屏渲染 |
+
 ### 终端与进程
 
 | 技术 | 版本 | 用途 |
@@ -114,6 +122,7 @@ claw-code-web/
 │   │   ├── core/               # 核心模块（命令、工具、模型等）
 │   │   └── services/           # 业务服务层
 │   │       ├── anthropic-service.ts      # Claude API 服务
+│   │       ├── browser-tool-service.ts   # 浏览器工具服务
 │   │       ├── code-intelligence-service.ts  # 代码智能服务
 │   │       ├── feishu-ws-service.ts      # 飞书 WebSocket 服务
 │   │       ├── files-service.ts          # 文件服务
@@ -309,6 +318,7 @@ open dist/mac-arm64/Claw\ Code.app
 - ✅ **会话持久化**：对话历史保存到项目目录，按项目隔离
 - ✅ **图片支持**：支持上传和分析图片
 - ✅ **Markdown 渲染**：完整的 Markdown、代码块、表格支持
+- ✅ **浏览器工具**：AI 可以打开网页并分析内容，支持 JavaScript 渲染的页面
 
 ### 飞书机器人集成
 

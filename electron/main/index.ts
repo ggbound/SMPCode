@@ -18,6 +18,7 @@ import {
 import { initTerminalService, cleanupTerminals } from './services/terminal-service'
 import { processBridge } from './services/process-terminal-bridge'
 import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
+import { browseWebsite } from './services/browser-tool-service'
 import { 
   initFeishuWebSocketService, 
   getFeishuWebSocketService,
@@ -1482,6 +1483,76 @@ function initializeCLIRegistries(): void {
           success: false,
           output: '',
           error: String(error)
+        }
+      }
+    }
+  })
+
+  // 注册浏览网页工具
+  toolRegistry.register({
+    name: 'browse_website',
+    description: 'Open a website URL and extract its content for analysis. Use this when you need to read web pages, documentation, or any online content. The tool will load the page in a hidden browser, wait for JavaScript to execute, and extract the main text content. Supports both http and https URLs.',
+    sourceHint: 'builtin',
+    responsibility: 'Open a website URL and extract its content for analysis',
+    parameters: {
+      url: {
+        type: 'string',
+        description: 'The URL to open. Can be a full URL (https://example.com) or just the domain (example.com). Both http and https protocols are supported.',
+        required: true
+      },
+      wait_for_selector: {
+        type: 'string',
+        description: 'Optional CSS selector to wait for before extracting content. Useful for pages that load content dynamically. Example: ".article-content" or "#main-content"',
+        required: false
+      },
+      timeout: {
+        type: 'number',
+        description: 'Maximum time to wait for page load in milliseconds. Default is 30000 (30 seconds). Increase for slow-loading pages.',
+        required: false
+      },
+      max_length: {
+        type: 'number',
+        description: 'Maximum length of content to return in characters. Default is 50000. Content exceeding this limit will be truncated.',
+        required: false
+      }
+    },
+    required: ['url'],
+    execute: async (args, context) => {
+      try {
+        const url = String(args.url)
+        const waitForSelector = args.wait_for_selector ? String(args.wait_for_selector) : undefined
+        const timeout = args.timeout ? Number(args.timeout) : undefined
+        const maxLength = args.max_length ? Number(args.max_length) : undefined
+
+        log.info(`[browse_website] Opening URL: ${url}`)
+
+        const result = await browseWebsite(url, {
+          waitForSelector,
+          timeout,
+          maxLength
+        })
+
+        if (result.success) {
+          const contentLength = result.metadata?.contentLength || result.content.length
+          const output = `[浏览网页成功] ${result.title || '无标题'}\n\nURL: ${result.url}\n内容长度: ${contentLength} 字符\n\n内容摘要:\n${result.content.substring(0, 2000)}${result.content.length > 2000 ? '\n\n...(内容已截断)' : ''}`
+          return {
+            success: true,
+            output,
+            data: result
+          }
+        } else {
+          return {
+            success: false,
+            output: '',
+            error: result.error || 'Unknown error'
+          }
+        }
+      } catch (error) {
+        log.error(`[browse_website] Error:`, error)
+        return {
+          success: false,
+          output: '',
+          error: error instanceof Error ? error.message : String(error)
         }
       }
     }

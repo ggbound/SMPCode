@@ -619,7 +619,7 @@ export async function sendCLIMessageStream(
             type: 'function',
             function: {
               name: tool.name,
-              description: tool.responsibility,
+              description: tool.description,
               parameters: {
                 type: 'object',
                 properties,
@@ -1048,7 +1048,7 @@ export async function sendCLIMessage(
             type: 'function',
             function: {
               name: tool.name,
-              description: tool.responsibility,
+              description: tool.description,
               parameters: {
                 type: 'object',
                 properties,

@@ -14,6 +14,7 @@ import {
   createSuccessResult,
   createErrorResult
 } from './tools-core'
+import { browseWebsite } from './browser-tool-service'
 
 // Simple tool registry
 class ToolRegistry {
@@ -1099,6 +1100,81 @@ const findProcessTool: ToolExecutor = {
   }
 }
 
+// ============ 浏览器工具 ============
+
+/**
+ * Browse Website Tool
+ * 打开网页并获取内容
+ */
+const browseWebsiteTool: ToolExecutor = {
+  name: 'browse_website',
+  description: 'Open a website URL and extract its content for analysis. Use this when you need to read web pages, documentation, or any online content. The tool will load the page in a hidden browser, wait for JavaScript to execute, and extract the main text content. Supports both http and https URLs.',
+  parameters: {
+    url: {
+      type: 'string',
+      description: 'The URL to open. Can be a full URL (https://example.com) or just the domain (example.com). Both http and https protocols are supported.',
+      required: true
+    },
+    wait_for_selector: {
+      type: 'string',
+      description: 'Optional CSS selector to wait for before extracting content. Useful for pages that load content dynamically. Example: ".article-content" or "#main-content"',
+      required: false
+    },
+    timeout: {
+      type: 'number',
+      description: 'Maximum time to wait for page load in milliseconds. Default is 30000 (30 seconds). Increase for slow-loading pages.',
+      required: false
+    },
+    max_length: {
+      type: 'number',
+      description: 'Maximum length of content to return in characters. Default is 50000. Content exceeding this limit will be truncated.',
+      required: false
+    }
+  },
+  required: ['url'],
+  execute: async (args, context): Promise<ToolExecutionResult> => {
+    try {
+      const url = args.url as string
+      const waitForSelector = args.wait_for_selector as string | undefined
+      const timeout = args.timeout as number | undefined
+      const maxLength = args.max_length as number | undefined
+
+      log.info(`[browse_website] Opening URL: ${url}`)
+
+      const result = await browseWebsite(url, {
+        waitForSelector,
+        timeout,
+        maxLength
+      })
+
+      if (!result.success) {
+        return createErrorResult(result.error || 'Failed to browse website')
+      }
+
+      // 格式化输出
+      const output = `Title: ${result.title || 'N/A'}
+URL: ${result.url}
+Load Time: ${result.metadata?.loadTime}ms
+Content Length: ${result.metadata?.contentLength} characters
+Has JavaScript: ${result.metadata?.hasJavaScript}
+
+--- Content ---
+${result.content}`
+
+      return createSuccessResult(output, {
+        title: result.title,
+        url: result.url,
+        loadTime: result.metadata?.loadTime,
+        contentLength: result.metadata?.contentLength,
+        hasJavaScript: result.metadata?.hasJavaScript
+      })
+    } catch (error) {
+      log.error(`[browse_website] Error:`, error)
+      return createErrorResult(String(error))
+    }
+  }
+}
+
 // ============ 注册所有工具 ============
 
 export function registerAllTools(): void {
@@ -1116,6 +1192,7 @@ export function registerAllTools(): void {
   toolRegistry.register(checkPortTool)
   toolRegistry.register(killProcessTool)
   toolRegistry.register(findProcessTool)
+  toolRegistry.register(browseWebsiteTool)
 
   log.info(`[ToolDefinitions] Registered ${toolRegistry.count()} tools`)
 }
