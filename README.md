@@ -63,6 +63,14 @@ Claw Code 是一款对标 VSCode 的现代化 AI 辅助代码编辑器，采用 
 | **remark-gfm** | 4.0.1 | GitHub Flavored Markdown |
 | **rehype-raw** | 7.0.0 | HTML 解析 |
 
+### 飞书集成
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| **@larksuiteoapi/node-sdk** | 1.x | 飞书开放平台 SDK |
+| **WebSocket** | Native | 飞书长连接消息接收 |
+| **EventSource** | Native | 飞书事件订阅 |
+
 ### 终端与进程
 
 | 技术 | 版本 | 用途 |
@@ -107,6 +115,7 @@ claw-code-web/
 │   │   └── services/           # 业务服务层
 │   │       ├── anthropic-service.ts      # Claude API 服务
 │   │       ├── code-intelligence-service.ts  # 代码智能服务
+│   │       ├── feishu-ws-service.ts      # 飞书 WebSocket 服务
 │   │       ├── files-service.ts          # 文件服务
 │   │       ├── git-service.ts            # Git 服务
 │   │       ├── llm-service.ts            # LLM 服务
@@ -148,6 +157,8 @@ claw-code-web/
 │   │   │   ├── chat-prompt.ts          # Chat 模式提示词
 │   │   │   ├── shared.ts               # 共享提示词
 │   │   │   └── types.ts                # 提示词类型
+│   │   ├── services/           # 服务层
+│   │   │   └── feishuService.ts        # 飞书 API 服务
 │   │   ├── store/              # 全局状态（Zustand）
 │   │   │   └── kiloStore.ts            # Kilo 状态管理
 │   │   ├── styles/             # CSS 样式
@@ -299,6 +310,14 @@ open dist/mac-arm64/Claw\ Code.app
 - ✅ **图片支持**：支持上传和分析图片
 - ✅ **Markdown 渲染**：完整的 Markdown、代码块、表格支持
 
+### 飞书机器人集成
+
+- ✅ **飞书 WebSocket 长连接**：使用飞书开放平台长连接接收消息事件
+- ✅ **双向消息交互**：在飞书群聊中 @机器人发送消息，自动触发本地 AI 对话，AI 回复后同步回飞书
+- ✅ **消息持久化**：飞书对话历史保存到"飞书专用对话"会话，按项目隔离
+- ✅ **配置管理**：可视化配置飞书 App ID、App Secret、机器人开关
+- ✅ **连接状态监控**：实时显示 WebSocket 连接状态
+
 ### 终端
 
 - ✅ **集成终端**：基于 node-pty 的原生终端
@@ -365,7 +384,7 @@ open dist/mac-arm64/Claw\ Code.app
 
 ### 2. 模块化提示词系统
 
-```typescript
+``typescript
 prompts/
 ├── agent-prompt.ts    # Agent 模式提示词（工具调用、任务执行）
 ├── chat-prompt.ts     # Chat 模式提示词（问答、建议）
@@ -515,6 +534,77 @@ npm install
 # 查看日志 (macOS)
 log stream --predicate 'process == "Claw Code"' --info
 ```
+
+### 问题 5: 飞书连接失败
+
+**症状**: WebSocket 无法连接或频繁断开  
+**解决**:
+1. 检查 App ID 和 App Secret 是否正确
+2. 确认应用已发布并通过审核
+3. 检查网络连接是否正常
+4. 查看控制台日志获取详细错误信息
+
+### 问题 6: 飞书消息未触发 AI 回复
+
+**症状**: @机器人后没有收到回复  
+**解决**:
+1. 确认机器人功能已开启
+2. 检查事件订阅是否配置正确（`im.message.receive_v1`）
+3. 确认使用的是长连接接收事件
+4. 检查 AI 模型配置是否正确
+
+### 问题 7: 飞书会话数据异常
+
+**症状**: 飞书消息未保存或显示错误  
+**解决**:
+1. 检查 `.smp-code/conversations/` 目录下的文件
+2. 确认飞书会话和普通会话的数据隔离
+3. 查看控制台日志获取保存/加载信息
+
+---
+
+## 📘 飞书机器人配置指南
+
+### 前置条件
+
+1. 拥有飞书开放平台企业自建应用
+2. 应用已开启机器人功能
+3. 应用已发布并通过审核
+
+### 配置步骤
+
+1. **在飞书开放平台创建应用**
+   - 登录 [飞书开放平台](https://open.feishu.cn/)
+   - 创建企业自建应用
+   - 在应用详情页获取 **App ID** 和 **App Secret**
+
+2. **开启机器人功能**
+   - 进入应用详情 → 机器人页面
+   - 开启机器人功能
+
+3. **配置事件订阅**
+   - 进入应用详情 → 事件订阅页面
+   - 选择"使用长连接接收事件"
+   - 添加订阅事件 `im.message.receive_v1`（接收消息）
+
+4. **发布应用**
+   - 发布应用并通知管理员审核
+
+5. **在 Claw Code 中配置**
+   - 打开设置 → 飞书标签页
+   - 填写 App ID 和 App Secret
+   - 开启"启用机器人功能"
+   - 保存配置
+
+6. **使用**
+   - 在群聊中添加机器人
+   - @机器人发送消息即可触发 AI 对话
+
+### 注意事项
+
+- 使用长连接方式不需要公网服务器和域名
+- 机器人只会响应 @它的消息
+- 飞书对话历史保存在"飞书专用对话"会话中
 
 ---
 
