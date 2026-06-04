@@ -378,6 +378,16 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                   })
                 }
               }
+              
+              // 将工具调用结果追加到消息内容中，让用户能看到结果
+              const resultText = chunk.toolResult.success 
+                ? `\n\n**工具执行结果：**\n\`\`\`\n${chunk.toolResult.output}\n\`\`\``
+                : `\n\n**工具执行失败：**\n${chunk.toolResult.error || 'Unknown error'}`
+              
+              const currentContent = currentMsg?.content || ''
+              store.updateMessage(assistantMessageId, {
+                content: currentContent + resultText
+              })
             }
             break
             

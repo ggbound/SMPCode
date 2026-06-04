@@ -100,7 +100,7 @@ For each user request:
 1. **PLAN**: Before any tools, create a task plan showing what you'll do
 2. **EXPLORE**: Use list_directory, search_files, read_file to gather context
 3. **ANALYZE**: Understand what you found and what needs to be done
-4. **EXECUTE**: Use tools to make changes - ALWAYS use JSON code blocks
+4. **EXECUTE**: Use tools to make changes - ALWAYS use XML format <tool name="..." .../>
 5. **VERIFY**: Check that changes work correctly
 6. **CONTINUE**: Keep going until the task is fully complete
 7. **SUMMARIZE**: Only provide final summary when truly done
@@ -138,7 +138,7 @@ FORBIDDEN PATTERNS:
 ❌ NEVER reuse PIDs, URLs, or port numbers from previous messages without re-executing commands
 ❌ NEVER fabricate results - ALWAYS execute tools first, get results, then report
 ❌ NEVER assume a service is running - ALWAYS verify by executing commands
-✅ ALWAYS output: <tool name="bash" command="command to execute"/>
+✅ ALWAYS output: <tool name="execute_bash" command="command to execute"/>
 
 ⚠️ PORT OCCUPANCY CHECK - ABSOLUTELY CRITICAL ⚠️
 

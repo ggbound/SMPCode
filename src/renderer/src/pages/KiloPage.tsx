@@ -402,6 +402,19 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
         if (result.success && result.messages) {
           store.clearMessages()
           result.messages.forEach((msg: any) => {
+            // 清理 toolCalls 数据，过滤掉格式错误的条目
+            let cleanedToolCalls = msg.toolCalls
+            if (Array.isArray(msg.toolCalls)) {
+              cleanedToolCalls = msg.toolCalls.filter((tc: any) => {
+                // 确保 toolCall 有必要的字段且格式正确
+                return tc && 
+                       typeof tc === 'object' && 
+                       typeof tc.name === 'string' && 
+                       tc.name.length > 0 &&
+                       tc.args && typeof tc.args === 'object'
+              })
+            }
+            
             store.addMessage({
               id: msg.id || uuidv4(),
               role: msg.role,
@@ -409,7 +422,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
               timestamp: msg.timestamp || Date.now(),
               mode: msg.mode || 'code',
               blocks: msg.blocks,
-              toolCalls: msg.toolCalls,
+              toolCalls: cleanedToolCalls,
               reasoning: msg.reasoning,
               isStreaming: false
             })

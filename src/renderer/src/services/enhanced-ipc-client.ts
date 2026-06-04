@@ -199,7 +199,8 @@ export async function executeTool(
   return safeIPCCall(
     () => (window as any).api?.executeTool?.(callId, toolName, args, cwd),
     'executeTool',
-    { success: false, error: 'Tool execution not available' }
+    { success: false, error: 'Tool execution not available' },
+    { maxRetries: 0 }  // 禁用自动重试，工具执行失败应立即返回
   )
 }
 

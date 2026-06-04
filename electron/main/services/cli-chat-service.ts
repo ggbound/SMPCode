@@ -294,10 +294,11 @@ async function executeToolCall(
     log.error(`[CLI-Chat Tool] Tool not found: ${resolvedToolName} (original: ${toolName})`)
     log.error(`[CLI-Chat Tool] Available tools: ${allTools}`)
     log.error(`[CLI-Chat Tool] Registry size: ${toolRegistry.getAll().length}`)
+    log.error(`[CLI-Chat Tool] Does list_reminders exist? ${toolRegistry.has('list_reminders')}`)
     return {
       success: false,
       output: '',
-      error: `Tool not found: ${toolName}`
+      error: `Tool not found: ${toolName}. Available tools: ${allTools}`
     }
   }
 
@@ -348,9 +349,36 @@ function extractToolCallsFromContent(content: string): {
   let cleanedContent = content
 
   // 已知工具列表（使用正确的工具名称）
-  const knownTools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'execute_bash', 'search_files', 'delete_file', 'append_file']
+  const knownTools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'execute_bash', 'search_files', 'delete_file', 'append_file', 'browse_website', 'list_reminders']
 
   log.debug(`[CLI-Chat] Extracting tool calls from content: ${content.substring(0, 200)}...`)
+
+  // 0. 飞书环境特殊格式：<tool name="..."><parameter=xxx>value</parameter=xxx></tool_call/>
+  const feishuToolRegex = /<tool\s+name="([^"]+)"\s*>[\s\S]*?<\/tool_call\s*\/?>/gs
+  let feishuMatch
+  while ((feishuMatch = feishuToolRegex.exec(content)) !== null) {
+    const toolName = feishuMatch[1]
+    const fullMatch = feishuMatch[0]
+    const args: Record<string, unknown> = {}
+
+    // 匹配 <parameter=xxx>value</parameter=xxx> 格式
+    const paramRegex = /<parameter=(\w+)>\s*([\s\S]*?)\s*<\/parameter=\1>/g
+    let paramMatch
+    while ((paramMatch = paramRegex.exec(fullMatch)) !== null) {
+      const paramName = paramMatch[1]
+      const paramValue = paramMatch[2].trim()
+      args[paramName] = paramValue
+      log.debug(`[CLI-Chat] Feishu format param: ${paramName}=${paramValue}`)
+    }
+
+    if (knownTools.includes(toolName)) {
+      toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
+      log.info(`[CLI-Chat] Extracted tool call from Feishu format: ${toolName}, args=${JSON.stringify(args)}`)
+      cleanedContent = cleanedContent.replace(fullMatch, '')
+    } else {
+      log.debug(`[CLI-Chat] Unknown tool name in Feishu format: ${toolName}`)
+    }
+  }
 
   // 1. 匹配 <tool name="..." .../> 格式（正确格式）
   // 使用更健壮的正则，支持多行属性和特殊字符
@@ -777,7 +805,18 @@ export async function sendCLIMessageStream(
       
       try {
         log.debug(`[CLI-Chat] Executing tool: ${toolCall.name}`)
-        const args = JSON.parse(toolCall.arguments)
+        
+        // ✅ 修复：添加 JSON 解析错误处理，防止无效参数导致整个流程崩溃
+        let args: Record<string, unknown>
+        try {
+          args = JSON.parse(toolCall.arguments)
+        } catch (parseError) {
+          log.error(`[CLI-Chat] Failed to parse tool arguments: ${toolCall.arguments}`)
+          log.error(`[CLI-Chat] Parse error: ${parseError}`)
+          // 使用空参数继续，让工具执行时处理无效参数
+          args = {}
+        }
+        
         const result = await executeToolCall(toolCall.name, args, session.cwd)
 
         onChunk({

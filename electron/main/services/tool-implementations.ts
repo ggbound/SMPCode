@@ -11,6 +11,7 @@ import { promisify } from 'util'
 import { exec } from 'child_process'
 import log from 'electron-log'
 import type { ToolExecutionResult } from '../../../src/shared/types/tool-call'
+import { getAllReminders } from './reminder-service'
 
 const execAsync = promisify(exec)
 
@@ -463,6 +464,56 @@ export async function executeFindProcess(
       metadata: { found: true, count: processes.length }
     }
   } catch (error) {
+    return {
+      success: false,
+      output: '',
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+// ============ 定时任务工具 ============
+
+export async function executeListReminders(
+  _args: Record<string, unknown>,
+  _cwd: string
+): Promise<ToolExecutionResult> {
+  try {
+    const reminders = getAllReminders()
+    
+    if (reminders.length === 0) {
+      return {
+        success: true,
+        output: JSON.stringify({
+          message: '暂无定时提醒',
+          count: 0,
+          reminders: []
+        }, null, 2)
+      }
+    }
+
+    const reminderList = reminders.map(r => ({
+      id: r.id,
+      content: r.content,
+      cronExpression: r.cronExpression,
+      targetType: r.targetType,
+      targetId: r.targetId,
+      enabled: r.enabled,
+      triggerCount: r.triggerCount,
+      lastTriggeredAt: r.lastTriggeredAt ? new Date(r.lastTriggeredAt).toLocaleString('zh-CN') : '从未',
+      createdAt: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : ''
+    }))
+
+    return {
+      success: true,
+      output: JSON.stringify({
+        message: `找到 ${reminders.length} 个定时提醒`,
+        count: reminders.length,
+        reminders: reminderList
+      }, null, 2)
+    }
+  } catch (error) {
+    log.error(`[executeListReminders] Error:`, error)
     return {
       success: false,
       output: '',

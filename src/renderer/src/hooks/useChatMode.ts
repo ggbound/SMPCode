@@ -147,10 +147,19 @@ export function useChatMode() {
           }
 
           // Add visual indicator for tool execution
+          // HTML escape tool name to prevent XSS and invalid tag names
+          const escapeHtml = (str: string): string => {
+            return str
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#039;')
+          }
           const pendingTools = toolCalls.map(tc =>
             `<div class="smp-tool-status-item smp-running">
               <span class="smp-tool-status-pulse"></span>
-              <span class="smp-tool-status-name">${tc.tool}</span>
+              <span class="smp-tool-status-name">${escapeHtml(tc.tool)}</span>
             </div>`
           ).join('')
 

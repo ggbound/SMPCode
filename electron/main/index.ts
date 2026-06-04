@@ -20,11 +20,22 @@ import { processBridge } from './services/process-terminal-bridge'
 import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
 import { browseWebsite } from './services/browser-tool-service'
 import { 
+  initReminderService,
+  addReminder,
+  getAllReminders,
+  removeReminder,
+  updateReminder,
+  parseNaturalLanguageToCron
+} from './services/reminder-service'
+import { 
   initFeishuWebSocketService, 
   getFeishuWebSocketService,
   updateFeishuWebSocketConfig,
   type FeishuConfig 
 } from './services/feishu-ws-service'
+
+// 当前飞书会话上下文（用于提醒功能）
+let currentFeishuContext: { chatId?: string; chatType?: 'group' | 'p2p' } = {}
 import {
   getGitStatus,
   isGitRepository,
@@ -851,6 +862,55 @@ function setupIpcHandlers(): void {
     }
   })
 
+  // Reminder handlers
+  ipcMain.handle('reminder:get-all', () => {
+    return getAllReminders()
+  })
+
+  ipcMain.handle('reminder:add', async (_event, { content, cronExpression, targetType, targetId, description }: { content: string; cronExpression: string; targetType: 'user' | 'group'; targetId: string; description?: string }) => {
+    try {
+      const reminder = await addReminder(content, cronExpression, targetType, targetId, description)
+      return { success: true, reminder }
+    } catch (error) {
+      log.error('Failed to add reminder:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('reminder:remove', async (_event, id: string) => {
+    try {
+      const success = await removeReminder(id)
+      return { success }
+    } catch (error) {
+      log.error('Failed to remove reminder:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('reminder:update', async (_event, { id, updates }: { id: string; updates: Partial<{ content?: string; cronExpression?: string; enabled?: boolean }> }) => {
+    try {
+      const reminder = await updateReminder(id, updates)
+      return { success: true, reminder }
+    } catch (error) {
+      log.error('Failed to update reminder:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('reminder:toggle', async (_event, id: string) => {
+    try {
+      const reminder = getReminderService().getReminder(id)
+      if (!reminder) {
+        return { success: false, error: 'Reminder not found' }
+      }
+      const updated = await updateReminder(id, { enabled: !reminder.enabled })
+      return { success: true, reminder: updated }
+    } catch (error) {
+      log.error('Failed to toggle reminder:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
   log.info('IPC handlers registered')
 }
 
@@ -938,6 +998,16 @@ function setupFeishuWebSocketHandlers(): void {
       const wsService = await initFeishuWebSocketService(
         config,
         async (event) => {
+          // 保存当前飞书会话上下文
+          const message = event?.message
+          if (message?.chat_id) {
+            currentFeishuContext = {
+              chatId: message.chat_id,
+              chatType: message.chat_type === 'p2p' ? 'p2p' : 'group'
+            }
+            log.info(`[FeishuContext] Updated: chatId=${message.chat_id}, chatType=${currentFeishuContext.chatType}`)
+          }
+          
           // 将接收到的消息发送到渲染进程
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('feishu:ws:message', event)
@@ -1558,6 +1628,170 @@ function initializeCLIRegistries(): void {
     }
   })
 
+  // 注册定时提醒工具
+  toolRegistry.register({
+    name: 'add_reminder',
+    description: 'Add a scheduled reminder that will send messages via Feishu at specified times. Supports natural language time expressions like "every day at 9am", "workdays at 9am", "every Monday at 9am". The reminder will be sent to the current Feishu chat by default.',
+    sourceHint: 'builtin',
+    responsibility: 'Create scheduled reminders to send messages at specific times',
+    parameters: {
+      content: {
+        type: 'string',
+        description: 'The reminder message content to send',
+        required: true
+      },
+      time_expression: {
+        type: 'string',
+        description: 'When to send the reminder. Examples: "every day at 9am", "workdays at 9am", "every Monday at 9am", "0 9 * * *" (cron format)',
+        required: true
+      },
+      description: {
+        type: 'string',
+        description: 'Optional description or notes for this reminder',
+        required: false
+      }
+    },
+    required: ['content', 'time_expression'],
+    execute: async (args, context) => {
+      try {
+        const content = String(args.content)
+        const timeExpression = String(args.time_expression)
+        const description = args.description ? String(args.description) : undefined
+
+        log.info(`[add_reminder] Creating reminder: ${content}`)
+
+        // 使用当前飞书会话上下文，如果没有则报错
+        if (!currentFeishuContext.chatId) {
+          return {
+            success: false,
+            output: '',
+            error: 'No active Feishu chat context. Please use this command from a Feishu conversation.'
+          }
+        }
+
+        const targetType = currentFeishuContext.chatType === 'p2p' ? 'user' : 'group'
+        const targetId = currentFeishuContext.chatId
+
+        // 解析时间表达式
+        let cronExpression = timeExpression
+        let displayTime = timeExpression
+        let isOneTime = false
+        const parsed = parseNaturalLanguageToCron(timeExpression)
+        if (parsed) {
+          cronExpression = parsed.cron
+          displayTime = parsed.description
+          isOneTime = parsed.isOneTime || false
+          log.info(`[add_reminder] Parsed time expression: ${parsed.description}, isOneTime: ${isOneTime}`)
+        }
+
+        // 创建提醒
+        const reminder = await addReminder(
+          content,
+          cronExpression,
+          targetType,
+          targetId,
+          description,
+          isOneTime
+        )
+
+        const output = `✅ 提醒已创建\n\nID: ${reminder.id}\n内容: ${reminder.content}\n时间: ${displayTime}\n目标: ${targetType === 'user' ? '私聊' : '群聊'}`
+
+        return {
+          success: true,
+          output,
+          data: reminder
+        }
+      } catch (error) {
+        log.error(`[add_reminder] Error:`, error)
+        return {
+          success: false,
+          output: '',
+          error: error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
+    name: 'list_reminders',
+    description: 'List all scheduled reminders.',
+    sourceHint: 'builtin',
+    responsibility: 'Show all scheduled reminders',
+    parameters: {},
+    required: [],
+    execute: async () => {
+      try {
+        const reminders = getAllReminders()
+        
+        if (reminders.length === 0) {
+          return {
+            success: true,
+            output: '暂无定时提醒'
+          }
+        }
+
+        const reminderList = reminders.map(r => {
+          const status = r.enabled ? '✅' : '⏸️'
+          const lastTriggered = r.lastTriggeredAt ? new Date(r.lastTriggeredAt).toLocaleString('zh-CN') : '从未'
+          return `${status} ${r.content}\n   ID: ${r.id}\n   Cron: ${r.cronExpression}\n   目标: ${r.targetType} (${r.targetId})\n   已触发: ${r.triggerCount} 次\n   上次触发: ${lastTriggered}`
+        }).join('\n\n')
+
+        return {
+          success: true,
+          output: `📋 定时提醒列表 (${reminders.length} 个)\n\n${reminderList}`
+        }
+      } catch (error) {
+        log.error(`[list_reminders] Error:`, error)
+        return {
+          success: false,
+          output: '',
+          error: error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
+    name: 'remove_reminder',
+    description: 'Remove a scheduled reminder by its ID.',
+    sourceHint: 'builtin',
+    responsibility: 'Delete a scheduled reminder',
+    parameters: {
+      reminder_id: {
+        type: 'string',
+        description: 'The ID of the reminder to remove',
+        required: true
+      }
+    },
+    required: ['reminder_id'],
+    execute: async (args) => {
+      try {
+        const id = String(args.reminder_id)
+        const success = await removeReminder(id)
+
+        if (success) {
+          return {
+            success: true,
+            output: `✅ 提醒已删除: ${id}`
+          }
+        } else {
+          return {
+            success: false,
+            output: '',
+            error: `提醒不存在: ${id}`
+          }
+        }
+      } catch (error) {
+        log.error(`[remove_reminder] Error:`, error)
+        return {
+          success: false,
+          output: '',
+          error: error instanceof Error ? error.message : String(error)
+        }
+      }
+    }
+  })
+
   log.info(`CLI registries initialized: ${commandRegistry.getAll().length} commands, ${toolRegistry.getAll().length} tools`)
 }
 
@@ -1674,6 +1908,15 @@ app.whenReady().then(async () => {
   
   // Setup conversation storage handlers
   setupConversationHandlers()
+  
+  // Initialize reminder service
+  log.info('[Main] Initializing reminder service...')
+  try {
+    await initReminderService()
+    log.info('[Main] Reminder service initialized successfully')
+  } catch (error) {
+    log.error('[Main] Failed to initialize reminder service:', error)
+  }
   
   createTray()
   registerGlobalShortcuts()

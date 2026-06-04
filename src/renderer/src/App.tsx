@@ -10,6 +10,7 @@ import ActivityBar, { type ActivityBarItem } from './components/ActivityBar'
 import FileExplorer from './components/FileExplorer'
 import SearchPanel from './components/SearchPanel'
 import GitPanel from './components/GitPanel'
+import ReminderPanel from './components/ReminderPanel'
 import FileViewer from './components/FileViewer'
 import DiffViewer from './components/DiffViewer'
 import BrowserView from './components/BrowserView'
@@ -1687,6 +1688,90 @@ function App() {
         await window.api.feishu.sendMessage(errorReply, chatId, chatType as 'group' | 'p2p')
       }
       
+      // ✅ 修复：错误情况下也要保存对话历史到飞书专用对话
+      const errorState = useStore.getState()
+      const currentProjectPath = errorState.currentProjectPath
+      const feishuSession = errorState.sessions.find(s => s.title === '飞书专用对话')
+      
+      // 构建消息
+      const userMessage = { 
+        id: `msg-${Date.now()}-user`,
+        role: 'user', 
+        content, 
+        timestamp: Date.now(),
+        mode: 'code' as const
+      }
+      const errorMessage = { 
+        id: `msg-${Date.now()}-assistant`,
+        role: 'assistant', 
+        content: errorReply, 
+        timestamp: Date.now(),
+        mode: 'code' as const
+      }
+      
+      if (feishuSession) {
+        // 更新会话消息计数
+        const updatedSession: Session = {
+          ...feishuSession,
+          messageCount: feishuSession.messageCount + 2
+        }
+        setSessions(errorState.sessions.map(s => s.id === feishuSession.id ? updatedSession : s))
+        setLocalSessions(prev => prev.map(s => s.id === feishuSession.id ? updatedSession : s))
+        
+        // 更新 kiloStore
+        const kiloStore = useKiloStore.getState()
+        kiloStore.updateSession(feishuSession.id, {
+          messageCount: updatedSession.messageCount,
+          updatedAt: Date.now()
+        })
+        
+        // 持久化保存
+        if (window.api?.saveConversation && currentProjectPath) {
+          try {
+            const loadResult = await window.api.loadConversation(currentProjectPath, feishuSession.id)
+            const existingMessages = loadResult.success && loadResult.messages ? loadResult.messages : []
+            const allMessages = [...existingMessages, userMessage, errorMessage]
+            await window.api.saveConversation(currentProjectPath, feishuSession.id, allMessages, feishuSession.title)
+            console.log('[FeishuBot] Error conversation saved:', feishuSession.id)
+            window.dispatchEvent(new CustomEvent('feishu:session-updated', { detail: { sessionId: feishuSession.id } }))
+          } catch (saveError) {
+            console.error('[FeishuBot] Failed to save error conversation:', saveError)
+          }
+        }
+      } else {
+        // 创建新会话
+        const newSessionId = `feishu-session-${Date.now()}`
+        const now = Date.now()
+        const newSession: Session = {
+          id: newSessionId,
+          title: '飞书专用对话',
+          createdAt: new Date().toISOString(),
+          messageCount: 2,
+          projectPath: currentProjectPath || undefined
+        }
+        addSession(newSession)
+        
+        const kiloStore = useKiloStore.getState()
+        kiloStore.addSession({
+          id: newSessionId,
+          title: '飞书专用对话',
+          createdAt: now,
+          updatedAt: now,
+          messageCount: 2,
+          mode: 'code'
+        })
+        
+        if (window.api?.saveConversation && currentProjectPath) {
+          try {
+            await window.api.saveConversation(currentProjectPath, newSessionId, [userMessage, errorMessage], '飞书专用对话')
+            console.log('[FeishuBot] Created new session for error:', newSessionId)
+            window.dispatchEvent(new CustomEvent('feishu:session-updated', { detail: { sessionId: newSessionId } }))
+          } catch (saveError) {
+            console.error('[FeishuBot] Failed to save error conversation:', saveError)
+          }
+        }
+      }
+      
       return errorReply
     }
   }, [providers, model, addSession, projectPath])
@@ -2710,6 +2795,10 @@ function App() {
 
             <div className="sidebar-panel-container" style={{ display: activeActivity === 'git' ? 'flex' : 'none' }}>
               <GitPanel repoPath={projectPath} openFile={openFile} />
+            </div>
+
+            <div className="sidebar-panel-container" style={{ display: activeActivity === 'reminders' ? 'flex' : 'none' }}>
+              <ReminderPanel />
             </div>
 
             {/* Center: File Tabs + File Viewer + Terminal - 使用 CSS 控制在设置页面时隐藏 */}

@@ -29,7 +29,10 @@ import {
   Zap,
   Code2,
   Eye,
-  Globe
+  Globe,
+  Bell,
+  List,
+  Trash
 } from 'lucide-react'
 
 interface KiloChatMessageProps {
@@ -98,6 +101,24 @@ const toolConfig: Record<string, {
     label: '浏览网页',
     color: '#0ea5e9',
     bgColor: 'rgba(14, 165, 233, 0.1)'
+  },
+  'add_reminder': { 
+    icon: <Bell size={14} />, 
+    label: '添加提醒',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)'
+  },
+  'list_reminders': { 
+    icon: <List size={14} />, 
+    label: '提醒列表',
+    color: '#8b5cf6',
+    bgColor: 'rgba(139, 92, 246, 0.1)'
+  },
+  'remove_reminder': { 
+    icon: <Trash size={14} />, 
+    label: '删除提醒',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)'
   }
 }
 
@@ -132,6 +153,11 @@ function formatPath(path: string): string {
 
 // 工具调用卡片 - Kilo 风格
 const ToolCallCard = memo(function ToolCallCard({ toolCall }: { toolCall: ToolCall }) {
+  // 防御性检查：确保 toolCall 格式正确
+  if (!toolCall || typeof toolCall.name !== 'string') {
+    return null
+  }
+  
   const config = getToolInfo(toolCall.name)
   const path = toolCall.args?.path || toolCall.args?.file_path || toolCall.args?.directory || toolCall.args?.command || toolCall.args?.url || ''
   
@@ -181,7 +207,9 @@ const ToolCallCard = memo(function ToolCallCard({ toolCall }: { toolCall: ToolCa
 
 // 工具调用面板
 const ToolCallPanel = memo(function ToolCallPanel({ toolCalls }: { toolCalls: ToolCall[] }) {
-  if (!toolCalls || toolCalls.length === 0) return null
+  // 过滤掉格式不正确的 toolCalls
+  const validToolCalls = toolCalls?.filter(tc => tc && typeof tc.name === 'string') || []
+  if (validToolCalls.length === 0) return null
 
   const [isExpanded, setIsExpanded] = useState(true)
 
@@ -194,14 +222,14 @@ const ToolCallPanel = memo(function ToolCallPanel({ toolCalls }: { toolCalls: To
         <div className="kilo-tool-panel-title">
           <Zap size={14} />
           <span>工具调用</span>
-          <span className="kilo-tool-count">{toolCalls.length}</span>
+          <span className="kilo-tool-count">{validToolCalls.length}</span>
         </div>
         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
       </button>
       {isExpanded && (
         <div className="kilo-tool-panel-content">
-          {toolCalls.map((toolCall) => (
-            <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+          {validToolCalls.map((toolCall) => (
+            <ToolCallCard key={toolCall.id || Math.random().toString()} toolCall={toolCall} />
           ))}
         </div>
       )}

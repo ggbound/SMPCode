@@ -265,6 +265,13 @@ const api = {
     }
   },
 
+  // Reminder management
+  reminder: {
+    getAll: () => ipcRenderer.invoke('reminder:get-all'),
+    remove: (id: string) => ipcRenderer.invoke('reminder:remove', id),
+    toggle: (id: string) => ipcRenderer.invoke('reminder:toggle', id)
+  },
+
   // Feishu WebSocket
   feishu: {
     // 启动 WebSocket 连接

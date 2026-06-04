@@ -58,6 +58,12 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
       command: { type: 'string', description: 'The bash command to execute', required: true }
     },
     required: ['command']
+  },
+  {
+    name: 'list_reminders',
+    description: 'List all scheduled reminders. Use when user asks to check scheduled tasks or reminders.',
+    parameters: {},
+    required: []
   }
 ]
 
@@ -132,7 +138,7 @@ REMEMBER: Output the tool call directly. Do NOT say "I'll use X tool" - just use
 export const COMMON_CRITICAL_RULES = `=== CRITICAL RULES ===
 1. ONLY output the JSON code block, no explanatory text before or between tool calls
 2. Wait for tool results before proceeding to the next step
-3. If a tool fails, analyze the error and retry with corrections
+3. If a tool fails due to timeout or network error, DO NOT automatically retry. Report the error to the user and ask if they want to retry.
 4. When task is complete, provide a clear summary of what was accomplished
 5. **ABSOLUTELY FORBIDDEN**: NEVER output text like "正在执行工具", "工具执行完成", "执行中", "成功", "✅", "⏳", "" or any execution status descriptions. The system will handle execution visualization.
 6. **CRITICAL**: Do NOT describe what you are doing or will do. Just output the JSON and wait for results.
@@ -211,9 +217,9 @@ COMMAND EXECUTION:
 export const ERROR_HANDLING = `=== ERROR HANDLING ===
 If a tool execution fails:
 1. Read the error message carefully
-2. Check if the file/path exists
-3. Verify you have the correct parameters
-4. Retry with corrections
+2. Check if the error is due to timeout or network issues
+3. For timeout/network errors: Report the error to the user and ask if they want to retry
+4. For parameter/validation errors: Verify you have the correct parameters and retry only once with corrections
 5. If still failing, explain the issue to the user and ask for guidance`
 
 /**

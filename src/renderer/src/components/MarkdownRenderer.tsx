@@ -11,6 +11,117 @@ import rehypeRaw from 'rehype-raw'
 import { CodeBlock } from './CodeBlock'
 import { Copy, Check } from 'lucide-react'
 
+// 有效的 HTML 标签名模式（仅允许字母开头，后跟字母、数字、短横线，可选末尾斜杠用于自闭合标签）
+const VALID_HTML_TAG = /^[a-zA-Z][a-zA-Z0-9-]*\/?$/
+
+/**
+ * 将工具调用转换为用户能看懂的文字描述
+ */
+function convertToolCallToText(content: string): string {
+  // 工具名称映射（将英文工具名转换为中文描述）
+  const toolNameMap: Record<string, string> = {
+    'list_reminders': '查看定时任务',
+    'add_reminder': '添加定时提醒',
+    'remove_reminder': '删除定时提醒',
+    'read_file': '读取文件',
+    'write_file': '写入文件',
+    'edit_file': '编辑文件',
+    'list_directory': '列出目录',
+    'execute_bash': '执行命令',
+    'search_files': '搜索文件',
+    'delete_file': '删除文件',
+    'append_file': '追加内容',
+    'browse_website': '浏览网页',
+    'search_code': '搜索代码',
+    'file_read': '读取文件',
+    'file_write': '写入文件',
+    'bash': '执行命令',
+    'glob': '搜索文件'
+  }
+  
+  let result = content
+  
+  // 1. 匹配飞书格式的工具调用：<tool name="xxx">...</tool_call/>
+  const feishuToolRegex = /<tool\s+name="([^"]+)"\s*>[\s\S]*?<\/tool_call\s*\/?>/gs
+  result = result.replace(feishuToolRegex, (fullMatch) => {
+    const nameMatch = fullMatch.match(/<tool\s+name="([^"]+)"/)
+    const toolName = nameMatch ? nameMatch[1] : 'unknown'
+    const displayName = toolNameMap[toolName] || toolName
+    
+    const params: Record<string, string> = {}
+    const paramRegex = /<parameter=(\w+)>\s*([\s\S]*?)\s*<\/parameter=\1>/g
+    let paramMatch
+    while ((paramMatch = paramRegex.exec(fullMatch)) !== null) {
+      params[paramMatch[1]] = paramMatch[2].trim()
+    }
+    
+    if (Object.keys(params).length > 0) {
+      const paramText = Object.entries(params)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('，')
+      return `\n🔧 正在${displayName}（${paramText}）\n`
+    }
+    return `\n🔧 正在${displayName}...\n`
+  })
+  
+  // 2. 匹配 <tool name="xxx"/> 格式的工具调用
+  const simpleToolRegex = /<tool\s+name="([^"]+)"\s*\/>/g
+  result = result.replace(simpleToolRegex, (_, toolName) => {
+    const displayName = toolNameMap[toolName] || toolName
+    return `\n🔧 正在${displayName}...\n`
+  })
+  
+  // 3. 匹配 <tool_call>...</tool_call> 格式
+  const toolCallTagRegex = /<tool_call>([\s\S]*?)<\/tool_call>/g
+  result = result.replace(toolCallTagRegex, (_, content) => {
+    // 尝试解析内容
+    try {
+      const parsed = JSON.parse(content.trim())
+      const toolName = parsed.tool || parsed.name || '未知工具'
+      const displayName = toolNameMap[toolName] || toolName
+      return `\n🔧 正在${displayName}...\n`
+    } catch {
+      return `\n🔧 正在处理工具调用...\n`
+    }
+  })
+  
+  // 4. 匹配 ```json {"tool": "..."} ``` 格式的工具调用代码块
+  const jsonToolBlockRegex = /```json\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*```/g
+  result = result.replace(jsonToolBlockRegex, (_, jsonStr) => {
+    try {
+      const parsed = JSON.parse(jsonStr)
+      const toolName = parsed.tool || '未知工具'
+      const displayName = toolNameMap[toolName] || toolName
+      return `\n🔧 正在${displayName}...\n`
+    } catch {
+      return ''
+    }
+  })
+  
+  return result
+}
+
+/**
+ * 预处理 Markdown 内容，转义无效的 HTML 标签
+ * 防止 AI 输出类似 <parameter=time_expression> 的内容导致 React 崩溃
+ */
+function sanitizeHTMLTags(content: string): string {
+  // 首先处理工具调用，转换为用户能看懂的文字描述
+  let result = convertToolCallToText(content)
+  
+  // 匹配 <...> 形式的标签，但排除已知有效的 HTML 标签和代码块
+  return result.replace(/<(\/?)([^>\s]+)(\s[^>]*)?>/g, (match, close, tagName, attrs) => {
+    // 去掉自闭合标签末尾的 /
+    const cleanTag = tagName.toLowerCase().replace(/\/$/, '')
+    // 如果标签名匹配有效 HTML 模式，则保留
+    if (VALID_HTML_TAG.test(cleanTag)) {
+      return match
+    }
+    // 否则转义为普通文本
+    return `&lt;${close}${tagName}${attrs || ''}&gt;`
+  })
+}
+
 interface MarkdownRendererProps {
   content: string
   className?: string
@@ -286,6 +397,9 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   if (!content || content.trim().length === 0) {
     return null
   }
+
+  // 预处理内容，转义无效 HTML 标签，防止 React createElement 崩溃
+  const sanitizedContent = sanitizeHTMLTags(content)
   
   // 根据 onLinkClick 创建组件配置
   const components = createMarkdownComponents(onLinkClick)
@@ -297,7 +411,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypePlugins={[rehypeRaw]}
         components={components}
       >
-        {content}
+        {sanitizedContent}
       </ReactMarkdown>
     </div>
   )

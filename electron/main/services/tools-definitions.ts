@@ -1175,6 +1175,57 @@ ${result.content}`
   }
 }
 
+// ============ 定时任务工具 ============
+
+const listRemindersTool: ToolExecutor = {
+  name: 'list_reminders',
+  description: 'List all scheduled reminders/tasks. Use this when user asks to check scheduled tasks or reminders.',
+  parameters: {},
+  required: [],
+  execute: async (): Promise<ToolExecutionResult> => {
+    try {
+      // 动态导入避免循环依赖
+      const { getAllReminders } = await import('./reminder-service')
+      const reminders = getAllReminders()
+      
+      if (reminders.length === 0) {
+        return createSuccessResult(
+          JSON.stringify({
+            message: '暂无定时提醒',
+            count: 0,
+            reminders: []
+          }, null, 2),
+          { count: 0 }
+        )
+      }
+
+      const reminderList = reminders.map(r => ({
+        id: r.id,
+        content: r.content,
+        cronExpression: r.cronExpression,
+        targetType: r.targetType,
+        targetId: r.targetId,
+        enabled: r.enabled,
+        triggerCount: r.triggerCount,
+        lastTriggeredAt: r.lastTriggeredAt ? new Date(r.lastTriggeredAt).toLocaleString('zh-CN') : '从未',
+        createdAt: r.createdAt ? new Date(r.createdAt).toLocaleString('zh-CN') : ''
+      }))
+
+      return createSuccessResult(
+        JSON.stringify({
+          message: `找到 ${reminders.length} 个定时提醒`,
+          count: reminders.length,
+          reminders: reminderList
+        }, null, 2),
+        { count: reminders.length }
+      )
+    } catch (error) {
+      log.error(`[list_reminders] Error:`, error)
+      return createErrorResult(String(error))
+    }
+  }
+}
+
 // ============ 注册所有工具 ============
 
 export function registerAllTools(): void {
@@ -1193,6 +1244,7 @@ export function registerAllTools(): void {
   toolRegistry.register(killProcessTool)
   toolRegistry.register(findProcessTool)
   toolRegistry.register(browseWebsiteTool)
+  toolRegistry.register(listRemindersTool)
 
   log.info(`[ToolDefinitions] Registered ${toolRegistry.count()} tools`)
 }

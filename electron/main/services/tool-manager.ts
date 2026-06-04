@@ -15,7 +15,8 @@ import {
   executeDeleteFile,
   executeCheckPort,
   executeKillProcess,
-  executeFindProcess
+  executeFindProcess,
+  executeListReminders
 } from './tool-implementations'
 
 // 统一的工具处理器类型
@@ -79,6 +80,7 @@ class ToolManager {
     this.register('check_port', executeCheckPort)
     this.register('kill_process', executeKillProcess)
     this.register('find_process', executeFindProcess)
+    this.register('list_reminders', executeListReminders)
 
     this.isInitialized = true
     log.info(`[ToolManager] Initialized with ${this.tools.size} tools`)

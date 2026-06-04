@@ -99,6 +99,11 @@ export function parseToolCalls(text: string): ToolCall[] | null {
 
   for (const match of toolCodeMatches) {
     const toolName = match[1]
+    // 验证 toolName 格式：必须是合法的标识符（字母、数字、下划线、连字符）
+    if (!toolName || !/^\w[\w_-]*$/.test(toolName)) {
+      console.warn('[parseToolCalls] Invalid tool name format:', toolName)
+      continue
+    }
     let attrsContent = match[2]
     attrsContent = attrsContent.replace(/&quot;/g, '"').replace(/&amp;/g, '&')
     const args: Record<string, unknown> = {}
@@ -112,7 +117,7 @@ export function parseToolCalls(text: string): ToolCall[] | null {
         args[attrName] = attrValue
       }
     }
-    if (toolName && Object.keys(args).length > 0) {
+    if (Object.keys(args).length > 0) {
       toolCalls.push({ tool: toolName, arguments: args })
     }
   }
@@ -123,6 +128,11 @@ export function parseToolCalls(text: string): ToolCall[] | null {
 
   for (const match of xmlMatches) {
     const toolName = match[1]
+    // 验证 toolName 格式：必须是合法的标识符
+    if (!toolName || !/^\w[\w_-]*$/.test(toolName)) {
+      console.warn('[parseToolCalls] Invalid tool name format in MiniMax XML:', toolName)
+      continue
+    }
     const paramsContent = match[2]
     const args: Record<string, unknown> = {}
     const paramRegex = /<parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/parameter>/g
@@ -134,7 +144,7 @@ export function parseToolCalls(text: string): ToolCall[] | null {
       args[paramName] = paramValue
     }
 
-    if (toolName && Object.keys(args).length > 0) {
+    if (Object.keys(args).length > 0) {
       toolCalls.push({ tool: toolName, arguments: args })
     }
   }

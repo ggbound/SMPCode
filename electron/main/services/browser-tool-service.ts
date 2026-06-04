@@ -18,15 +18,54 @@ function getBrowserWindow(): BrowserWindow {
     return browserWindow
   }
 
+  // 获取系统代理配置（支持飞书等企业环境）
+  const getProxyRules = (): string => {
+    // 优先使用环境变量中的代理配置
+    const httpProxy = process.env.HTTP_PROXY || process.env.http_proxy
+    const httpsProxy = process.env.HTTPS_PROXY || process.env.https_proxy
+    
+    if (httpsProxy) {
+      try {
+        const url = new URL(httpsProxy)
+        return `${url.protocol}//${url.host}`
+      } catch {
+        return httpsProxy
+      }
+    }
+    
+    if (httpProxy) {
+      try {
+        const url = new URL(httpProxy)
+        return `${url.protocol}//${url.host}`
+      } catch {
+        return httpProxy
+      }
+    }
+    
+    return ''
+  }
+
+  const proxyRules = getProxyRules()
+  log.info(`[BrowserTool] Proxy rules: ${proxyRules || 'none'}`)
+
+  const webPreferences: Electron.WebPreferences = {
+    nodeIntegration: false,
+    contextIsolation: true,
+    offscreen: true, // 使用离屏渲染
+    webSecurity: false, // 禁用跨域安全策略，允许访问外部网站
+    allowRunningInsecureContent: true // 允许运行不安全内容
+  }
+
+  // 如果有代理配置，添加到 webPreferences
+  if (proxyRules) {
+    webPreferences.proxyRules = proxyRules
+  }
+
   browserWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false, // 隐藏窗口
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      offscreen: true // 使用离屏渲染
-    }
+    webPreferences
   })
 
   // 窗口关闭时清理引用
