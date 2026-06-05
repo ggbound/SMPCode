@@ -1659,15 +1659,19 @@ function initializeCLIRegistries(): void {
         const description = args.description ? String(args.description) : undefined
 
         log.info(`[add_reminder] Creating reminder: ${content}`)
+        log.info(`[add_reminder] Args: content=${content}, time_expression=${timeExpression}, description=${description}`)
 
         // 使用当前飞书会话上下文，如果没有则报错
         if (!currentFeishuContext.chatId) {
+          log.error('[add_reminder] No Feishu context available')
           return {
             success: false,
             output: '',
             error: 'No active Feishu chat context. Please use this command from a Feishu conversation.'
           }
         }
+
+        log.info(`[add_reminder] Feishu context: chatId=${currentFeishuContext.chatId}, chatType=${currentFeishuContext.chatType}`)
 
         const targetType = currentFeishuContext.chatType === 'p2p' ? 'user' : 'group'
         const targetId = currentFeishuContext.chatId
@@ -1676,12 +1680,14 @@ function initializeCLIRegistries(): void {
         let cronExpression = timeExpression
         let displayTime = timeExpression
         let isOneTime = false
+        let scheduleType: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom' | undefined = undefined
         const parsed = parseNaturalLanguageToCron(timeExpression)
         if (parsed) {
           cronExpression = parsed.cron
           displayTime = parsed.description
           isOneTime = parsed.isOneTime || false
-          log.info(`[add_reminder] Parsed time expression: ${parsed.description}, isOneTime: ${isOneTime}`)
+          scheduleType = parsed.scheduleType
+          log.info(`[add_reminder] Parsed time expression: ${parsed.description}, isOneTime: ${isOneTime}, scheduleType: ${scheduleType}`)
         }
 
         // 创建提醒
@@ -1691,7 +1697,8 @@ function initializeCLIRegistries(): void {
           targetType,
           targetId,
           description,
-          isOneTime
+          isOneTime,
+          scheduleType
         )
 
         const output = `✅ 提醒已创建\n\nID: ${reminder.id}\n内容: ${reminder.content}\n时间: ${displayTime}\n目标: ${targetType === 'user' ? '私聊' : '群聊'}`

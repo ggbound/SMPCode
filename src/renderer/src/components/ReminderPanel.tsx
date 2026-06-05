@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Clock, Trash2, Play, Pause, RefreshCw, Calendar, Target, Zap, History, AlertCircle } from 'lucide-react'
+import { Clock, Trash2, Play, Pause, RefreshCw, Calendar, Target, Zap, History, AlertCircle, Repeat } from 'lucide-react'
 
 export interface Reminder {
   id: string
@@ -14,6 +14,16 @@ export interface Reminder {
   triggerCount: number
   description?: string
   isOneTime?: boolean
+  scheduleType?: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom'
+}
+
+const SCHEDULE_TYPE_MAP: Record<string, { label: string; color: string }> = {
+  daily: { label: '每天', color: '#4ade80' },
+  workday: { label: '工作日', color: '#60a5fa' },
+  today: { label: '当天', color: '#fbbf24' },
+  weekly: { label: '每周', color: '#a78bfa' },
+  hourly: { label: '每小时', color: '#f472b6' },
+  custom: { label: '自定义', color: '#94a3b8' }
 }
 
 function ReminderPanel() {
@@ -193,6 +203,15 @@ function ReminderPanel() {
                   <div className="reminder-content-wrap">
                     <h4 className="reminder-title">{reminder.content}</h4>
                     <div className="reminder-badges">
+                      {reminder.scheduleType && SCHEDULE_TYPE_MAP[reminder.scheduleType] && (
+                        <span
+                          className={`badge badge-schedule-type badge-${reminder.scheduleType}`}
+                          style={{ color: SCHEDULE_TYPE_MAP[reminder.scheduleType].color, borderColor: SCHEDULE_TYPE_MAP[reminder.scheduleType].color }}
+                        >
+                          <Repeat size={10} />
+                          {SCHEDULE_TYPE_MAP[reminder.scheduleType].label}
+                        </span>
+                      )}
                       {reminder.isOneTime && (
                         <span className="badge badge-one-time">
                           <Calendar size={10} />

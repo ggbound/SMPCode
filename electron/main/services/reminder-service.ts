@@ -35,6 +35,7 @@ export interface Reminder {
   triggerCount: number
   description?: string    // 提醒描述/备注
   isOneTime?: boolean     // 是否为一次性提醒
+  scheduleType?: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom'  // 重复类型：每天/工作日/当天/每周/每小时/自定义
 }
 
 /**
@@ -116,8 +117,10 @@ class ReminderService {
       const config: ReminderServiceConfig = {
         reminders: Array.from(this.reminders.values())
       }
+      log.info(`[ReminderService] Saving ${this.reminders.size} reminders to: ${this.configPath}`)
+      log.info(`[ReminderService] Reminders to save: ${JSON.stringify(Array.from(this.reminders.values()).map(r => ({ id: r.id, content: r.content, cronExpression: r.cronExpression })))}`)
       fs.writeFileSync(this.configPath, JSON.stringify(config, null, 2), 'utf-8')
-      log.debug('[ReminderService] Saved reminders to config file')
+      log.info('[ReminderService] Saved reminders to config file successfully')
     } catch (error) {
       log.error('[ReminderService] Failed to save reminders:', error)
       throw error
@@ -137,8 +140,11 @@ class ReminderService {
       triggerCount: 0
     }
 
+    log.info(`[ReminderService] Adding reminder: ${JSON.stringify({ content: newReminder.content, cronExpression: newReminder.cronExpression, scheduleType: newReminder.scheduleType })}`)
+
     // 验证 Cron 表达式
     if (cron && !cron.validate(reminder.cronExpression)) {
+      log.error(`[ReminderService] Invalid cron expression: ${reminder.cronExpression}`)
       throw new Error(`Invalid cron expression: ${reminder.cronExpression}`)
     }
 
@@ -150,7 +156,7 @@ class ReminderService {
       this.startReminder(newReminder)
     }
 
-    log.info(`[ReminderService] Added reminder: ${newReminder.id}`)
+    log.info(`[ReminderService] Added reminder successfully: ${newReminder.id}`)
     return newReminder
   }
 
@@ -436,7 +442,8 @@ export async function addReminder(
   targetType: 'user' | 'group',
   targetId: string,
   description?: string,
-  isOneTime?: boolean
+  isOneTime?: boolean,
+  scheduleType?: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom'
 ): Promise<Reminder> {
   const service = getReminderService()
   return service.addReminder({
@@ -446,7 +453,8 @@ export async function addReminder(
     targetId,
     enabled: true,
     description,
-    isOneTime
+    isOneTime,
+    scheduleType
   })
 }
 
@@ -486,19 +494,21 @@ export async function updateReminder(
  * - "每周一早上9点" -> "0 9 * * 1"
  * - "工作日早上9点" -> "0 9 * * 1-5"
  */
-export function parseNaturalLanguageToCron(text: string): { cron: string; description: string; isOneTime?: boolean } | null {
+export function parseNaturalLanguageToCron(text: string): { cron: string; description: string; isOneTime?: boolean; scheduleType?: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom' } | null {
   const now = new Date()
-  
+
   const patterns = [
+    // ========== 中文格式 ==========
     // 今天特定时间（一次性提醒）
     {
-      regex: /今天(?:早上|上午|下午|晚上)?(\d{1,2})点/,
+      regex: /今天(?:早上|上午|下午|晚上)?(\d{1,2})点(?:钟)?(?:的时候)?/,
       handler: (match: RegExpMatchArray) => {
         const hour = parseInt(match[1], 10)
         return {
           cron: `0 ${hour} ${now.getDate()} ${now.getMonth() + 1} *`,
           description: `今天 ${hour}:00`,
-          isOneTime: true
+          isOneTime: true,
+          scheduleType: 'today' as const
         }
       }
     },
@@ -511,7 +521,8 @@ export function parseNaturalLanguageToCron(text: string): { cron: string; descri
         return {
           cron: `0 ${hour} ${tomorrow.getDate()} ${tomorrow.getMonth() + 1} *`,
           description: `明天 ${hour}:00`,
-          isOneTime: true
+          isOneTime: true,
+          scheduleType: 'today' as const
         }
       }
     },
@@ -520,7 +531,8 @@ export function parseNaturalLanguageToCron(text: string): { cron: string; descri
       regex: /每天(?:早上|上午|下午|晚上)?(\d{1,2})点/,
       handler: (match: RegExpMatchArray) => ({
         cron: `0 ${match[1]} * * *`,
-        description: `每天 ${match[1]}:00`
+        description: `每天 ${match[1]}:00`,
+        scheduleType: 'daily' as const
       })
     },
     // 工作日特定时间
@@ -528,7 +540,8 @@ export function parseNaturalLanguageToCron(text: string): { cron: string; descri
       regex: /工作日(?:早上|上午|下午|晚上)?(\d{1,2})点/,
       handler: (match: RegExpMatchArray) => ({
         cron: `0 ${match[1]} * * 1-5`,
-        description: `工作日 ${match[1]}:00`
+        description: `工作日 ${match[1]}:00`,
+        scheduleType: 'workday' as const
       })
     },
     // 每周几特定时间
@@ -539,7 +552,107 @@ export function parseNaturalLanguageToCron(text: string): { cron: string; descri
         const day = dayMap[match[1]]
         return {
           cron: `0 ${match[2]} * * ${day}`,
-          description: `每周${match[1]} ${match[2]}:00`
+          description: `每周${match[1]} ${match[2]}:00`,
+          scheduleType: 'weekly' as const
+        }
+      }
+    },
+    // ========== 英文格式 ==========
+    // today at 10am / today at 3pm
+    {
+      regex: /today at (\d{1,2})(am|pm)/i,
+      handler: (match: RegExpMatchArray) => {
+        let hour = parseInt(match[1], 10)
+        if (match[2].toLowerCase() === 'pm' && hour < 12) {
+          hour += 12
+        }
+        if (match[2].toLowerCase() === 'am' && hour === 12) {
+          hour = 0
+        }
+        return {
+          cron: `0 ${hour} ${now.getDate()} ${now.getMonth() + 1} *`,
+          description: `今天 ${hour}:00`,
+          isOneTime: true,
+          scheduleType: 'today' as const
+        }
+      }
+    },
+    // tomorrow at 10am / tomorrow at 3pm
+    {
+      regex: /tomorrow at (\d{1,2})(am|pm)/i,
+      handler: (match: RegExpMatchArray) => {
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+        let hour = parseInt(match[1], 10)
+        if (match[2].toLowerCase() === 'pm' && hour < 12) {
+          hour += 12
+        }
+        if (match[2].toLowerCase() === 'am' && hour === 12) {
+          hour = 0
+        }
+        return {
+          cron: `0 ${hour} ${tomorrow.getDate()} ${tomorrow.getMonth() + 1} *`,
+          description: `明天 ${hour}:00`,
+          isOneTime: true,
+          scheduleType: 'today' as const
+        }
+      }
+    },
+    // daily at 10am / every day at 3pm
+    {
+      regex: /(daily|every day) at (\d{1,2})(am|pm)/i,
+      handler: (match: RegExpMatchArray) => {
+        let hour = parseInt(match[2], 10)
+        if (match[3].toLowerCase() === 'pm' && hour < 12) {
+          hour += 12
+        }
+        if (match[3].toLowerCase() === 'am' && hour === 12) {
+          hour = 0
+        }
+        return {
+          cron: `0 ${hour} * * *`,
+          description: `每天 ${hour}:00`,
+          scheduleType: 'daily' as const
+        }
+      }
+    },
+    // weekdays at 10am
+    {
+      regex: /weekdays? at (\d{1,2})(am|pm)/i,
+      handler: (match: RegExpMatchArray) => {
+        let hour = parseInt(match[1], 10)
+        if (match[2].toLowerCase() === 'pm' && hour < 12) {
+          hour += 12
+        }
+        if (match[2].toLowerCase() === 'am' && hour === 12) {
+          hour = 0
+        }
+        return {
+          cron: `0 ${hour} * * 1-5`,
+          description: `工作日 ${hour}:00`,
+          scheduleType: 'workday' as const
+        }
+      }
+    },
+    // every Monday at 10am
+    {
+      regex: /every (monday|tuesday|wednesday|thursday|friday|saturday|sunday) at (\d{1,2})(am|pm)/i,
+      handler: (match: RegExpMatchArray) => {
+        const dayMap: Record<string, number> = {
+          'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
+          'friday': 5, 'saturday': 6, 'sunday': 0
+        }
+        const day = dayMap[match[1].toLowerCase()]
+        let hour = parseInt(match[2], 10)
+        if (match[3].toLowerCase() === 'pm' && hour < 12) {
+          hour += 12
+        }
+        if (match[3].toLowerCase() === 'am' && hour === 12) {
+          hour = 0
+        }
+        return {
+          cron: `0 ${hour} * * ${day}`,
+          description: `每周${['日', '一', '二', '三', '四', '五', '六'][day]} ${hour}:00`,
+          scheduleType: 'weekly' as const
         }
       }
     },
@@ -548,7 +661,8 @@ export function parseNaturalLanguageToCron(text: string): { cron: string; descri
       regex: /每(\d{1,2})小时/,
       handler: (match: RegExpMatchArray) => ({
         cron: `0 */${match[1]} * * *`,
-        description: `每 ${match[1]} 小时`
+        description: `每 ${match[1]} 小时`,
+        scheduleType: 'hourly' as const
       })
     },
     // 每分钟
@@ -556,7 +670,8 @@ export function parseNaturalLanguageToCron(text: string): { cron: string; descri
       regex: /每(\d{1,2})分钟/,
       handler: (match: RegExpMatchArray) => ({
         cron: `*/${match[1]} * * * *`,
-        description: `每 ${match[1]} 分钟`
+        description: `每 ${match[1]} 分钟`,
+        scheduleType: 'hourly' as const
       })
     }
   ]

@@ -349,7 +349,7 @@ function extractToolCallsFromContent(content: string): {
   let cleanedContent = content
 
   // 已知工具列表（使用正确的工具名称）
-  const knownTools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'execute_bash', 'search_files', 'delete_file', 'append_file', 'browse_website', 'list_reminders']
+  const knownTools = ['read_file', 'write_file', 'edit_file', 'list_directory', 'execute_bash', 'search_files', 'delete_file', 'append_file', 'browse_website', 'list_reminders', 'add_reminder']
 
   log.debug(`[CLI-Chat] Extracting tool calls from content: ${content.substring(0, 200)}...`)
 
@@ -362,7 +362,7 @@ function extractToolCallsFromContent(content: string): {
     const args: Record<string, unknown> = {}
 
     // 匹配 <parameter=xxx>value</parameter=xxx> 格式
-    const paramRegex = /<parameter=(\w+)>\s*([\s\S]*?)\s*<\/parameter=\1>/g
+    const paramRegex = /<parameter\s+name="([^"]+)"\s+string="true">([\s\S]*?)<\/parameter>/g
     let paramMatch
     while ((paramMatch = paramRegex.exec(fullMatch)) !== null) {
       const paramName = paramMatch[1]
