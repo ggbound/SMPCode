@@ -11,6 +11,7 @@ import FileExplorer from './components/FileExplorer'
 import SearchPanel from './components/SearchPanel'
 import GitPanel from './components/GitPanel'
 import ReminderPanel from './components/ReminderPanel'
+import MCPSkillPanel from './components/MCPSkillPanel'
 import FileViewer from './components/FileViewer'
 import DiffViewer from './components/DiffViewer'
 import BrowserView from './components/BrowserView'
@@ -31,6 +32,7 @@ import { useCodeCompletion } from './hooks/useCodeCompletion'
 import { useCodeIntelligence } from './hooks/useCodeIntelligence'
 import FileWriteIndicator, { useFileWriteStatus } from './components/FileWriteIndicator'
 import './styles/completion.css'
+import './styles/vscode-sidebar.css'
 import { getLanguageFromPath } from './utils/languageMap'
 import { saveWorkspaceState, loadWorkspaceState } from './utils/workspaceState'
 
@@ -111,6 +113,7 @@ function buildMultimodalContent(content: string, images?: ImageContent[]): strin
 
 function App() {
   const [showSettings, setShowSettings] = useState(false)
+  const [showMCPSkillPanel, setShowMCPSkillPanel] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showTerminal, setShowTerminal] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
@@ -2799,6 +2802,11 @@ function App() {
 
             <div className="sidebar-panel-container" style={{ display: activeActivity === 'reminders' ? 'flex' : 'none' }}>
               <ReminderPanel />
+            </div>
+
+            {/* MCP & Skill Panel */}
+            <div className="sidebar-panel-container" style={{ display: activeActivity === 'mcp-skill' ? 'flex' : 'none' }}>
+              <MCPSkillPanel />
             </div>
 
             {/* Center: File Tabs + File Viewer + Terminal - 使用 CSS 控制在设置页面时隐藏 */}

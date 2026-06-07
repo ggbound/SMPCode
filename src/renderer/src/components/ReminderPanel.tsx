@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Clock, Trash2, Play, Pause, RefreshCw, Calendar, Target, Zap, History, AlertCircle, Repeat } from 'lucide-react'
+import { Clock, Trash2, Play, Pause, RefreshCw, Calendar, Target, Zap, History, AlertCircle, Repeat, Plus } from 'lucide-react'
+import '../styles/vscode-sidebar.css'
+import './reminder-panel.css'
 
 export interface Reminder {
   id: string
@@ -77,6 +79,8 @@ function ReminderPanel() {
     }
   }
 
+  const getStatusColor = (enabled: boolean) => enabled ? '#22c55e' : '#6e6e6e'
+
   const formatCronExpression = (cron: string): string => {
     const parts = cron.split(' ')
     if (parts.length !== 5) return cron
@@ -85,35 +89,31 @@ function ReminderPanel() {
     
     let result = ''
     
-    // 处理时间部分
     if (hour !== '*' || minute !== '*') {
       if (hour === '*') {
         result += `每${minute !== '*' ? minute + '分钟' : '小时'}`
       } else {
-        const displayHour = parseInt(hour) > 12 ? `${parseInt(hour) - 12} PM` : `${hour} AM`
         result += `${hour}:${minute.padStart(2, '0')}`
       }
     }
     
-    // 处理日期部分
     if (day !== '*') {
       if (result) result += ' '
-      result += `每月${day}日`
+      result += `${day}日`
     }
     
-    // 处理星期部分
-    if (weekday !== '*' && weekday !== '?') {
+    if (month !== '*') {
       if (result) result += ' '
-      const dayMap: Record<string, string> = {
-        '0': '周日', '1': '周一', '2': '周二', '3': '周三',
-        '4': '周四', '5': '周五', '6': '周六',
-        '1-5': '工作日', '1-6': '工作日+周六'
-      }
-      result += dayMap[weekday] || `周${weekday}`
+      result += `${month}月`
     }
     
-    if (result) return result
-    return '每分钟'
+    if (weekday !== '*') {
+      if (result) result += ' '
+      const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+      result += weekdays[parseInt(weekday)]
+    }
+    
+    return result || '自定义'
   }
 
   const formatTime = (timestamp?: number): string => {
@@ -121,172 +121,99 @@ function ReminderPanel() {
     const date = new Date(timestamp)
     const now = new Date()
     const diff = now.getTime() - date.getTime()
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
     
-    if (days === 0) {
-      const hours = Math.floor(diff / (1000 * 60 * 60))
-      if (hours === 0) {
-        const minutes = Math.floor(diff / (1000 * 60))
-        return minutes <= 0 ? '刚刚' : `${minutes}分钟前`
-      }
-      return `${hours}小时前`
-    } else if (days === 1) {
-      return '昨天'
-    } else if (days < 7) {
-      return `${days}天前`
-    }
-    return date.toLocaleDateString('zh-CN')
-  }
-
-  const getStatusColor = (enabled: boolean) => {
-    return enabled ? 'var(--reminder-active)' : 'var(--reminder-disabled)'
+    if (diff < 60000) return '刚刚'
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+    
+    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
   }
 
   return (
-    <div className="reminder-panel">
+    <div className="vscode-sidebar-panel reminder-panel">
       {/* Header */}
-      <div className="reminder-panel-header">
-        <div className="reminder-panel-header-left">
-          <div className="reminder-panel-icon">
-            <Clock size={16} />
-          </div>
-          <span className="reminder-panel-title">定时任务</span>
-          <span className="reminder-panel-count">{reminders.length}</span>
+      <div className="vscode-panel-header">
+        <div className="vscode-panel-header-left">
+          <span className="vscode-panel-title">定时任务</span>
         </div>
-        <div className="reminder-panel-header-right">
-          <button 
-            className="reminder-action-btn refresh-btn" 
+        <div className="vscode-panel-actions">
+          <button
+            className="vscode-panel-action-btn"
             onClick={fetchReminders}
-            title="刷新列表"
+            title="刷新"
           >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
+            <RefreshCw size={16} />
           </button>
         </div>
       </div>
 
-      {/* Error Message */}
-      {error && (
-        <div className="reminder-error">
-          <AlertCircle size={14} />
-          <span>{error}</span>
-          <button className="error-close" onClick={() => setError(null)}>×</button>
-        </div>
-      )}
-
       {/* Content */}
-      <div className="reminder-panel-content">
+      <div className="vscode-panel-content reminder-panel-content">
         {loading ? (
-          <div className="reminder-loading">
-            <RefreshCw size={20} className="spin" />
-            <span>加载中...</span>
+          <div className="reminder-panel-loading">加载中...</div>
+        ) : error ? (
+          <div className="reminder-panel-error">
+            <AlertCircle size={16} />
+            <span>{error}</span>
           </div>
         ) : reminders.length === 0 ? (
-          <div className="reminder-empty">
-            <div className="empty-icon-wrap">
-              <Clock size={48} />
-            </div>
-            <h3>暂无定时任务</h3>
-            <p>在聊天窗口中使用自然语言创建定时提醒</p>
-            <p className="empty-example">例如："帮我设置明天早上9点的提醒"</p>
+          <div className="reminder-panel-empty">
+            <Clock size={48} />
+            <p>暂无定时任务</p>
+            <span>点击上方 + 按钮添加</span>
           </div>
         ) : (
           <div className="reminder-list">
-            {reminders.map((reminder, index) => (
-              <div 
-                key={reminder.id} 
-                className={`reminder-card ${reminder.enabled ? 'active' : 'disabled'}`}
-                style={{ animationDelay: `${index * 50}ms` }}
+            {reminders.map((reminder) => (
+              <div
+                key={reminder.id}
+                className={`reminder-item ${!reminder.enabled ? 'disabled' : ''}`}
               >
-                {/* Card Header */}
-                <div className="reminder-card-header">
-                  <div className="reminder-status-dot" style={{ backgroundColor: getStatusColor(reminder.enabled) }} />
-                  <div className="reminder-content-wrap">
-                    <h4 className="reminder-title">{reminder.content}</h4>
-                    <div className="reminder-badges">
-                      {reminder.scheduleType && SCHEDULE_TYPE_MAP[reminder.scheduleType] && (
-                        <span
-                          className={`badge badge-schedule-type badge-${reminder.scheduleType}`}
-                          style={{ color: SCHEDULE_TYPE_MAP[reminder.scheduleType].color, borderColor: SCHEDULE_TYPE_MAP[reminder.scheduleType].color }}
-                        >
-                          <Repeat size={10} />
-                          {SCHEDULE_TYPE_MAP[reminder.scheduleType].label}
-                        </span>
-                      )}
-                      {reminder.isOneTime && (
-                        <span className="badge badge-one-time">
-                          <Calendar size={10} />
-                          一次性
-                        </span>
-                      )}
-                      {reminder.enabled && (
-                        <span className="badge badge-active">
-                          <Zap size={10} />
-                          运行中
-                        </span>
-                      )}
-                    </div>
+                {/* Status Dot */}
+                <div 
+                  className="reminder-item-status" 
+                  style={{ backgroundColor: getStatusColor(reminder.enabled) }}
+                />
+                
+                {/* Content */}
+                <div className="reminder-item-content">
+                  <div className="reminder-item-header">
+                    <span className="reminder-item-title">{reminder.content}</span>
+                    {reminder.scheduleType && SCHEDULE_TYPE_MAP[reminder.scheduleType] && (
+                      <span className="reminder-item-badge">
+                        {SCHEDULE_TYPE_MAP[reminder.scheduleType].label}
+                      </span>
+                    )}
                   </div>
-                  <div className="reminder-actions">
-                    <button 
-                      className={`action-btn toggle-btn ${reminder.enabled ? 'pause' : 'play'}`}
-                      onClick={() => handleToggle(reminder.id)}
-                      title={reminder.enabled ? '暂停' : '启用'}
-                    >
-                      {reminder.enabled ? <Pause size={12} /> : <Play size={12} />}
-                    </button>
-                    <button 
-                      className="action-btn delete-btn"
-                      onClick={() => handleRemove(reminder.id)}
-                      title="删除"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                  <div className="reminder-item-meta">
+                    {formatCronExpression(reminder.cronExpression)} · 
+                    {reminder.targetType === 'user' ? '私聊' : '群聊'} · 
+                    已触发 {reminder.triggerCount} 次
                   </div>
                 </div>
 
-                {/* Card Body */}
-                <div className="reminder-card-body">
-                  <div className="reminder-detail-row">
-                    <Calendar size={14} className="detail-icon" />
-                    <span className="detail-label">执行时间</span>
-                    <span className="detail-value cron-value">{formatCronExpression(reminder.cronExpression)}</span>
-                  </div>
-                  <div className="reminder-detail-row">
-                    <Target size={14} className="detail-icon" />
-                    <span className="detail-label">目标</span>
-                    <span className="detail-value">{reminder.targetType === 'user' ? '私聊' : '群聊'}</span>
-                  </div>
-                  <div className="reminder-detail-row">
-                    <Zap size={14} className="detail-icon" />
-                    <span className="detail-label">已触发</span>
-                    <span className="detail-value">{reminder.triggerCount} 次</span>
-                  </div>
-                  <div className="reminder-detail-row">
-                    <History size={14} className="detail-icon" />
-                    <span className="detail-label">上次触发</span>
-                    <span className="detail-value">{formatTime(reminder.lastTriggeredAt)}</span>
-                  </div>
-                  {reminder.description && (
-                    <div className="reminder-description">
-                      <span className="detail-label">备注</span>
-                      <span className="detail-value">{reminder.description}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Card Footer */}
-                <div className="reminder-card-footer">
-                  <span className="reminder-id">{reminder.id.slice(0, 8)}...</span>
+                {/* Actions */}
+                <div className="reminder-item-actions">
+                  <button
+                    className="reminder-item-action-btn"
+                    onClick={() => handleToggle(reminder.id)}
+                    title={reminder.enabled ? '暂停' : '启用'}
+                  >
+                    {reminder.enabled ? <Pause size={14} /> : <Play size={14} />}
+                  </button>
+                  <button
+                    className="reminder-item-action-btn delete"
+                    onClick={() => handleRemove(reminder.id)}
+                    title="删除"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
-      </div>
-
-      {/* Footer */}
-      <div className="reminder-panel-footer">
-        <span className="footer-text">共 {reminders.length} 个定时任务</span>
       </div>
     </div>
   )

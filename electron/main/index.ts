@@ -1982,3 +1982,156 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
 })
+
+// ==================== MCP & Skill IPC Handlers ====================
+
+import { mcpManager } from './services/mcp-manager'
+import { skillManager } from './services/skill-manager'
+import { mcpConfigService } from './services/mcp-config-service'
+
+// MCP Server IPC Handlers
+ipcMain.handle('mcp:get-servers', () => {
+  try {
+    const configs = mcpConfigService.getConfig().mcpServers
+    const servers = Object.values(configs)
+    return { success: true, servers }
+  } catch (error) {
+    log.error('[IPC] Failed to get MCP servers:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('mcp:add-server', async (_event, config) => {
+  try {
+    const server = await mcpConfigService.addMCPServer(config)
+    mcpManager.addServer(server)
+    return { success: true, server }
+  } catch (error) {
+    log.error('[IPC] Failed to add MCP server:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('mcp:update-server', async (_event, id, updates) => {
+  try {
+    const server = await mcpConfigService.updateMCPServer(id, updates)
+    if (server) {
+      mcpManager.updateServerConfig(id, updates)
+    }
+    return { success: true, server }
+  } catch (error) {
+    log.error('[IPC] Failed to update MCP server:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('mcp:remove-server', async (_event, id) => {
+  try {
+    await mcpConfigService.removeMCPServer(id)
+    mcpManager.removeServer(id)
+    return { success: true }
+  } catch (error) {
+    log.error('[IPC] Failed to remove MCP server:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('mcp:connect-server', async (_event, id) => {
+  try {
+    const result = await mcpManager.connectServer(id)
+    return { success: result }
+  } catch (error) {
+    log.error('[IPC] Failed to connect MCP server:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('mcp:disconnect-server', (_event, id) => {
+  try {
+    mcpManager.disconnectServer(id)
+    return { success: true }
+  } catch (error) {
+    log.error('[IPC] Failed to disconnect MCP server:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('mcp:get-server-status', (_event, id) => {
+  try {
+    const status = mcpManager.getServerStatus(id)
+    return { success: true, status }
+  } catch (error) {
+    log.error('[IPC] Failed to get MCP server status:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+// Skill IPC Handlers
+ipcMain.handle('skill:get-all', () => {
+  try {
+    const configs = mcpConfigService.getConfig().skills
+    const skills = Object.values(configs)
+    return { success: true, skills }
+  } catch (error) {
+    log.error('[IPC] Failed to get skills:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('skill:add', async (_event, config) => {
+  try {
+    const skill = await mcpConfigService.addSkill(config)
+    return { success: true, skill }
+  } catch (error) {
+    log.error('[IPC] Failed to add skill:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('skill:update', async (_event, id, updates) => {
+  try {
+    const skill = await mcpConfigService.updateSkill(id, updates)
+    return { success: true, skill }
+  } catch (error) {
+    log.error('[IPC] Failed to update skill:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('skill:remove', async (_event, id) => {
+  try {
+    await mcpConfigService.removeSkill(id)
+    return { success: true }
+  } catch (error) {
+    log.error('[IPC] Failed to remove skill:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('skill:execute', async (_event, id, context) => {
+  try {
+    const result = await skillManager.executeSkill(id, context)
+    return { success: result.success, output: result.output, error: result.error }
+  } catch (error) {
+    log.error('[IPC] Failed to execute skill:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('skill:set-enabled', async (_event, id, enabled) => {
+  try {
+    await mcpConfigService.updateSkill(id, { enabled })
+    skillManager.setSkillEnabled(id, enabled)
+    return { success: true }
+  } catch (error) {
+    log.error('[IPC] Failed to set skill enabled:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+// 转发 MCP 服务器状态变更事件到渲染进程
+mcpManager.on('server-status-change', (id, status) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('mcp:server-status-change', { id, status })
+  }
+})

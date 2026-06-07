@@ -1,0 +1,184 @@
+/* Reminder Panel 样式 - 仅保留自定义样式，标题栏使用 vscode-sidebar.css */
+
+/* 面板容器 */
+.reminder-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 内容区域 */
+.reminder-panel-content {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  background-color: #0D1117;
+}
+
+/* 加载/错误/空状态 */
+.reminder-panel-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100px;
+  color: #858585;
+  font-size: 13px;
+}
+
+.reminder-panel-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: #f48771;
+  font-size: 13px;
+}
+
+.reminder-panel-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #858585;
+  text-align: center;
+}
+
+.reminder-panel-empty svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.reminder-panel-empty p {
+  font-size: 13px;
+  margin: 0 0 8px 0;
+}
+
+.reminder-panel-empty span {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* 任务列表 */
+.reminder-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 任务项 */
+.reminder-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-left: 2px solid transparent;
+}
+
+.reminder-item:hover {
+  background-color: #2a2d2e;
+}
+
+.reminder-item.selected {
+  background-color: #37373d;
+  border-left-color: #007acc;
+}
+
+.reminder-item.disabled {
+  opacity: 0.6;
+}
+
+/* 状态指示器 */
+.reminder-item-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+/* 内容区域 */
+.reminder-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reminder-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reminder-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #cccccc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reminder-item-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  background-color: #2d2d30;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #858585;
+  flex-shrink: 0;
+}
+
+.reminder-item-meta {
+  font-size: 11px;
+  color: #6e6e6e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 操作按钮 */
+.reminder-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.reminder-item:hover .reminder-item-actions,
+.reminder-item.selected .reminder-item-actions {
+  opacity: 1;
+}
+
+.reminder-item-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #858585;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.15s ease;
+}
+
+.reminder-item-action-btn:hover {
+  background-color: #2d2d30;
+  color: #cccccc;
+}
+
+.reminder-item-action-btn.delete:hover {
+  color: #f48771;
+}

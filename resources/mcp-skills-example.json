@@ -1,0 +1,83 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "id": "filesystem",
+      "name": "文件系统",
+      "description": "访问本地文件系统，支持读写操作",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/Users"],
+      "env": {},
+      "enabled": true,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704067200000
+    },
+    "github": {
+      "id": "github",
+      "name": "GitHub",
+      "description": "管理 GitHub 仓库、Issue、PR",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"
+      },
+      "enabled": false,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704067200000
+    },
+    "postgres": {
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "description": "查询 PostgreSQL 数据库",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": "postgresql://user:pass@localhost:5432/db"
+      },
+      "enabled": false,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704067200000
+    }
+  },
+  "skills": {
+    "code-review": {
+      "id": "code-review",
+      "name": "代码审查",
+      "description": "审查代码变更，提供质量反馈",
+      "type": "code-review",
+      "version": "1.0.0",
+      "entry": "builtin:code-review",
+      "enabled": true,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704067200000
+    },
+    "security-review": {
+      "id": "security-review",
+      "name": "安全审查",
+      "description": "扫描代码安全漏洞",
+      "type": "security",
+      "version": "1.0.0",
+      "entry": "builtin:security-review",
+      "enabled": true,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704067200000
+    },
+    "debugger": {
+      "id": "debugger",
+      "name": "智能调试",
+      "description": "收集运行时证据，科学定位 Bug",
+      "type": "debug",
+      "version": "1.0.0",
+      "entry": "builtin:debugger",
+      "enabled": true,
+      "createdAt": 1704067200000,
+      "updatedAt": 1704067200000
+    }
+  },
+  "settings": {
+    "autoLoadMcpServers": true,
+    "autoExecuteSkills": false
+  }
+}

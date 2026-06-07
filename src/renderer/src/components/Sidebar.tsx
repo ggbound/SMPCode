@@ -3,9 +3,10 @@ import { t } from '../i18n'
 
 interface SidebarProps {
   onSessionSelect?: (projectPath: string | undefined) => void
+  onOpenMCPSkillPanel?: () => void
 }
 
-function Sidebar({ onSessionSelect }: SidebarProps = {}) {
+function Sidebar({ onSessionSelect, onOpenMCPSkillPanel }: SidebarProps = {}) {
   const { sessions, currentSession, selectSession, addSession, setMessages } = useStore()
 
   const handleNewSession = async () => {
@@ -98,6 +99,19 @@ function Sidebar({ onSessionSelect }: SidebarProps = {}) {
             </div>
           ))
         )}
+      </div>
+      
+      {/* MCP & Skill 入口 */}
+      <div className="sidebar-section">
+        <div className="sidebar-section-title">扩展</div>
+        <button 
+          className="sidebar-menu-item"
+          onClick={onOpenMCPSkillPanel}
+          title="配置 MCP Server 和 Skill"
+        >
+          <span className="sidebar-menu-icon">🔌</span>
+          <span className="sidebar-menu-label">MCP & Skill</span>
+        </button>
       </div>
     </aside>
   )
