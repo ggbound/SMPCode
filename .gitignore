@@ -5,3 +5,4 @@ package-lock.json
 out
 build
 package-lock.json
+electron-dist-clean
