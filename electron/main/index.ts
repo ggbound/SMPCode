@@ -1460,13 +1460,38 @@ function initializeCLIRegistries(): void {
 
       try {
         const { execSync } = require('child_process')
+        const fs = require('fs')
         const command = String(args.command)
         const timeout = (args.timeout as number) || 30000
+        
+        // 获取适合当前平台的 shell
+        const isWindows = process.platform === 'win32'
+        let shell: string | undefined = undefined
+        
+        if (isWindows) {
+          // Windows: 尝试使用 PowerShell，否则使用 cmd.exe
+          const possibleShells = [
+            process.env.COMSPEC,
+            'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+            'C:\\Windows\\System32\\powershell.exe',
+            'C:\\Windows\\System32\\cmd.exe',
+            'cmd.exe'
+          ]
+          for (const s of possibleShells) {
+            if (s && fs.existsSync(s)) {
+              shell = s
+              break
+            }
+          }
+          log.info(`[execute_bash] Using Windows shell: ${shell}`)
+        }
+        
         const output = execSync(command, {
           cwd: context.cwd,
           encoding: 'utf-8',
           timeout,
-          stdio: ['pipe', 'pipe', 'pipe']
+          stdio: ['pipe', 'pipe', 'pipe'],
+          ...(shell && { shell })
         })
         return {
           success: true,

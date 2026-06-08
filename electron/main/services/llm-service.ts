@@ -172,6 +172,9 @@ async function sendOpenAIMessage(
   log.info(`[LLM] =========================================`)
 
   try {
+    log.info(`[LLM] Fetching URL: ${url}`)
+    log.info(`[LLM] Request headers: Content-Type: application/json, Authorization: Bearer ${apiKey.substring(0, 10)}...`)
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -214,8 +217,11 @@ async function sendOpenAIMessage(
 
     return result
   } catch (error) {
-    log.error('OpenAI API error:', error)
-    throw error
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    log.error('[LLM] OpenAI API error:', error)
+    log.error('[LLM] Error details:', errorMsg)
+    log.error('[LLM] URL:', url)
+    throw new Error(`OpenAI API error: ${errorMsg}`)
   }
 }
 
@@ -284,8 +290,11 @@ async function sendAnthropicMessage(
 
     return result
   } catch (error) {
-    log.error('Anthropic API error:', error)
-    throw error
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    log.error('[LLM] Anthropic API error:', error)
+    log.error('[LLM] Error details:', errorMsg)
+    log.error('[LLM] URL:', url)
+    throw new Error(`Anthropic API error: ${errorMsg}`)
   }
 }
 
@@ -339,6 +348,9 @@ async function* streamOpenAIMessage(
   const url = getApiUrl(apiUrl, false)
 
   try {
+    log.info(`[LLM Stream] Fetching URL: ${url}`)
+    log.info(`[LLM Stream] Request headers: Content-Type: application/json, Authorization: Bearer ${apiKey.substring(0, 10)}...`)
+    
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -407,8 +419,11 @@ async function* streamOpenAIMessage(
       log.debug('[LLM] Stream aborted by user (normal cleanup)')
       return
     }
-    log.error('OpenAI Stream API error:', error)
-    throw error
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    log.error('[LLM] OpenAI Stream API error:', error)
+    log.error('[LLM] Error details:', errorMsg)
+    log.error('[LLM] URL:', url)
+    throw new Error(`OpenAI Stream API error: ${errorMsg}`)
   }
 }
 
@@ -493,8 +508,11 @@ async function* streamAnthropicMessage(
       log.debug('[LLM] Anthropic stream aborted by user (normal cleanup)')
       return
     }
-    log.error('Anthropic Stream API error:', error)
-    throw error
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    log.error('[LLM] Anthropic Stream API error:', error)
+    log.error('[LLM] Error details:', errorMsg)
+    log.error('[LLM] URL:', url)
+    throw new Error(`Anthropic Stream API error: ${errorMsg}`)
   }
 }
 

@@ -927,11 +927,23 @@ export async function sendCLIMessageStream(
         for (const toolCall of extractedToolCalls) {
           try {
             log.debug(`[CLI-Chat] Executing extracted tool: ${toolCall.name}`)
-            const result = await executeToolCall(toolCall.name, toolCall.arguments, session.cwd)
-
+            
             // 使用工具调用的实际 ID
             const toolCallId = toolCall.id || `extracted-${toolCall.name}`
+            
+            // ✅ 修复：先发送 tool_call 事件，让前端显示工具调用
+            onChunk({
+              type: 'tool_call',
+              toolCall: {
+                id: toolCallId,
+                name: toolCall.name,
+                arguments: JSON.stringify(toolCall.arguments)
+              }
+            })
+            
+            const result = await executeToolCall(toolCall.name, toolCall.arguments, session.cwd)
 
+            // 发送 tool_result 事件
             onChunk({
               type: 'tool_result',
               toolResult: {

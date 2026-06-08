@@ -924,18 +924,36 @@ class ProcessTerminalBridge extends EventEmitter {
   // 检查端口是否被占用
   private async checkPortInUse(port: number): Promise<boolean> {
     return new Promise((resolve) => {
-      const checkCmd = `lsof -i :${port} | grep LISTEN`
-      exec(checkCmd, (error, stdout) => {
-        resolve(!error && stdout.length > 0)
-      })
+      const isWindows = process.platform === 'win32'
+      if (isWindows) {
+        // Windows: 使用 netstat 检查端口
+        const checkCmd = `netstat -ano | findstr :${port}`
+        exec(checkCmd, (error, stdout) => {
+          resolve(!error && stdout.length > 0)
+        })
+      } else {
+        // macOS/Linux: 使用 lsof
+        const checkCmd = `lsof -i :${port} | grep LISTEN`
+        exec(checkCmd, (error, stdout) => {
+          resolve(!error && stdout.length > 0)
+        })
+      }
     })
   }
 
   // 通过端口 kill 进程
   private async killProcessByPort(port: number): Promise<void> {
     return new Promise((resolve) => {
-      const killCmd = `lsof -i :${port} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true`
-      exec(killCmd, () => resolve())
+      const isWindows = process.platform === 'win32'
+      if (isWindows) {
+        // Windows: 使用 netstat 查找 PID 然后 taskkill
+        const killCmd = `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port}') do taskkill /F /PID %a 2>nul`
+        exec(killCmd, () => resolve())
+      } else {
+        // macOS/Linux: 使用 lsof 和 kill
+        const killCmd = `lsof -i :${port} | grep LISTEN | awk '{print $2}' | xargs kill -9 2>/dev/null || true`
+        exec(killCmd, () => resolve())
+      }
     })
   }
 
@@ -943,23 +961,43 @@ class ProcessTerminalBridge extends EventEmitter {
   private async forceKillByCommand(command: string, cwd: string): Promise<void> {
     const commandPart = this.extractCommandPart(command)
     const mainCmd = commandPart.split(' ')[0]
-    const projectName = cwd.split('/').pop() || ''
+    const isWindows = process.platform === 'win32'
+    const projectName = isWindows 
+      ? cwd.split('\\').pop() || '' 
+      : cwd.split('/').pop() || ''
     
     return new Promise((resolve) => {
-      // 尝试多种方式 kill
-      const killCmds = [
-        `pkill -f "${mainCmd}.*${projectName}" 2>/dev/null || true`,
-        `pkill -f "node.*${projectName}" 2>/dev/null || true`,
-        `pkill -f "npm.*${projectName}" 2>/dev/null || true`
-      ]
-      
-      let completed = 0
-      killCmds.forEach(cmd => {
-        exec(cmd, () => {
-          completed++
-          if (completed === killCmds.length) resolve()
+      if (isWindows) {
+        // Windows: 使用 taskkill 和 wmic
+        const killCmds = [
+          `taskkill /F /FI "WINDOWTITLE eq *${mainCmd}*" 2>nul || exit 0`,
+          `taskkill /F /IM node.exe 2>nul || exit 0`,
+          `wmic process where "name='node.exe'" delete 2>nul || exit 0`
+        ]
+        
+        let completed = 0
+        killCmds.forEach(cmd => {
+          exec(cmd, () => {
+            completed++
+            if (completed === killCmds.length) resolve()
+          })
         })
-      })
+      } else {
+        // macOS/Linux: 使用 pkill
+        const killCmds = [
+          `pkill -f "${mainCmd}.*${projectName}" 2>/dev/null || true`,
+          `pkill -f "node.*${projectName}" 2>/dev/null || true`,
+          `pkill -f "npm.*${projectName}" 2>/dev/null || true`
+        ]
+        
+        let completed = 0
+        killCmds.forEach(cmd => {
+          exec(cmd, () => {
+            completed++
+            if (completed === killCmds.length) resolve()
+          })
+        })
+      }
     })
   }
 

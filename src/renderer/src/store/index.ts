@@ -256,7 +256,7 @@ interface AppState {
   addStepToMessage: (messageIndex: number, step: Step) => void
   updateStepStatus: (messageIndex: number, stepId: string, status: Step['status']) => void
   addToolCallToMessage: (messageIndex: number, toolCall: ToolCall) => void
-  updateToolCallStatus: (messageIndex: number, toolCallId: string, status: ToolCall['status']) => void
+  updateToolCallStatus: (messageIndex: number, toolCallId: string, status: ToolCall['status'], result?: string) => void
   
   // TRAE风格：流式消息控制
   startStreaming: (messageId: string) => void
@@ -427,13 +427,18 @@ export const useStore = create<AppState>((set) => ({
     )
   })),
   
-  updateToolCallStatus: (messageIndex, toolCallId, status) => set((state) => ({
+  updateToolCallStatus: (messageIndex, toolCallId, status, result?: string) => set((state) => ({
     messages: state.messages.map((msg, i) => 
       i === messageIndex && msg.toolCalls
         ? { 
             ...msg, 
             toolCalls: msg.toolCalls.map(t => 
-              t.id === toolCallId ? { ...t, status, duration: Date.now() - t.timestamp } : t
+              t.id === toolCallId ? { 
+                ...t, 
+                status, 
+                duration: Date.now() - t.timestamp,
+                ...(result !== undefined && { result })
+              } : t
             )
           }
         : msg

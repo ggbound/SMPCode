@@ -160,47 +160,134 @@ const ToolCallCard = memo(function ToolCallCard({ toolCall }: { toolCall: ToolCa
   
   const config = getToolInfo(toolCall.name)
   const path = toolCall.args?.path || toolCall.args?.file_path || toolCall.args?.directory || toolCall.args?.command || toolCall.args?.url || ''
+  const [showResult, setShowResult] = useState(false)
+  
+  // 格式化工具结果用于显示
+  const formatResult = (result: string | undefined): string => {
+    if (!result) return ''
+    try {
+      // 尝试解析 JSON 并格式化
+      const parsed = JSON.parse(result)
+      if (Array.isArray(parsed)) {
+        // 目录列表等数组结果
+        return parsed.map(item => {
+          if (typeof item === 'object' && item.name) {
+            const type = item.isDirectory ? '📁' : '📄'
+            return `${type} ${item.name}`
+          }
+          return String(item)
+        }).join('\n')
+      }
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      // 如果不是 JSON，直接返回
+      return result
+    }
+  }
+  
+  const hasResult = toolCall.status === 'completed' && toolCall.result
+  const hasError = toolCall.status === 'failed'
   
   return (
     <div 
       className="kilo-tool-card"
       style={{ 
         borderColor: config.color,
-        backgroundColor: config.bgColor
+        backgroundColor: config.bgColor,
+        flexDirection: 'column',
+        alignItems: 'stretch'
       }}
     >
-      <div className="kilo-tool-card-left">
-        <div 
-          className="kilo-tool-icon"
-          style={{ color: config.color }}
-        >
-          {config.icon}
-        </div>
-        <div className="kilo-tool-info">
-          <span 
-            className="kilo-tool-label"
+      <div className="kilo-tool-card-main" style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+        <div className="kilo-tool-card-left" style={{ flex: 1 }}>
+          <div 
+            className="kilo-tool-icon"
             style={{ color: config.color }}
           >
-            {config.label}
-          </span>
-          {path && (
-            <span className="kilo-tool-path">
-              {formatPath(path)}
+            {config.icon}
+          </div>
+          <div className="kilo-tool-info">
+            <span 
+              className="kilo-tool-label"
+              style={{ color: config.color }}
+            >
+              {config.label}
             </span>
+            {path && (
+              <span className="kilo-tool-path">
+                {formatPath(path)}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="kilo-tool-status" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {hasResult && (
+            <button
+              onClick={() => setShowResult(!showResult)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '12px',
+                color: config.color,
+                padding: '2px 8px',
+                borderRadius: '4px',
+                backgroundColor: 'rgba(255,255,255,0.1)'
+              }}
+            >
+              {showResult ? '隐藏结果' : '查看结果'}
+            </button>
+          )}
+          {toolCall.status === 'running' && (
+            <Loader2 size={14} className="kilo-spin" style={{ color: config.color }} />
+          )}
+          {toolCall.status === 'completed' && (
+            <CheckCircle2 size={14} style={{ color: '#22c55e' }} />
+          )}
+          {toolCall.status === 'failed' && (
+            <XCircle size={14} style={{ color: '#ef4444' }} />
           )}
         </div>
       </div>
-      <div className="kilo-tool-status">
-        {toolCall.status === 'running' && (
-          <Loader2 size={14} className="kilo-spin" style={{ color: config.color }} />
-        )}
-        {toolCall.status === 'completed' && (
-          <CheckCircle2 size={14} style={{ color: '#22c55e' }} />
-        )}
-        {toolCall.status === 'failed' && (
-          <XCircle size={14} style={{ color: '#ef4444' }} />
-        )}
-      </div>
+      
+      {/* 工具执行结果 */}
+      {showResult && hasResult && (
+        <div 
+          className="kilo-tool-result"
+          style={{
+            marginTop: '8px',
+            padding: '8px 12px',
+            backgroundColor: 'rgba(0,0,0,0.2)',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            maxHeight: '300px',
+            overflow: 'auto',
+            color: '#e2e8f0'
+          }}
+        >
+          {formatResult(toolCall.result)}
+        </div>
+      )}
+      
+      {/* 错误信息 */}
+      {hasError && toolCall.result && (
+        <div 
+          className="kilo-tool-error"
+          style={{
+            marginTop: '8px',
+            padding: '8px 12px',
+            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+            borderRadius: '4px',
+            fontSize: '12px',
+            color: '#ef4444'
+          }}
+        >
+          {toolCall.result}
+        </div>
+      )}
     </div>
   )
 })
@@ -291,6 +378,42 @@ function cleanContent(content: string): string {
   return cleaned.trim()
 }
 
+// 从 messageSteps 提取工具调用
+function extractToolCallsFromSteps(messageSteps?: Array<{
+  id: string
+  type: string
+  title: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  timestamp: number
+  toolName?: string
+  toolArgs?: Record<string, any>
+  toolResult?: {
+    success: boolean
+    output?: string
+    error?: string
+  }
+}>): ToolCall[] {
+  if (!messageSteps || messageSteps.length === 0) return []
+  
+  const toolCalls: ToolCall[] = []
+  const toolCallSteps = messageSteps.filter(step => step.type === 'tool_call')
+  
+  for (const step of toolCallSteps) {
+    if (step.toolName) {
+      toolCalls.push({
+        id: step.id,
+        name: step.toolName,
+        args: step.toolArgs || {},
+        status: step.status,
+        timestamp: step.timestamp,
+        result: step.toolResult?.output || step.toolResult?.error
+      })
+    }
+  }
+  
+  return toolCalls
+}
+
 // 主组件
 export const KiloChatMessage = memo(function KiloChatMessage({ 
   message, 
@@ -298,7 +421,11 @@ export const KiloChatMessage = memo(function KiloChatMessage({
   onStop 
 }: KiloChatMessageProps) {
   const cleaned = cleanContent(message.content)
-  const hasTools = message.toolCalls && message.toolCalls.length > 0
+  
+  // 合并 toolCalls 和从 messageSteps 提取的工具调用
+  const toolCallsFromSteps = extractToolCallsFromSteps(message.messageSteps)
+  const allToolCalls = [...(message.toolCalls || []), ...toolCallsFromSteps]
+  const hasTools = allToolCalls.length > 0
   
   // 打字机效果
   const displayedContent = useTypewriter(cleaned, message.isStreaming ?? false, 5)
@@ -322,7 +449,7 @@ export const KiloChatMessage = memo(function KiloChatMessage({
 
       {/* 工具调用面板 */}
       {hasTools && (
-        <ToolCallPanel toolCalls={message.toolCalls || []} />
+        <ToolCallPanel toolCalls={allToolCalls} />
       )}
 
       {/* 消息内容 */}
