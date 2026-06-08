@@ -1,15 +1,24 @@
 /* VSCode-style File Explorer Styles */
 
-/* Seti-UI Icon Font */
-@font-face {
-  font-family: 'seti';
-  src: url('../assets/seti.woff') format('woff');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
+/* Lucide Icon Base Styles */
+.file-icon-lucide {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  line-height: 1;
 }
 
-/* Seti Icon Base Styles */
+.file-icon-lucide svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Legacy Seti Icon Styles (kept for backward compatibility) */
 .seti-icon {
   font-family: 'seti', sans-serif;
   font-size: 16px;

@@ -1,5 +1,6 @@
 import { useStore } from '../store'
 import { t } from '../i18n'
+import { Folder } from 'lucide-react'
 
 interface SidebarProps {
   onSessionSelect?: (projectPath: string | undefined) => void
@@ -75,16 +76,10 @@ function Sidebar({ onSessionSelect, onOpenMCPSkillPanel }: SidebarProps = {}) {
               <div style={{ fontWeight: 500, fontSize: '13px' }}>
                 {t('sessionTitle')} {session.id.slice(0, 8)}
                 {session.projectPath && (
-                  <span style={{ 
-                    marginLeft: '6px', 
-                    fontSize: '10px', 
-                    background: 'var(--accent-color)', 
-                    color: 'white',
-                    padding: '1px 4px',
-                    borderRadius: '3px'
-                  }}>
-                    📁
-                  </span>
+                  <Folder size={12} style={{ 
+                    marginLeft: '6px',
+                    color: 'var(--accent-color)'
+                  }} />
                 )}
               </div>
               <div style={{ fontSize: '11px', opacity: 0.7 }}>

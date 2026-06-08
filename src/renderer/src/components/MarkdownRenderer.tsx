@@ -9,7 +9,7 @@ import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import { CodeBlock } from './CodeBlock'
-import { Copy, Check } from 'lucide-react'
+import { Copy, Check, FolderTree } from 'lucide-react'
 
 // 有效的 HTML 标签名模式（仅允许字母开头，后跟字母、数字、短横线，可选末尾斜杠用于自闭合标签）
 const VALID_HTML_TAG = /^[a-zA-Z][a-zA-Z0-9-]*\/?$/
@@ -181,7 +181,7 @@ const DirectoryTreeBlock = memo(function DirectoryTreeBlock({ content }: { conte
   return (
     <div className="directory-tree-block">
       <div className="directory-tree-header">
-        <span className="directory-tree-label">📁 目录结构</span>
+        <span className="directory-tree-label"><FolderTree size={14} style={{ marginRight: '6px' }} />目录结构</span>
         <button 
           className={`directory-tree-copy-btn ${isCopied ? 'copied' : ''}`}
           onClick={handleCopy}

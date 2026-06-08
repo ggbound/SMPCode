@@ -32,7 +32,9 @@ import {
   Globe,
   Bell,
   List,
-  Trash
+  Trash,
+  Folder,
+  File
 } from 'lucide-react'
 
 interface KiloChatMessageProps {
@@ -172,8 +174,7 @@ const ToolCallCard = memo(function ToolCallCard({ toolCall }: { toolCall: ToolCa
         // 目录列表等数组结果
         return parsed.map(item => {
           if (typeof item === 'object' && item.name) {
-            const type = item.isDirectory ? '📁' : '📄'
-            return `${type} ${item.name}`
+            return item.isDirectory ? `[DIR] ${item.name}` : `[FILE] ${item.name}`
           }
           return String(item)
         }).join('\n')

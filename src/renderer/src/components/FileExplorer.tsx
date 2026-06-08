@@ -1,12 +1,140 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2, RefreshCw, ChevronDown } from 'lucide-react'
+import { 
+  Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2, RefreshCw, ChevronDown, 
+  BookOpen, FileEdit, Copy, ClipboardPaste, FileCode, FileJson, FileType, 
+  Braces, Hash, Image, FileText, Settings, Coffee, Terminal, Database, 
+  Package, GitBranch, FileKey, FileLock, FileCheck, FileWarning, FileX, FilePlus
+} from 'lucide-react'
 import { t } from '../i18n'
 import { gitIPC } from './GitStatusBar'
-import { getFileIconSVG } from '../utils/fileIconTheme'
-import { getSetiIconInfo } from '../utils/setiIconTheme'
 import { explorerState } from '../utils/explorerState'
 import '../styles/fileExplorer.css'
 import '../styles/vscode-sidebar.css'
+
+// File extension to icon mapping using Lucide icons
+const FILE_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  // JavaScript/TypeScript
+  'js': FileCode,
+  'jsx': FileCode,
+  'ts': FileCode,
+  'tsx': FileCode,
+  'mjs': FileCode,
+  'cjs': FileCode,
+  
+  // Config
+  'json': FileJson,
+  'yaml': Settings,
+  'yml': Settings,
+  'toml': Settings,
+  'ini': Settings,
+  'conf': Settings,
+  'cfg': Settings,
+  'config': Settings,
+  
+  // Web
+  'html': FileType,
+  'htm': FileType,
+  'css': FileType,
+  'scss': FileType,
+  'sass': FileType,
+  'less': FileType,
+  
+  // Programming
+  'py': FileCode,
+  'java': FileCode,
+  'go': FileCode,
+  'rs': FileCode,
+  'rb': FileCode,
+  'php': FileCode,
+  'swift': FileCode,
+  'kt': FileCode,
+  'scala': FileCode,
+  'c': FileCode,
+  'cpp': FileCode,
+  'h': FileCode,
+  'cs': FileCode,
+  
+  // Shell
+  'sh': Terminal,
+  'bash': Terminal,
+  'zsh': Terminal,
+  'fish': Terminal,
+  'ps1': Terminal,
+  'bat': Terminal,
+  'cmd': Terminal,
+  
+  // Documents
+  'md': FileText,
+  'markdown': FileText,
+  'txt': FileText,
+  'log': FileText,
+  'pdf': FileText,
+  
+  // Data
+  'xml': FileCode,
+  'sql': Database,
+  'db': Database,
+  'sqlite': Database,
+  
+  // Images
+  'png': Image,
+  'jpg': Image,
+  'jpeg': Image,
+  'gif': Image,
+  'svg': Image,
+  'webp': Image,
+  'ico': Image,
+  
+  // Archives
+  'zip': Package,
+  'rar': Package,
+  '7z': Package,
+  'tar': Package,
+  'gz': Package,
+  
+  // Default
+  'default': File
+}
+
+// Special file names to icon mapping
+const FILENAME_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  'package.json': Braces,
+  'package-lock.json': Braces,
+  'composer.json': Braces,
+  'composer.lock': Braces,
+  'dockerfile': Terminal,
+  'docker-compose.yml': Terminal,
+  'docker-compose.yaml': Terminal,
+  '.gitignore': GitBranch,
+  '.gitattributes': GitBranch,
+  '.env': FileLock,
+  '.env.local': FileLock,
+  '.env.example': FileLock,
+  'readme.md': FileText,
+  'readme': FileText,
+  'license': FileCheck,
+  'license.txt': FileCheck,
+  'makefile': Terminal,
+  'cmake': Terminal,
+}
+
+// Get icon component for a file
+function getFileIconComponent(filename: string, isDirectory: boolean, isOpen?: boolean): React.ComponentType<{ size?: number; className?: string }> {
+  if (isDirectory) {
+    return isOpen ? FolderOpen : Folder
+  }
+  
+  const name = filename.toLowerCase()
+  
+  // Check for special file names first
+  if (FILENAME_ICON_MAP[name]) {
+    return FILENAME_ICON_MAP[name]
+  }
+  
+  // Check by extension
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  return FILE_ICON_MAP[ext] || FILE_ICON_MAP['default']
+}
 
 interface FileNode {
   name: string
@@ -32,17 +160,14 @@ interface FileExplorerProps {
   projectPath?: string | null // 外部传入的项目路径，用于同步更新
 }
 
-// VSCode-style file icon component using Seti-UI font icons
+// VSCode-style file icon component using Lucide icons
 const FileIcon = ({ filename, isDirectory, isOpen }: { filename: string; isDirectory: boolean; isOpen?: boolean }) => {
-  const iconInfo = getSetiIconInfo(filename, isDirectory, isOpen)
+  const IconComponent = getFileIconComponent(filename, isDirectory, isOpen)
   
   return (
-    <span 
-      className="seti-icon"
-      data-icon-char={iconInfo.char}
-      style={{ color: iconInfo.color }}
-      aria-hidden="true"
-    />
+    <span className="file-icon-lucide" aria-hidden="true">
+      <IconComponent size={16} />
+    </span>
   )
 }
 
@@ -1377,7 +1502,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                     setContextMenu(null)
                   }}
                 >
-                  <span className="context-icon">📖</span>
+                  <span className="context-icon"><BookOpen size={14} /></span>
                   {t('open')}
                 </button>
               )}
@@ -1392,7 +1517,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                       setContextMenu(null)
                     }}
                   >
-                    <span className="context-icon">📝</span>
+                    <span className="context-icon"><FileEdit size={14} /></span>
                     {t('newFile')}
                   </button>
                   <button 
@@ -1402,7 +1527,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                       setContextMenu(null)
                     }}
                   >
-                    <span className="context-icon">📁</span>
+                    <span className="context-icon"><Folder size={14} /></span>
                     {t('newFolder')}
                   </button>
                 </>
@@ -1415,7 +1540,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                 className="context-menu-item"
                 onClick={() => handleCopy(contextMenu.node!)}
               >
-                <span className="context-icon">📋</span>
+                <span className="context-icon"><Copy size={14} /></span>
                 {t('copy') || 'Copy'}
               </button>
               <button 
@@ -1430,7 +1555,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                   className="context-menu-item"
                   onClick={() => handlePaste(contextMenu.node!.path)}
                 >
-                  <span className="context-icon">📌</span>
+                  <span className="context-icon"><ClipboardPaste size={14} /></span>
                   {t('paste') || 'Paste'}
                 </button>
               )}
