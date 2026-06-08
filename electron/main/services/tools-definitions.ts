@@ -98,12 +98,38 @@ function notifyFileOperation(operation: 'writing' | 'editing' | 'creating', file
 }
 
 /**
+ * 获取适合当前平台的 shell
+ */
+function getPlatformShell(): string {
+  if (process.platform === 'win32') {
+    // Windows: Try PowerShell first, fallback to cmd.exe
+    const possibleShells = [
+      process.env.COMSPEC,
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Windows\\System32\\powershell.exe',
+      'C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'powershell.exe',
+      'C:\\Windows\\System32\\cmd.exe',
+      'cmd.exe'
+    ]
+    for (const shell of possibleShells) {
+      if (shell && require('fs').existsSync(shell)) {
+        return shell
+      }
+    }
+    return 'cmd.exe'
+  }
+  // macOS/Linux
+  return process.env.SHELL || '/bin/zsh'
+}
+
+/**
  * 使用 spawn 执行命令（更可靠，支持大输出和更好的错误处理）
  */
 function spawnPromise(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   return new Promise((resolve, reject) => {
     // 使用用户的 shell 执行命令，确保环境变量正确
-    const userShell = process.env.SHELL || '/bin/zsh'
+    const userShell = getPlatformShell()
     const child = spawn(command, [], {
       cwd,
       env: { ...process.env, ...env },  // 合并系统环境变量和传入的环境变量

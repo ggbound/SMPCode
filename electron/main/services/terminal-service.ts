@@ -22,7 +22,32 @@ let windowRef: BrowserWindow | null = null
 
 function getShell(): { command: string; args: string[] } {
   if (process.platform === 'win32') {
-    return { command: 'powershell.exe', args: [] }
+    // Windows: Try common shell paths
+    const possibleShells = [
+      process.env.SHELL,
+      process.env.COMSPEC,
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Windows\\System32\\powershell.exe',
+      'C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'powershell.exe',
+      'cmd.exe',
+      'C:\\Windows\\System32\\cmd.exe'
+    ]
+    
+    for (const shell of possibleShells) {
+      if (shell && existsSync(shell)) {
+        log.info(`Using Windows shell: ${shell}`)
+        // PowerShell needs -NoExit to keep the session alive
+        if (shell.toLowerCase().includes('powershell')) {
+          return { command: shell, args: ['-NoExit', '-Command', 'Write-Host "PowerShell ready"'] }
+        }
+        return { command: shell, args: [] }
+      }
+    }
+    
+    // Fallback to cmd.exe if nothing found
+    log.warn('No PowerShell found, falling back to cmd.exe')
+    return { command: 'cmd.exe', args: [] }
   }
   
   // On macOS, try common shells
@@ -119,21 +144,28 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
       // Prepare environment
       const env = { ...process.env } as { [key: string]: string }
       
-      // Ensure PATH includes common directories
-      const pathDirs = [
-        '/usr/local/bin',
-        '/usr/bin',
-        '/bin',
-        '/usr/sbin',
-        '/sbin',
-        '/opt/homebrew/bin',
-        join(homedir(), '.local', 'bin'),
-        join(homedir(), 'bin')
-      ]
+      // Ensure PATH includes common directories (platform-specific)
+      const isWindows = process.platform === 'win32'
+      const pathSeparator = isWindows ? ';' : ':'
       
-      const currentPath = env.PATH || ''
-      const newPath = [...pathDirs, ...currentPath.split(':')].filter(Boolean).join(':')
-      env.PATH = newPath
+      if (!isWindows) {
+        // macOS/Linux: Add common directories to PATH
+        const pathDirs = [
+          '/usr/local/bin',
+          '/usr/bin',
+          '/bin',
+          '/usr/sbin',
+          '/sbin',
+          '/opt/homebrew/bin',
+          join(homedir(), '.local', 'bin'),
+          join(homedir(), 'bin')
+        ]
+        
+        const currentPath = env.PATH || ''
+        const newPath = [...pathDirs, ...currentPath.split(pathSeparator)].filter(Boolean).join(pathSeparator)
+        env.PATH = newPath
+      }
+      // Windows: Keep original PATH as is
       
       log.info(`Creating PTY with cwd: ${cwd}, shell: ${shellConfig.command}`)
 

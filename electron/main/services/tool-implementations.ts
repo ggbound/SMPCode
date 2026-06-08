@@ -193,6 +193,32 @@ export async function executeListDirectory(
 
 // ============ Bash 执行工具 ============
 
+/**
+ * 获取适合当前平台的 shell
+ */
+function getPlatformShell(): string {
+  if (process.platform === 'win32') {
+    // Windows: Try PowerShell first, fallback to cmd.exe
+    const possibleShells = [
+      process.env.COMSPEC,
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Windows\\System32\\powershell.exe',
+      'C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'powershell.exe',
+      'C:\\Windows\\System32\\cmd.exe',
+      'cmd.exe'
+    ]
+    for (const shell of possibleShells) {
+      if (shell && existsSync(shell)) {
+        return shell
+      }
+    }
+    return 'cmd.exe'
+  }
+  // macOS/Linux
+  return process.env.SHELL || '/bin/zsh'
+}
+
 export async function executeBash(
   args: Record<string, unknown>,
   cwd: string
@@ -206,7 +232,7 @@ export async function executeBash(
 
   return new Promise((resolve) => {
     // 使用用户的 shell 并继承环境变量
-    const userShell = process.env.SHELL || '/bin/zsh'
+    const userShell = getPlatformShell()
     const child = spawn(command, [], {
       cwd,
       shell: userShell,

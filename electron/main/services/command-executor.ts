@@ -15,7 +15,25 @@ const isLinux = platform === 'linux'
 
 // Get shell command based on platform
 function getShellCommand(): string {
-  if (isWindows) return 'cmd.exe'
+  if (isWindows) {
+    // Try to find PowerShell first, fallback to cmd.exe
+    const possibleShells = [
+      process.env.COMSPEC,
+      'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'C:\\Windows\\System32\\powershell.exe',
+      'C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe',
+      'powershell.exe',
+      'C:\\Windows\\System32\\cmd.exe',
+      'cmd.exe'
+    ]
+    for (const shell of possibleShells) {
+      if (shell && fs.existsSync(shell)) {
+        log.info(`Using Windows shell for command execution: ${shell}`)
+        return shell
+      }
+    }
+    return 'cmd.exe' // fallback
+  }
   if (isMacOS) return '/bin/zsh'
   return '/bin/bash'
 }
@@ -249,7 +267,10 @@ export async function executeBash(args: string[]): Promise<CommandResult> {
     log.info(`Executing on ${platform}: ${shell} ${shellArgs.join(' ')}`)
 
     // Build PATH environment variable with common directories
-    const pathDirs = [
+    const pathSeparator = isWindows ? ';' : ':'
+    const pathDirs = isWindows ? [
+      process.env.PATH || ''
+    ] : [
       '/usr/local/bin',
       '/usr/bin',
       '/bin',
@@ -266,7 +287,7 @@ export async function executeBash(args: string[]): Promise<CommandResult> {
 
     const env = {
       ...process.env,
-      PATH: pathDirs.join(':')
+      PATH: pathDirs.join(pathSeparator)
     }
 
     log.info(`[executeBash] PATH: ${env.PATH}`)
