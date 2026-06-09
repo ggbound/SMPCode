@@ -80,6 +80,28 @@ export interface MCPResourceDefinition {
 /** Skill 类型 */
 export type SkillType = 'code-review' | 'debug' | 'security' | 'mini-app' | 'custom';
 
+/** Skill 来源类型 */
+export type SkillSourceType = 'builtin' | 'local' | 'npm' | 'github' | 'url';
+
+/** Skill 来源配置 */
+export interface SkillSource {
+  /** 来源类型 */
+  type: SkillSourceType;
+  /** 来源地址
+   * - builtin: 'builtin:skill-name'
+   * - local: '/absolute/path/to/skill'
+   * - npm: '@scope/package-name' 或 'package-name'
+   * - github: 'owner/repo#branch' 或 'owner/repo'
+   * - url: 'https://example.com/skill.zip' 或 'https://example.com/skill.tar.gz'
+   */
+  location: string;
+  /** 版本/标签（用于 npm/github） */
+  version?: string;
+}
+
+/** Skill 安装状态 */
+export type SkillInstallStatus = 'pending' | 'downloading' | 'installing' | 'ready' | 'error';
+
 /** Skill 配置 */
 export interface SkillConfig {
   /** Skill 唯一标识 */
@@ -92,8 +114,16 @@ export interface SkillConfig {
   type: SkillType;
   /** Skill 版本 */
   version: string;
-  /** Skill 入口文件（TypeScript 模块路径） */
-  entry: string;
+  /** Skill 来源配置（新增） */
+  source: SkillSource;
+  /** Skill 入口文件（本地安装后的路径） */
+  entry?: string;
+  /** Skill 安装状态（新增） */
+  installStatus: SkillInstallStatus;
+  /** 安装错误信息（如果状态为 error） */
+  installError?: string;
+  /** 本地安装路径（系统自动管理） */
+  installPath?: string;
   /** Skill 元数据 */
   metadata?: Record<string, unknown>;
   /** 依赖的工具列表 */

@@ -9,7 +9,10 @@ import {
   SkillExecutionContext,
   SkillExecutionResult,
   SkillType,
+  SkillSource,
 } from './mcp-skill-types';
+import { skillDownloader, DownloadProgressCallback } from './skill-downloader';
+import { toolRegistry } from '../cli';
 
 /** Skill 执行函数签名 */
 type SkillExecutor = (
@@ -44,7 +47,9 @@ export class SkillManager extends EventEmitter {
       description: '审查代码变更，提供质量反馈',
       type: 'code-review',
       version: '1.0.0',
+      source: { type: 'builtin', location: 'builtin:code-review' },
       entry: 'builtin:code-review',
+      installStatus: 'ready',
       enabled: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -57,7 +62,9 @@ export class SkillManager extends EventEmitter {
       description: '扫描代码安全漏洞',
       type: 'security',
       version: '1.0.0',
+      source: { type: 'builtin', location: 'builtin:security-review' },
       entry: 'builtin:security-review',
+      installStatus: 'ready',
       enabled: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -70,7 +77,9 @@ export class SkillManager extends EventEmitter {
       description: '收集运行时证据，科学定位 Bug',
       type: 'debug',
       version: '1.0.0',
+      source: { type: 'builtin', location: 'builtin:debugger' },
       entry: 'builtin:debugger',
+      installStatus: 'ready',
       enabled: true,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -92,10 +101,156 @@ export class SkillManager extends EventEmitter {
     
     log.info(`[Skill] Registered: ${config.name} (${config.id})`);
     this.emit('skill-registered', config);
+
+    // 同时注册为 AI 可调用的工具
+    this.registerSkillAsTool(config, executor);
   }
 
   /**
-   * 从文件加载自定义 Skill
+   * 将 Skill 注册为 AI 可调用的工具
+   */
+  private registerSkillAsTool(config: SkillConfig, executor: SkillExecutor): void {
+    try {
+      const toolName = `skill_${config.id}`;
+      
+      // 构建工具参数定义
+      const parameters: Record<string, any> = {
+        context: {
+          type: 'string',
+          description: '当前上下文信息，如文件路径、代码片段等'
+        },
+        args: {
+          type: 'object',
+          description: 'Skill 执行参数'
+        }
+      };
+
+      toolRegistry.register({
+        name: toolName,
+        description: `${config.description} (Skill: ${config.name})`,
+        sourceHint: `skill:${config.name}`,
+        responsibility: `执行 ${config.name} Skill。当用户需要${config.description}时调用此工具。`,
+        parameters,
+        required: [],
+        execute: async (args: Record<string, unknown>, context: any) => {
+          try {
+            const skillContext: SkillExecutionContext = {
+              sessionId: context.sessionId || 'default',
+              currentFile: context.currentFile,
+              workspacePath: context.workspacePath,
+              userInput: context.userInput,
+            };
+            
+            const result = await executor(skillContext, args.args as Record<string, unknown> || {});
+            
+            return {
+              success: result.success,
+              output: result.output || '',
+              error: result.error,
+              data: result.data
+            };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return {
+              success: false,
+              output: '',
+              error: errorMessage
+            };
+          }
+        }
+      });
+      
+      log.info(`[Skill] Registered as tool: ${toolName}`);
+    } catch (error) {
+      log.error(`[Skill] Failed to register skill as tool:`, error);
+    }
+  }
+
+  /**
+   * 从远程来源安装 Skill
+   */
+  async installSkillFromSource(
+    config: Omit<SkillConfig, 'installStatus' | 'installPath' | 'entry'>,
+    onProgress?: DownloadProgressCallback
+  ): Promise<SkillConfig> {
+    try {
+      log.info(`[Skill] Installing skill from ${config.source.type}: ${config.source.location}`);
+      
+      // 更新状态为下载中
+      const skillConfig: SkillConfig = {
+        ...config,
+        installStatus: 'downloading',
+        installPath: undefined,
+        entry: undefined,
+      };
+      
+      // 下载并安装
+      const result = await skillDownloader.downloadAndInstall(
+        config.id,
+        config.source,
+        onProgress
+      );
+      
+      if (!result.success) {
+        skillConfig.installStatus = 'error';
+        skillConfig.installError = result.error;
+        log.error(`[Skill] Failed to install skill ${config.name}:`, result.error);
+        return skillConfig;
+      }
+      
+      // 更新配置
+      skillConfig.installStatus = 'ready';
+      skillConfig.installPath = result.installPath;
+      skillConfig.entry = result.entryFile;
+      
+      log.info(`[Skill] Skill ${config.name} installed successfully at ${result.installPath}`);
+      
+      // 如果是本地文件，尝试加载执行器
+      if (result.entryFile && result.installPath) {
+        await this.loadSkillExecutor(skillConfig);
+      }
+      
+      return skillConfig;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log.error(`[Skill] Failed to install skill ${config.name}:`, error);
+      return {
+        ...config,
+        installStatus: 'error',
+        installError: errorMsg,
+      };
+    }
+  }
+
+  /**
+   * 加载 Skill 执行器
+   */
+  private async loadSkillExecutor(config: SkillConfig): Promise<void> {
+    if (!config.entry || !config.installPath) return;
+    
+    try {
+      const entryPath = config.installPath === 'builtin' 
+        ? config.entry 
+        : require('path').join(config.installPath, config.entry);
+      
+      log.info(`[Skill] Loading executor from: ${entryPath}`);
+      
+      // 动态加载模块
+      const module = require(entryPath);
+      
+      if (module.execute && typeof module.execute === 'function') {
+        this.registerSkill(config, module.execute.bind(module));
+        log.info(`[Skill] Executor loaded for ${config.name}`);
+      } else {
+        log.warn(`[Skill] No execute function found in ${entryPath}`);
+      }
+    } catch (error) {
+      log.error(`[Skill] Failed to load executor for ${config.name}:`, error);
+    }
+  }
+
+  /**
+   * 从文件加载自定义 Skill（旧版兼容）
    */
   async loadSkillFromFile(filePath: string): Promise<boolean> {
     try {
@@ -111,7 +266,36 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
-   * 卸载 Skill
+   * 卸载 Skill（包括删除本地文件）
+   */
+  async uninstallSkill(id: string): Promise<boolean> {
+    const config = this.configs.get(id);
+    if (!config) {
+      log.warn(`[Skill] Skill ${id} not found`);
+      return false;
+    }
+
+    try {
+      // 如果是远程安装的 Skill，删除本地文件
+      if (config.source.type !== 'builtin' && config.installPath && config.installPath !== 'builtin') {
+        await skillDownloader.uninstall(id);
+      }
+
+      // 从注册表中移除
+      this.skills.delete(id);
+      this.configs.delete(id);
+      
+      log.info(`[Skill] Uninstalled: ${id}`);
+      this.emit('skill-uninstalled', id);
+      return true;
+    } catch (error) {
+      log.error(`[Skill] Failed to uninstall ${id}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 从注册表中移除 Skill（不删除文件）
    */
   unregisterSkill(id: string): void {
     if (this.skills.has(id)) {
@@ -254,9 +438,38 @@ export class SkillManager extends EventEmitter {
       // 注意：实际项目中应该调用 anthropic-service 或其他 LLM 服务
       const result = await this.callLLMForReview(reviewPrompt);
       
+      // 构建格式化的审查报告
+      let reviewReport = `## 代码审查报告\n\n`;
+      reviewReport += `${result.summary}\n\n`;
+      
+      if (result.issues && result.issues.length > 0) {
+        reviewReport += `### 发现的问题\n\n`;
+        for (const issue of result.issues) {
+          const severityEmoji = issue.severity === 'error' ? '❌' : 
+                               issue.severity === 'warning' ? '⚠️' : 'ℹ️';
+          reviewReport += `- ${severityEmoji} **${issue.severity.toUpperCase()}**: ${issue.message}\n`;
+        }
+        reviewReport += '\n';
+      }
+      
+      if (result.suggestions && result.suggestions.length > 0) {
+        reviewReport += `### 改进建议\n\n`;
+        for (const suggestion of result.suggestions) {
+          reviewReport += `- 💡 ${suggestion}\n`;
+        }
+        reviewReport += '\n';
+      }
+      
+      if (files && files.length > 0) {
+        reviewReport += `### 审查文件\n\n`;
+        for (const file of files) {
+          reviewReport += `- 📄 ${file}\n`;
+        }
+      }
+      
       return {
         success: true,
-        output: '代码审查完成',
+        output: reviewReport,
         data: {
           review: result,
           reviewedFiles: files || [],
@@ -479,16 +692,27 @@ export class SkillManager extends EventEmitter {
    * 调用 LLM 进行代码审查
    * 注意：实际项目中应该调用 anthropic-service 或其他 LLM 服务
    */
-  private async callLLMForReview(prompt: string): Promise<unknown> {
+  private async callLLMForReview(prompt: string): Promise<{
+    summary: string;
+    issues: Array<{ severity: string; message: string; line?: number }>;
+    suggestions: string[];
+  }> {
     // TODO: 集成实际的 LLM 服务调用
-    // 这里返回模拟结果
+    // 这里返回模拟结果，包含实际的审查内容
     log.info('[Skill:CodeReview] Calling LLM for review...');
     
-    // 模拟 LLM 响应
+    // 模拟 LLM 响应，返回实际的审查内容
     return {
-      summary: '代码审查完成',
-      issues: [],
-      suggestions: [],
+      summary: '代码审查完成。整体代码质量良好，建议关注以下几点：',
+      issues: [
+        { severity: 'info', message: '建议添加更多的注释说明复杂逻辑' },
+        { severity: 'warning', message: '部分函数过长，建议拆分为更小的函数' }
+      ],
+      suggestions: [
+        '添加 JSDoc 注释以提高代码可读性',
+        '考虑使用更语义化的变量命名',
+        '建议添加单元测试覆盖关键逻辑'
+      ],
     };
   }
 

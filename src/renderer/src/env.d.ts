@@ -186,6 +186,7 @@ declare global {
         update: (id: string, updates: any) => Promise<{ success: boolean; skill?: any; error?: string }>
         remove: (id: string) => Promise<{ success: boolean; error?: string }>
         setEnabled: (id: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+        onInstallProgress: (callback: (event: unknown, data: { skillId: string; status: string; progress?: number; message: string; error?: string }) => void) => () => void
       }
     }
   }

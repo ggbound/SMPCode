@@ -397,7 +397,26 @@ const SkillPanel: React.FC<SkillPanelProps> = ({ skills, onToggleSkill, onEditSk
           <p className="mcp-skill-empty-hint">点击上方 + 按钮添加</p>
         </div>
       ) : (
-        skills.map(skill => (
+        skills.map(skill => {
+          // 获取安装状态显示
+          const getInstallStatusDisplay = () => {
+            switch (skill.installStatus) {
+              case 'pending':
+                return <span className="mcp-skill-status-badge pending">待安装</span>;
+              case 'downloading':
+                return <span className="mcp-skill-status-badge downloading">下载中</span>;
+              case 'installing':
+                return <span className="mcp-skill-status-badge installing">安装中</span>;
+              case 'ready':
+                return null; // 已就绪不显示
+              case 'error':
+                return <span className="mcp-skill-status-badge error">安装失败</span>;
+              default:
+                return null;
+            }
+          };
+
+          return (
           <div
             key={skill.id}
             className={`mcp-skill-item ${!skill.enabled ? 'disabled' : ''}`}
@@ -408,9 +427,23 @@ const SkillPanel: React.FC<SkillPanelProps> = ({ skills, onToggleSkill, onEditSk
                 <span className={`mcp-skill-badge type-${skill.type}`}>
                   {SKILL_TYPE_LABELS[skill.type]}
                 </span>
+                {getInstallStatusDisplay()}
               </div>
               <div className="mcp-skill-description">{skill.description}</div>
-              <div className="mcp-skill-meta">v{skill.version}</div>
+              <div className="mcp-skill-meta">
+                v{skill.version}
+                {skill.source && (
+                  <span className="mcp-skill-source">
+                    · {skill.source.type === 'npm' ? 'NPM' : 
+                       skill.source.type === 'github' ? 'GitHub' : 
+                       skill.source.type === 'url' ? 'URL' : 
+                       skill.source.type === 'local' ? '本地' : '内置'}
+                  </span>
+                )}
+                {skill.installError && (
+                  <span className="mcp-skill-error"> · {skill.installError}</span>
+                )}
+              </div>
             </div>
             <div className="mcp-skill-actions">
               <label className="mcp-skill-toggle">
@@ -446,7 +479,8 @@ const SkillPanel: React.FC<SkillPanelProps> = ({ skills, onToggleSkill, onEditSk
               </button>
             </div>
           </div>
-        ))
+          );
+        })
       )}
     </div>
   );
@@ -583,22 +617,120 @@ interface AddSkillModalProps {
   onSubmit: (config: any) => void;
 }
 
+type SkillSourceType = 'local' | 'npm' | 'github' | 'url';
+
 const AddSkillModal: React.FC<AddSkillModalProps> = ({ onClose, onSubmit }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<SkillType>('custom');
-  const [entry, setEntry] = useState('');
+  const [sourceType, setSourceType] = useState<SkillSourceType>('npm');
+  const [sourceLocation, setSourceLocation] = useState('');
+  const [sourceVersion, setSourceVersion] = useState('');
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installProgress, setInstallProgress] = useState<{ status: string; progress?: number; message: string } | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // 监听安装进度
+  useEffect(() => {
+    const cleanup = api.skill.onInstallProgress((_, data) => {
+      setInstallProgress({
+        status: data.status,
+        progress: data.progress,
+        message: data.message
+      });
+      if (data.status === 'ready' || data.status === 'error') {
+        setIsInstalling(false);
+      }
+    });
+    return cleanup;
+  }, []);
+
+  const getSourcePlaceholder = () => {
+    switch (sourceType) {
+      case 'npm':
+        return '@scope/skill-package 或 skill-package';
+      case 'github':
+        return 'owner/repo#branch 或 owner/repo';
+      case 'url':
+        return 'https://example.com/skill.zip';
+      case 'local':
+        return '/path/to/local/skill';
+      default:
+        return '';
+    }
+  };
+
+  const getSourceLabel = () => {
+    switch (sourceType) {
+      case 'npm':
+        return 'NPM 包名 *';
+      case 'github':
+        return 'GitHub 仓库 *';
+      case 'url':
+        return '下载地址 *';
+      case 'local':
+        return '本地路径 *';
+      default:
+        return '来源地址 *';
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
+    setIsInstalling(true);
+    setInstallProgress({ status: 'pending', message: '开始安装...' });
+
+    const config = {
       name,
       description,
       type,
-      entry,
       version: '1.0.0',
+      source: {
+        type: sourceType,
+        location: sourceLocation,
+        ...(sourceVersion && { version: sourceVersion })
+      },
       enabled: true,
-    });
+    };
+
+    try {
+      await onSubmit(config);
+    } catch (error) {
+      setIsInstalling(false);
+      setInstallProgress({ status: 'error', message: String(error) });
+    }
+  };
+
+  const getStatusColor = () => {
+    if (!installProgress) return '';
+    switch (installProgress.status) {
+      case 'downloading':
+      case 'installing':
+        return 'mcp-skill-status-connecting';
+      case 'ready':
+        return 'mcp-skill-status-connected';
+      case 'error':
+        return 'mcp-skill-status-error';
+      default:
+        return '';
+    }
+  };
+
+  const getStatusText = () => {
+    if (!installProgress) return '';
+    switch (installProgress.status) {
+      case 'pending':
+        return '准备中';
+      case 'downloading':
+        return '下载中';
+      case 'installing':
+        return '安装中';
+      case 'ready':
+        return '安装完成';
+      case 'error':
+        return '安装失败';
+      default:
+        return installProgress.status;
+    }
   };
 
   return (
@@ -619,6 +751,7 @@ const AddSkillModal: React.FC<AddSkillModalProps> = ({ onClose, onSubmit }) => {
                 onChange={e => setName(e.target.value)}
                 placeholder="Skill 名称"
                 required
+                disabled={isInstalling}
               />
             </div>
             <div className="mcp-skill-form-group">
@@ -630,6 +763,7 @@ const AddSkillModal: React.FC<AddSkillModalProps> = ({ onClose, onSubmit }) => {
                 onChange={e => setDescription(e.target.value)}
                 placeholder="Skill 功能描述"
                 required
+                disabled={isInstalling}
               />
             </div>
             <div className="mcp-skill-form-group">
@@ -638,6 +772,7 @@ const AddSkillModal: React.FC<AddSkillModalProps> = ({ onClose, onSubmit }) => {
                 className="mcp-skill-form-select"
                 value={type}
                 onChange={e => setType(e.target.value as SkillType)}
+                disabled={isInstalling}
               >
                 <option value="code-review">代码审查</option>
                 <option value="security">安全审查</option>
@@ -647,23 +782,85 @@ const AddSkillModal: React.FC<AddSkillModalProps> = ({ onClose, onSubmit }) => {
               </select>
             </div>
             <div className="mcp-skill-form-group">
-              <label className="mcp-skill-form-label">入口文件 *</label>
+              <label className="mcp-skill-form-label">来源类型 *</label>
+              <select
+                className="mcp-skill-form-select"
+                value={sourceType}
+                onChange={e => setSourceType(e.target.value as SkillSourceType)}
+                disabled={isInstalling}
+              >
+                <option value="npm">NPM 包</option>
+                <option value="github">GitHub/Gitee 仓库</option>
+                <option value="url">URL 下载</option>
+                <option value="local">本地路径</option>
+              </select>
+            </div>
+            <div className="mcp-skill-form-group">
+              <label className="mcp-skill-form-label">{getSourceLabel()}</label>
               <input
                 className="mcp-skill-form-input"
                 type="text"
-                value={entry}
-                onChange={e => setEntry(e.target.value)}
-                placeholder="例如：./skills/my-skill.ts"
+                value={sourceLocation}
+                onChange={e => setSourceLocation(e.target.value)}
+                placeholder={getSourcePlaceholder()}
                 required
+                disabled={isInstalling}
               />
+              <div className="mcp-skill-form-hint">
+                {sourceType === 'npm' && '输入 NPM 包名，例如：@scope/skill-package'}
+                {sourceType === 'github' && '支持 GitHub 和 Gitee，格式：owner/repo#branch 或 https://gitee.com/owner/repo/tree/branch/path'}
+                {sourceType === 'url' && '支持 .zip 或 .tar.gz 格式的压缩包'}
+                {sourceType === 'local' && '本地 Skill 目录的绝对路径'}
+              </div>
             </div>
+            {(sourceType === 'npm' || sourceType === 'github') && (
+              <div className="mcp-skill-form-group">
+                <label className="mcp-skill-form-label">版本/标签（可选）</label>
+                <input
+                  className="mcp-skill-form-input"
+                  type="text"
+                  value={sourceVersion}
+                  onChange={e => setSourceVersion(e.target.value)}
+                  placeholder={sourceType === 'npm' ? 'latest 或 1.0.0' : 'main/master 或 v1.0.0'}
+                  disabled={isInstalling}
+                />
+              </div>
+            )}
+            
+            {/* 安装进度显示 */}
+            {isInstalling && installProgress && (
+              <div className="mcp-skill-install-progress">
+                <div className="mcp-skill-progress-header">
+                  <span className={`mcp-skill-status-dot ${getStatusColor()}`}></span>
+                  <span className="mcp-skill-status-text">{getStatusText()}</span>
+                </div>
+                {installProgress.progress !== undefined && (
+                  <div className="mcp-skill-progress-bar">
+                    <div 
+                      className="mcp-skill-progress-fill" 
+                      style={{ width: `${installProgress.progress}%` }}
+                    ></div>
+                  </div>
+                )}
+                <div className="mcp-skill-progress-message">{installProgress.message}</div>
+              </div>
+            )}
           </div>
           <div className="mcp-skill-modal-footer">
-            <button type="button" className="mcp-skill-btn mcp-skill-btn-secondary" onClick={onClose}>
+            <button 
+              type="button" 
+              className="mcp-skill-btn mcp-skill-btn-secondary" 
+              onClick={onClose}
+              disabled={isInstalling}
+            >
               取消
             </button>
-            <button type="submit" className="mcp-skill-btn mcp-skill-btn-primary">
-              添加
+            <button 
+              type="submit" 
+              className="mcp-skill-btn mcp-skill-btn-primary"
+              disabled={isInstalling || !name || !description || !sourceLocation}
+            >
+              {isInstalling ? '安装中...' : '添加'}
             </button>
           </div>
         </form>
@@ -808,7 +1005,31 @@ const EditSkillModal: React.FC<EditSkillModalProps> = ({ skill, onClose, onSubmi
   const [name, setName] = useState(skill.name);
   const [description, setDescription] = useState(skill.description);
   const [type, setType] = useState<SkillType>(skill.type);
-  const [entry, setEntry] = useState(skill.entry);
+
+  // 获取来源类型显示文本
+  const getSourceTypeText = () => {
+    const sourceType = skill.source?.type;
+    switch (sourceType) {
+      case 'npm': return 'NPM 包';
+      case 'github': return 'GitHub 仓库';
+      case 'url': return 'URL 下载';
+      case 'local': return '本地路径';
+      case 'builtin': return '内置';
+      default: return sourceType || '未知';
+    }
+  };
+
+  // 获取安装状态显示
+  const getInstallStatusText = () => {
+    switch (skill.installStatus) {
+      case 'pending': return '待安装';
+      case 'downloading': return '下载中';
+      case 'installing': return '安装中';
+      case 'ready': return '已就绪';
+      case 'error': return '安装失败';
+      default: return skill.installStatus || '未知';
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -816,7 +1037,6 @@ const EditSkillModal: React.FC<EditSkillModalProps> = ({ skill, onClose, onSubmi
       name,
       description,
       type,
-      entry,
     });
   };
 
@@ -829,6 +1049,57 @@ const EditSkillModal: React.FC<EditSkillModalProps> = ({ skill, onClose, onSubmi
         </div>
         <form onSubmit={handleSubmit}>
           <div className="mcp-skill-modal-body">
+            {/* 来源信息（只读） */}
+            <div className="mcp-skill-form-group">
+              <label className="mcp-skill-form-label">来源类型</label>
+              <div className="mcp-skill-form-readonly">
+                <span className="mcp-skill-source-badge">{getSourceTypeText()}</span>
+              </div>
+            </div>
+            
+            {skill.source?.location && (
+              <div className="mcp-skill-form-group">
+                <label className="mcp-skill-form-label">来源地址</label>
+                <div className="mcp-skill-form-readonly-text">
+                  {skill.source.location}
+                  {skill.source.version && ` #${skill.source.version}`}
+                </div>
+              </div>
+            )}
+            
+            <div className="mcp-skill-form-group">
+              <label className="mcp-skill-form-label">安装状态</label>
+              <div className="mcp-skill-form-readonly">
+                <span className={`mcp-skill-status-badge ${skill.installStatus}`}>
+                  {getInstallStatusText()}
+                </span>
+              </div>
+            </div>
+            
+            {skill.installPath && skill.installPath !== 'builtin' && (
+              <div className="mcp-skill-form-group">
+                <label className="mcp-skill-form-label">安装路径</label>
+                <div className="mcp-skill-form-readonly-text">{skill.installPath}</div>
+              </div>
+            )}
+            
+            {skill.entry && (
+              <div className="mcp-skill-form-group">
+                <label className="mcp-skill-form-label">入口文件</label>
+                <div className="mcp-skill-form-readonly-text">{skill.entry}</div>
+              </div>
+            )}
+            
+            {skill.installError && (
+              <div className="mcp-skill-form-group">
+                <label className="mcp-skill-form-label">错误信息</label>
+                <div className="mcp-skill-form-error-text">{skill.installError}</div>
+              </div>
+            )}
+            
+            <div className="mcp-skill-form-divider"></div>
+            
+            {/* 可编辑字段 */}
             <div className="mcp-skill-form-group">
               <label className="mcp-skill-form-label">名称 *</label>
               <input
@@ -864,17 +1135,6 @@ const EditSkillModal: React.FC<EditSkillModalProps> = ({ skill, onClose, onSubmi
                 <option value="mini-app">小程序</option>
                 <option value="custom">自定义</option>
               </select>
-            </div>
-            <div className="mcp-skill-form-group">
-              <label className="mcp-skill-form-label">入口文件 *</label>
-              <input
-                className="mcp-skill-form-input"
-                type="text"
-                value={entry}
-                onChange={e => setEntry(e.target.value)}
-                placeholder="例如：./skills/my-skill.ts"
-                required
-              />
             </div>
           </div>
           <div className="mcp-skill-modal-footer">

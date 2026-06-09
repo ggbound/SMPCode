@@ -288,6 +288,11 @@ const api = {
     update: (id: string, updates: any) => ipcRenderer.invoke('skill:update', id, updates),
     remove: (id: string) => ipcRenderer.invoke('skill:remove', id),
     setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('skill:set-enabled', id, enabled),
+    // 监听安装进度
+    onInstallProgress: (callback: (event: unknown, data: { skillId: string; status: string; progress?: number; message: string; error?: string }) => void) => {
+      ipcRenderer.on('skill:install-progress', callback)
+      return () => ipcRenderer.removeListener('skill:install-progress', callback)
+    },
   },
 
   // Feishu WebSocket

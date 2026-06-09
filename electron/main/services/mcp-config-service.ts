@@ -11,7 +11,10 @@ import {
   MCPServerConfig,
   SkillConfig,
   DEFAULT_CONFIG,
+  SkillSource,
 } from './mcp-skill-types';
+import { skillManager } from './skill-manager';
+import type { DownloadProgressCallback } from './skill-downloader';
 
 export class MCPConfigService {
   private configPath: string;
@@ -139,20 +142,44 @@ export class MCPConfigService {
   }
 
   /**
-   * 添加 Skill
+   * 添加 Skill（支持远程安装）
    */
-  async addSkill(config: Omit<SkillConfig, 'id' | 'createdAt' | 'updatedAt'>): Promise<SkillConfig> {
+  async addSkill(
+    config: Omit<SkillConfig, 'id' | 'createdAt' | 'updatedAt' | 'installStatus' | 'installPath' | 'entry'>,
+    onProgress?: DownloadProgressCallback
+  ): Promise<SkillConfig> {
+    const skillId = this.generateId();
+    
+    // 创建初始配置
     const skillConfig: SkillConfig = {
       ...config,
-      id: this.generateId(),
+      id: skillId,
+      installStatus: 'pending',
+      installPath: undefined,
+      entry: undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
 
-    this.currentConfig.skills[skillConfig.id] = skillConfig;
+    // 保存到配置
+    this.currentConfig.skills[skillId] = skillConfig;
     await this.saveConfig(this.currentConfig);
     
-    log.info(`[MCPConfig] Added skill: ${skillConfig.name}`);
+    log.info(`[MCPConfig] Added skill: ${skillConfig.name}, source: ${config.source.type}`);
+    
+    // 如果是远程来源，自动下载安装
+    if (config.source.type !== 'builtin' && config.source.type !== 'local') {
+      log.info(`[MCPConfig] Starting remote installation for ${skillConfig.name}`);
+      
+      const installedConfig = await skillManager.installSkillFromSource(skillConfig, onProgress);
+      
+      // 更新配置
+      this.currentConfig.skills[skillId] = installedConfig;
+      await this.saveConfig(this.currentConfig);
+      
+      return installedConfig;
+    }
+    
     return skillConfig;
   }
 
@@ -171,16 +198,21 @@ export class MCPConfigService {
   }
 
   /**
-   * 删除 Skill
+   * 删除 Skill（包括卸载本地文件）
    */
   async removeSkill(id: string): Promise<boolean> {
-    if (this.currentConfig.skills[id]) {
-      delete this.currentConfig.skills[id];
-      await this.saveConfig(this.currentConfig);
-      log.info(`[MCPConfig] Removed skill: ${id}`);
-      return true;
-    }
-    return false;
+    const skill = this.currentConfig.skills[id];
+    if (!skill) return false;
+
+    // 先卸载（删除本地文件）
+    await skillManager.uninstallSkill(id);
+    
+    // 从配置中删除
+    delete this.currentConfig.skills[id];
+    await this.saveConfig(this.currentConfig);
+    
+    log.info(`[MCPConfig] Removed skill: ${id}`);
+    return true;
   }
 
   /**

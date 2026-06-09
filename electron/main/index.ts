@@ -832,6 +832,8 @@ function setupIpcHandlers(): void {
       await sendCLIMessageStream(sessionId, message, (chunk: StreamChunk) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('cli-chat:stream', { sessionId, chunk })
+        } else {
+          log.warn(`[IPC] Cannot send stream chunk: mainWindow is ${mainWindow ? 'destroyed' : 'null'}`)
         }
       }, messages, model)
 
@@ -1950,6 +1952,8 @@ app.whenReady().then(async () => {
     for (const server of Object.values(mcpConfigs)) {
       mcpManager.addServer(server)
     }
+    // 注册内置 Skill
+    skillManager.registerBuiltinSkills()
     log.info('[Main] MCP & Skill service initialized successfully')
   } catch (error) {
     log.error('[Main] Failed to initialize MCP & Skill service:', error)
@@ -2117,9 +2121,17 @@ ipcMain.handle('skill:get-all', () => {
   }
 })
 
-ipcMain.handle('skill:add', async (_event, config) => {
+ipcMain.handle('skill:add', async (event, config) => {
   try {
-    const skill = await mcpConfigService.addSkill(config)
+    // 创建进度回调，通过 IPC 发送进度事件
+    const onProgress = (progress: { status: string; progress?: number; message: string; error?: string }) => {
+      event.sender.send('skill:install-progress', {
+        skillId: config.id || 'pending',
+        ...progress
+      })
+    }
+    
+    const skill = await mcpConfigService.addSkill(config, onProgress)
     return { success: true, skill }
   } catch (error) {
     log.error('[IPC] Failed to add skill:', error)

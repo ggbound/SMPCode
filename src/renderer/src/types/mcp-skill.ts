@@ -39,6 +39,14 @@ export interface MCPToolDefinition {
 // ==================== Skill ====================
 
 export type SkillType = 'code-review' | 'debug' | 'security' | 'mini-app' | 'custom';
+export type SkillSourceType = 'builtin' | 'local' | 'npm' | 'github' | 'url';
+export type SkillInstallStatus = 'pending' | 'downloading' | 'installing' | 'ready' | 'error';
+
+export interface SkillSource {
+  type: SkillSourceType;
+  location: string;
+  version?: string;
+}
 
 export interface SkillConfig {
   id: string;
@@ -46,7 +54,11 @@ export interface SkillConfig {
   description: string;
   type: SkillType;
   version: string;
-  entry: string;
+  source: SkillSource;
+  entry?: string;
+  installStatus: SkillInstallStatus;
+  installError?: string;
+  installPath?: string;
   metadata?: Record<string, unknown>;
   dependencies?: string[];
   enabled: boolean;
