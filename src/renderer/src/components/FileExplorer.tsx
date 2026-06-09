@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { 
-  Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2, RefreshCw, ChevronDown, 
+  Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2, RefreshCw, ChevronDown, ChevronRight,
   BookOpen, FileEdit, Copy, ClipboardPaste, FileCode, FileJson, FileType, 
   Braces, Hash, Image, FileText, Settings, Coffee, Terminal, Database, 
   Package, GitBranch, FileKey, FileLock, FileCheck, FileWarning, FileX, FilePlus
@@ -181,8 +181,6 @@ const getFileIcon = (filename: string, isDirectory: boolean, isOpen?: boolean) =
 
 // Git status badge component
 const GitStatusBadge = ({ status }: { status?: string | null }) => {
-  if (!status) return null
-  
   const getBadgeStyle = () => {
     switch (status) {
       case 'modified':
@@ -197,9 +195,9 @@ const GitStatusBadge = ({ status }: { status?: string | null }) => {
         return { color: 'transparent', title: '' }
     }
   }
-  
+
   const style = getBadgeStyle()
-  
+
   return (
     <span 
       className="git-status-badge" 
@@ -1217,7 +1215,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                 }
               }}
             >
-              {!isEmptyFolder && (isExpanded ? '▼' : '▶')}
+              {!isEmptyFolder && (isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
             </span>
           )}
           {!node.isDirectory && <span className="file-arrow-placeholder" />}
@@ -1339,7 +1337,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
                 }
               }}
             >
-              {!isEmptyFolder && (isExpanded ? '▼' : '▶')}
+              {!isEmptyFolder && (isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />)}
             </span>
           )}
           {!node.isDirectory && <span className="file-arrow-placeholder" />}

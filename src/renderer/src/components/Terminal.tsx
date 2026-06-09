@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHand
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { Plus } from 'lucide-react'
 import { t } from '../i18n'
 
 interface TerminalProps {
@@ -63,8 +64,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   const [hasError, setHasError] = useState<string | null>(null)
   const [runningProcesses, setRunningProcesses] = useState<RunningProcess[]>([])
   const [showProcessPanel, setShowProcessPanel] = useState(false)
-  const [showAIHistoryPanel, setShowAIHistoryPanel] = useState(false)
-  const [aiHistory, setAIHistory] = useState<AIIntentContext[]>([])
   const containerRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const sessionsRef = useRef<TerminalSession[]>([])
   // 性能优化：使用Map替代数组查找，O(1)复杂度
@@ -95,30 +94,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       })
     }
   }, [isVisible])
-
-  // Load AI历史
-  useEffect(() => {
-    if (isVisible && projectPath && window.api?.getProjectAIHistory) {
-      window.api.getProjectAIHistory(projectPath).then(history => {
-        // 转换历史记录格式以匹配 AIIntentContext 类型
-        const now = new Date().toISOString()
-        const convertedHistory: AIIntentContext[] = history.map((h, index) => ({
-          intentId: `history-${index}`,
-          originalPrompt: h.prompt,
-          taskType: h.taskType,
-          projectContext: {
-            name: projectPath.split('/').pop() || '',
-            path: projectPath
-          },
-          expectedOutcome: '',
-          createdAt: h.timestamp,
-          lastAccessedAt: now,
-          accessCount: 1
-        }))
-        setAIHistory(convertedHistory)
-      })
-    }
-  }, [isVisible, projectPath])
 
   // Listen for process events
   useEffect(() => {
@@ -710,36 +685,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     return `${minutes}m ${seconds}s`
   }
 
-  // 获取任务类型图标
-  const getTaskTypeIcon = (taskType?: string) => {
-    const icons: Record<string, string> = {
-      'dev-server': '🚀',
-      'build': '🔨',
-      'test': '🧪',
-      'production-server': '🌐',
-      'docker-deploy': '🐳',
-      'deploy': '📦',
-      'install': '📥',
-      'command': '⚡'
-    }
-    return icons[taskType || 'command'] || '⚡'
-  }
-
-  // 获取任务类型标签
-  const getTaskTypeLabel = (taskType?: string) => {
-    const labels: Record<string, string> = {
-      'dev-server': 'Dev Server',
-      'build': 'Build',
-      'test': 'Test',
-      'production-server': 'Server',
-      'docker-deploy': 'Docker',
-      'deploy': 'Deploy',
-      'install': 'Install',
-      'command': 'Command'
-    }
-    return labels[taskType || 'command'] || 'Command'
-  }
-
   if (!isVisible) return null
 
   return (
@@ -754,7 +699,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
               onClick={() => setActiveSessionId(session.id)}
             >
               <span className="tab-icon">
-                {session.aiIntent ? getTaskTypeIcon(session.aiIntent.taskType) : '⚡'}
+                ⚡
               </span>
               <span className="tab-name">{session.name}</span>
               <button
@@ -778,24 +723,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           >
             +
           </button>
-          <button className="terminal-action-btn" title={t('splitTerminal') || 'Split Terminal'} disabled>
-            ⧉
-          </button>
-          <button 
-            className="terminal-action-btn" 
-            title="AI History"
-            onClick={() => setShowAIHistoryPanel(!showAIHistoryPanel)}
-          >
-            🤖
-          </button>
-          <button 
-            className="terminal-action-btn" 
-            title={t('killTerminal') || 'Kill Terminal'}
-            onClick={() => activeSessionId && closeTerminal(activeSessionId)}
-            disabled={!activeSessionId}
-          >
-            🗑
-          </button>
         </div>
       </div>
 
@@ -815,8 +742,9 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
             <div className="terminal-empty-content">
               <p>{isCreating ? (t('creatingTerminal') || 'Creating terminal...') : (t('noActiveTerminals') || 'No active terminals')}</p>
               {!isCreating && (
-                <button className="btn btn-primary" onClick={() => createTerminal()}>
-                  {t('openNewTerminal') || 'Open New Terminal'}
+                <button className="terminal-open-btn" onClick={() => createTerminal()}>
+                  <Plus size={18} />
+                  <span>{t('openNewTerminal') || '打开新终端'}</span>
                 </button>
               )}
             </div>
@@ -850,7 +778,7 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
                 <div key={process.id} className={`process-item ${process.isRunning ? 'running' : 'stopped'}`}>
                   <div className="process-info">
                     <div className="process-command">
-                      {getTaskTypeIcon(process.taskType)} {process.command}
+                      {process.command}
                       {process.reused && <span className="reused-badge">↻ 复用</span>}
                     </div>
                     <div className="process-meta">
@@ -890,36 +818,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
                     >
                       📍
                     </button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* AI History Panel */}
-      {showAIHistoryPanel && (
-        <div className="ai-history-panel">
-          <div className="ai-history-panel-header">
-            <span className="ai-history-panel-title">🤖 AI 任务历史</span>
-            <button className="ai-history-panel-close" onClick={() => setShowAIHistoryPanel(false)}>×</button>
-          </div>
-          <div className="ai-history-list">
-            {aiHistory.length === 0 ? (
-              <div className="ai-history-empty">暂无 AI 任务历史</div>
-            ) : (
-              aiHistory.map(intent => (
-                <div key={intent.intentId} className="ai-history-item">
-                  <div className="ai-history-header">
-                    <span className="ai-history-icon">{getTaskTypeIcon(intent.taskType)}</span>
-                    <span className="ai-history-type">{getTaskTypeLabel(intent.taskType)}</span>
-                    <span className="ai-history-count">复用 {intent.accessCount} 次</span>
-                  </div>
-                  <div className="ai-history-prompt">{intent.originalPrompt}</div>
-                  <div className="ai-history-meta">
-                    <span>项目: {intent.projectContext.name}</span>
-                    <span>类型: {intent.projectContext.type}</span>
                   </div>
                 </div>
               ))
