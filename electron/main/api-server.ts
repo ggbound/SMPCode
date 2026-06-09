@@ -54,6 +54,7 @@ import { listDirectory, readFile, writeFile } from './services/files-service'
 import { searchFiles } from './services/search-service'
 import {
   CODE_TOOLS,
+  getCodeTools,
   ToolCall,
   ToolResult,
   registerAllTools,
@@ -824,7 +825,7 @@ export async function startApiServer(): Promise<void> {
 
   // Get available tools for LLM
   expressApp.get('/api/tools/definitions', (_req: Request, res: Response) => {
-    res.json({ tools: CODE_TOOLS })
+    res.json({ tools: getCodeTools() })
   })
 
   // Execute tool calls from LLM (OpenAI format)

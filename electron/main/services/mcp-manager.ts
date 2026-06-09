@@ -13,6 +13,8 @@ import {
   MCPResourceDefinition,
 } from './mcp-skill-types';
 import MCPProtocolHandler from './mcp-protocol-handler';
+import { registerAllTools } from './tools-definitions';
+import { toolRegistry as cliToolRegistry } from '../cli/tool-registry';
 
 export class MCPManager extends EventEmitter {
   private servers: Map<string, MCPServerStatus> = new Map();
@@ -80,6 +82,55 @@ export class MCPManager extends EventEmitter {
       this.servers.set(id, status);
       this.emit('server-status-change', id, status);
       log.info(`[MCP] Server ${config.name} connected successfully`);
+      
+      // 注册 MCP 工具到 tools-definitions
+      try {
+        registerAllTools();
+        log.info(`[MCP] Tools registered after server ${config.name} connected`);
+      } catch (error) {
+        log.error(`[MCP] Failed to register tools:`, error);
+      }
+      
+      // 注册 MCP 工具到 CLI toolRegistry
+      try {
+        const serverStatus = this.servers.get(id);
+        if (serverStatus?.tools) {
+          for (const tool of serverStatus.tools) {
+            // 使用下划线格式：mcp_{serverId}_{toolName}
+            const toolName = `mcp_${id}_${tool.name}`;
+            const parameters: Record<string, any> = tool.inputSchema?.properties || {};
+            const requiredProps: string[] = Array.isArray(tool.inputSchema?.required) ? tool.inputSchema.required : [];
+            cliToolRegistry.register({
+              name: toolName,
+              description: `${tool.description || 'MCP tool from ' + config.name}`,
+              sourceHint: `mcp:${config.name}`,
+              responsibility: `Execute MCP tool ${tool.name} from server ${config.name}`,
+              parameters,
+              required: requiredProps,
+              execute: async (args: Record<string, unknown>, context: any) => {
+                try {
+                  const result = await this.executeTool(id, tool.name, args);
+                  return {
+                    success: true,
+                    output: JSON.stringify(result, null, 2)
+                  };
+                } catch (error) {
+                  const errorMessage = error instanceof Error ? error.message : String(error);
+                  return {
+                    success: false,
+                    output: '',
+                    error: errorMessage
+                  };
+                }
+              }
+            });
+            log.info(`[MCP] Registered CLI tool: ${toolName}`);
+          }
+        }
+      } catch (error) {
+        log.error(`[MCP] Failed to register CLI tools:`, error);
+      }
+      
       return true;
     } catch (error) {
       status.status = 'error';
@@ -139,8 +190,31 @@ export class MCPManager extends EventEmitter {
    */
   private async connectStdioServer(config: MCPServerConfig): Promise<void> {
     return new Promise((resolve, reject) => {
-      const envVars = { ...process.env, ...config.env };
-      const childProcess = spawn(config.command!, config.args || [], { env: envVars });
+      // 确保 PATH 包含常见的 Node.js 安装路径
+      const pathEnv = process.env.PATH || '';
+      const nodePaths = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/opt/local/bin';
+      const envVars = { 
+        ...process.env, 
+        ...config.env,
+        PATH: `${pathEnv}:${nodePaths}`
+      };
+      
+      // 设置连接超时
+      const timeout = setTimeout(() => {
+        reject(new Error(`Connection timeout: MCP server ${config.name} did not respond within 30 seconds`));
+      }, 30000);
+
+      // 构建完整命令（使用 shell 模式确保 npx 等命令可用）
+      const fullCommand = `${config.command} ${config.args?.join(' ') || ''}`;
+      log.info(`[MCP] Spawning process: ${fullCommand}`);
+      log.info(`[MCP] PATH: ${envVars.PATH}`);
+      
+      // 使用 shell: true 确保 PATH 环境变量正确
+      const childProcess = spawn(fullCommand, { 
+        env: envVars,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: true
+      });
 
       this.processes.set(config.id, childProcess);
 
@@ -150,6 +224,7 @@ export class MCPManager extends EventEmitter {
 
       // 监听协议事件
       protocolHandler.on('send', (message: string) => {
+        log.info(`[MCP] Sending message to ${config.name}:`, message.substring(0, 200));
         if (!childProcess.stdin?.destroyed) {
           childProcess.stdin?.write(message);
         }
@@ -168,37 +243,56 @@ export class MCPManager extends EventEmitter {
       });
 
       childProcess.on('error', (error: Error) => {
+        clearTimeout(timeout);
         reject(error);
       });
 
-      childProcess.stdout.on('data', (data: Buffer) => {
-        protocolHandler.handleData(data);
+      childProcess.on('exit', (code: number | null) => {
+        if (code !== 0 && code !== null) {
+          clearTimeout(timeout);
+          reject(new Error(`MCP server process exited with code ${code}`));
+        }
       });
 
+      childProcess.stdout.on('data', (data: Buffer) => {
+         const dataStr = data.toString();
+         log.info(`[MCP] Received from ${config.name}:`, dataStr.substring(0, 200));
+          protocolHandler.handleData(data);
+        });
+
       childProcess.stderr.on('data', (data: Buffer) => {
-        log.warn(`[MCP] Server ${config.name} stderr:`, data.toString());
+        const stderr = data.toString();
+        log.warn(`[MCP] Server ${config.name} stderr:`, stderr);
       });
 
       // 初始化连接
       protocolHandler.initialize('SMP Code', '1.0.0')
         .then(async (serverInfo) => {
+          clearTimeout(timeout);
           log.info(`[MCP] Server ${config.name} initialized:`, serverInfo.name, 'v' + serverInfo.version);
           
           // 获取工具列表
-          const tools = await protocolHandler.listTools();
-          const status = this.servers.get(config.id);
-          if (status) {
-            status.tools = tools.map(t => ({
-              name: t.name,
-              description: t.description,
-              inputSchema: t.inputSchema,
-            }));
-            this.servers.set(config.id, status);
+          try {
+            const tools = await protocolHandler.listTools();
+            const status = this.servers.get(config.id);
+            if (status) {
+              status.tools = tools.map(t => ({
+                name: t.name,
+                description: t.description,
+                inputSchema: t.inputSchema,
+              }));
+              this.servers.set(config.id, status);
+            }
+          } catch (toolError) {
+            log.warn(`[MCP] Failed to list tools for ${config.name}:`, toolError);
           }
           
           resolve();
         })
-        .catch(reject);
+        .catch((error) => {
+          clearTimeout(timeout);
+          reject(error);
+        });
     });
   }
 

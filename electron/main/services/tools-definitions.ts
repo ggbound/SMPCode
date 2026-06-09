@@ -1254,6 +1254,8 @@ const listRemindersTool: ToolExecutor = {
 
 // ============ 注册所有工具 ============
 
+import { toolManager } from './tool-manager'
+
 export function registerAllTools(): void {
   toolRegistry.register(readFileTool)
   toolRegistry.register(writeFileTool)
@@ -1272,6 +1274,29 @@ export function registerAllTools(): void {
   toolRegistry.register(browseWebsiteTool)
   toolRegistry.register(listRemindersTool)
 
+  // 注册 MCP 工具
+  const mcpDefinitions = toolManager.getMcpToolDefinitions()
+  for (const { serverId, tools } of mcpDefinitions) {
+    for (const tool of tools) {
+      const mcpToolName = `mcp:${serverId}:${tool.name}`
+      const mcpTool: ToolExecutor = {
+        name: mcpToolName,
+        description: `[MCP] ${tool.description || 'MCP tool from ' + serverId}`,
+        parameters: tool.inputSchema?.properties || {},
+        required: tool.inputSchema?.required || [],
+        execute: async (args: Record<string, unknown>, _context: ExecutionContext): Promise<ToolExecutionResult> => {
+          // 实际执行在 tool-manager.ts 中处理
+          return { success: true, output: '' }
+        }
+      }
+      toolRegistry.register(mcpTool)
+      log.info(`[ToolDefinitions] Registered MCP tool: ${mcpToolName}`)
+    }
+  }
+
+  // 刷新 CODE_TOOLS 数组
+  refreshCodeTools()
+
   log.info(`[ToolDefinitions] Registered ${toolRegistry.count()} tools`)
 }
 
@@ -1280,8 +1305,22 @@ export function registerAllTools(): void {
 // 导出类型
 export type { ToolDefinition, ToolCall, ToolResult, ToolParameter, ToolExecutor, ExecutionContext, ToolExecutionResult }
 
-// 导出工具定义数组（OpenAI 格式）
-export const CODE_TOOLS: ToolDefinition[] = toolRegistry.toOpenAIDefinitions()
+// 导出工具定义数组（OpenAI 格式）- 动态获取
+export function getCodeTools(): ToolDefinition[] {
+  return toolRegistry.toOpenAIDefinitions()
+}
+
+// 为了保持向后兼容，仍然导出 CODE_TOOLS，但它只是 getCodeTools() 的引用
+export const CODE_TOOLS: ToolDefinition[] = []
+
+// 刷新工具定义（在 MCP 服务器连接后调用）
+export function refreshCodeTools(): void {
+  const tools = toolRegistry.toOpenAIDefinitions()
+  // 更新 CODE_TOOLS 数组内容
+  CODE_TOOLS.length = 0
+  CODE_TOOLS.push(...tools)
+  log.info(`[ToolDefinitions] Refreshed CODE_TOOLS with ${tools.length} tools`)
+}
 
 // 导出便捷函数（toolRegistry 已在上面定义）
 

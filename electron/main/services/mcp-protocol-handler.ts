@@ -87,7 +87,8 @@ export class MCPProtocolHandler extends EventEmitter {
    * 处理从服务器接收的数据
    */
   handleData(data: Buffer): void {
-    this.buffer += data.toString();
+    const dataStr = data.toString();
+    this.buffer += dataStr;
     
     // 按行分割处理 JSON-RPC 消息
     const lines = this.buffer.split('\n');
@@ -95,6 +96,7 @@ export class MCPProtocolHandler extends EventEmitter {
     
     for (const line of lines) {
       if (line.trim()) {
+        log.info('[MCPProtocol] Processing line:', line.substring(0, 200));
         this.processMessage(line);
       }
     }
@@ -123,7 +125,7 @@ export class MCPProtocolHandler extends EventEmitter {
    * 处理来自服务器的请求
    */
   private handleRequest(request: JSONRPCRequest): void {
-    log.debug('[MCPProtocol] Received request:', request.method);
+    log.info('[MCPProtocol] Received request:', request.method);
     
     switch (request.method) {
       case 'notifications/tools/list_changed':
@@ -139,7 +141,7 @@ export class MCPProtocolHandler extends EventEmitter {
         this.emit('message', request.params);
         break;
       default:
-        log.debug('[MCPProtocol] Unknown notification:', request.method);
+        log.info('[MCPProtocol] Unknown notification:', request.method);
     }
   }
 
@@ -147,17 +149,20 @@ export class MCPProtocolHandler extends EventEmitter {
    * 处理来自服务器的响应
    */
   private handleResponse(response: JSONRPCResponse): void {
+    log.info('[MCPProtocol] Handling response for id:', response.id);
     const pending = this.pendingRequests.get(response.id);
     if (!pending) {
-      log.warn('[MCPProtocol] Received response for unknown request:', response.id);
+      log.warn('[MCPProtocol] Received response for unknown request:', response.id, 'Pending requests:', Array.from(this.pendingRequests.keys()));
       return;
     }
 
     this.pendingRequests.delete(response.id);
 
     if (response.error) {
+      log.error('[MCPProtocol] Response error:', response.error);
       pending.reject(new Error(`MCP Error ${response.error.code}: ${response.error.message}`));
     } else {
+      log.info('[MCPProtocol] Response success for id:', response.id);
       pending.resolve(response.result);
     }
   }
@@ -195,9 +200,8 @@ export class MCPProtocolHandler extends EventEmitter {
    * 发送通知（无响应）
    */
   sendNotification(method: string, params?: unknown): void {
-    const notification: JSONRPCRequest = {
+    const notification = {
       jsonrpc: '2.0',
-      id: 'notification', // 通知也需要 id 字段
       method,
       params,
     };

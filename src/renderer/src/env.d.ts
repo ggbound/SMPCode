@@ -169,6 +169,24 @@ declare global {
         onMessage: (callback: (event: unknown, data: any) => void) => () => void
         onStatusChange: (callback: (event: unknown, status: any) => void) => () => void
       }
+
+      // MCP & Skill API
+      mcp: {
+        getServers: () => Promise<{ success: boolean; servers?: any[]; error?: string }>
+        addServer: (config: any) => Promise<{ success: boolean; server?: any; error?: string }>
+        updateServer: (id: string, updates: any) => Promise<{ success: boolean; server?: any; error?: string }>
+        removeServer: (id: string) => Promise<{ success: boolean; error?: string }>
+        connectServer: (id: string) => Promise<{ success: boolean; error?: string }>
+        disconnectServer: (id: string) => Promise<{ success: boolean; error?: string }>
+        getServerStatus: (id: string) => Promise<{ success: boolean; status?: any; error?: string }>
+      }
+      skill: {
+        getAll: () => Promise<{ success: boolean; skills?: any[]; error?: string }>
+        add: (config: any) => Promise<{ success: boolean; skill?: any; error?: string }>
+        update: (id: string, updates: any) => Promise<{ success: boolean; skill?: any; error?: string }>
+        remove: (id: string) => Promise<{ success: boolean; error?: string }>
+        setEnabled: (id: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+      }
     }
   }
 }

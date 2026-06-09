@@ -1941,6 +1941,20 @@ app.whenReady().then(async () => {
   // Setup conversation storage handlers
   setupConversationHandlers()
   
+  // Initialize MCP & Skill service
+  log.info('[Main] Initializing MCP & Skill service...')
+  try {
+    await mcpConfigService.initialize()
+    // 将配置中的服务器加载到 mcpManager
+    const mcpConfigs = mcpConfigService.getConfig().mcpServers
+    for (const server of Object.values(mcpConfigs)) {
+      mcpManager.addServer(server)
+    }
+    log.info('[Main] MCP & Skill service initialized successfully')
+  } catch (error) {
+    log.error('[Main] Failed to initialize MCP & Skill service:', error)
+  }
+
   // Initialize reminder service
   log.info('[Main] Initializing reminder service...')
   try {
@@ -2158,5 +2172,10 @@ ipcMain.handle('skill:set-enabled', async (_event, id, enabled) => {
 mcpManager.on('server-status-change', (id, status) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('mcp:server-status-change', { id, status })
+  }
+  
+  // 当 MCP 服务器连接成功时，记录日志
+  if (status.status === 'connected') {
+    log.info(`[MCP] Server ${id} connected successfully`)
   }
 })

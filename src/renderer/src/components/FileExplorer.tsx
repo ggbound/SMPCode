@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { 
-  Folder, FolderOpen, File, ArrowUp, Scissors, Edit, Trash2, RefreshCw, ChevronDown, ChevronRight,
-  BookOpen, FileEdit, Copy, ClipboardPaste, FileCode, FileJson, FileType, 
-  Braces, Hash, Image, FileText, Settings, Coffee, Terminal, Database, 
-  Package, GitBranch, FileKey, FileLock, FileCheck, FileWarning, FileX, FilePlus
+  Folder, FolderOpen, File, ChevronDown, ChevronRight,
+  FileCode, FileJson, FileType, Settings, Terminal, FileText, 
+  Database, Image, Package, Braces, GitBranch, FileLock, FileCheck,
+  RefreshCw, BookOpen, FileEdit, Copy, Scissors, ClipboardPaste, Edit, Trash2
 } from 'lucide-react'
 import { t } from '../i18n'
 import { gitIPC } from './GitStatusBar'
@@ -226,6 +226,7 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
   const fileTreeRef = useRef<FileNode[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const isWatchingRef = useRef(false)
+  const fileChangeDebounceRef = useRef<NodeJS.Timeout | null>(null)
   
   // Virtual scrolling optimization
   const containerRef = useRef<HTMLDivElement>(null)
@@ -315,13 +316,20 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
 
     startWatching()
 
-    // Listen for file change events
+    // Listen for file change events with debounce
     const handleFileChange = (_event: any, data: { eventType: string; filename: string; dirPath: string }) => {
       console.log('[FileExplorer] File changed:', data.eventType, data.filename)
-      // Debounce refresh
-      setTimeout(() => {
+      
+      // Clear existing timer
+      if (fileChangeDebounceRef.current) {
+        clearTimeout(fileChangeDebounceRef.current)
+      }
+      
+      // Debounce refresh - wait 300ms after last change
+      fileChangeDebounceRef.current = setTimeout(() => {
         handleRefreshPreserveExpansion()
-      }, 500)
+        fileChangeDebounceRef.current = null
+      }, 300)
     }
 
     const { api } = window as any
@@ -333,6 +341,11 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
       if (isWatchingRef.current && rootPath) {
         api?.fsUnwatch(rootPath)
         isWatchingRef.current = false
+      }
+      // Clear debounce timer on unmount
+      if (fileChangeDebounceRef.current) {
+        clearTimeout(fileChangeDebounceRef.current)
+        fileChangeDebounceRef.current = null
       }
     }
   }, [rootPath])

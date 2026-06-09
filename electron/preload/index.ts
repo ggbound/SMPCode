@@ -272,6 +272,24 @@ const api = {
     toggle: (id: string) => ipcRenderer.invoke('reminder:toggle', id)
   },
 
+  // MCP & Skill management
+  mcp: {
+    getServers: () => ipcRenderer.invoke('mcp:get-servers'),
+    addServer: (config: any) => ipcRenderer.invoke('mcp:add-server', config),
+    updateServer: (id: string, updates: any) => ipcRenderer.invoke('mcp:update-server', id, updates),
+    removeServer: (id: string) => ipcRenderer.invoke('mcp:remove-server', id),
+    connectServer: (id: string) => ipcRenderer.invoke('mcp:connect-server', id),
+    disconnectServer: (id: string) => ipcRenderer.invoke('mcp:disconnect-server', id),
+    getServerStatus: (id: string) => ipcRenderer.invoke('mcp:get-server-status', id),
+  },
+  skill: {
+    getAll: () => ipcRenderer.invoke('skill:get-all'),
+    add: (config: any) => ipcRenderer.invoke('skill:add', config),
+    update: (id: string, updates: any) => ipcRenderer.invoke('skill:update', id, updates),
+    remove: (id: string) => ipcRenderer.invoke('skill:remove', id),
+    setEnabled: (id: string, enabled: boolean) => ipcRenderer.invoke('skill:set-enabled', id, enabled),
+  },
+
   // Feishu WebSocket
   feishu: {
     // 启动 WebSocket 连接

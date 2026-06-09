@@ -18,6 +18,7 @@ import {
   executeFindProcess,
   executeListReminders
 } from './tool-implementations'
+import { mcpManager } from './mcp-manager'
 
 // 统一的工具处理器类型
 interface ToolHandler {
@@ -98,6 +99,11 @@ class ToolManager {
       this.initialize()
     }
 
+    // 先检查是否是 MCP 工具（格式：mcp:{serverId}:{toolName}）
+    if (toolName.startsWith('mcp:')) {
+      return this.executeMcpTool(callId, toolName, args)
+    }
+
     const handler = this.tools.get(toolName)
     if (!handler) {
       const error = `Unknown tool: ${toolName}. Available tools: ${this.getAllNames().join(', ')}`
@@ -121,6 +127,55 @@ class ToolManager {
       log.error(`[ToolManager] Tool ${toolName} failed:`, error)
       return { success: false, output: '', error: errorMessage }
     }
+  }
+
+  // 执行 MCP 工具
+  private async executeMcpTool(
+    callId: string,
+    toolName: string,
+    args: Record<string, unknown>
+  ): Promise<ToolExecutionResult> {
+    // 解析工具名称：mcp:{serverId}:{toolName}
+    const parts = toolName.split(':')
+    if (parts.length !== 3) {
+      return { success: false, output: '', error: `Invalid MCP tool name format: ${toolName}` }
+    }
+
+    const [, serverId, actualToolName] = parts
+
+    log.info(`[ToolManager] Executing MCP tool: ${actualToolName} on server ${serverId} (id: ${callId})`)
+    log.info(`[ToolManager] Arguments:`, JSON.stringify(args, null, 2))
+
+    try {
+      const result = await mcpManager.executeTool(serverId, actualToolName, args)
+      log.info(`[ToolManager] MCP tool ${actualToolName} completed successfully`)
+      return {
+        success: true,
+        output: JSON.stringify(result, null, 2),
+        metadata: { mcpResult: result }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      log.error(`[ToolManager] MCP tool ${actualToolName} failed:`, error)
+      return { success: false, output: '', error: errorMessage }
+    }
+  }
+
+  // 获取所有可用的 MCP 工具定义
+  getMcpToolDefinitions(): { serverId: string; tools: any[] }[] {
+    const definitions: { serverId: string; tools: any[] }[] = []
+    const statuses = mcpManager.getAllServerStatuses()
+    
+    for (const status of statuses) {
+      if (status.status === 'connected' && status.tools && status.tools.length > 0) {
+        definitions.push({
+          serverId: status.id,
+          tools: status.tools
+        })
+      }
+    }
+    
+    return definitions
   }
 }
 
