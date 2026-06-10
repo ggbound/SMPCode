@@ -73,7 +73,7 @@ export interface KiloToolCall {
   id: string
   name: string
   args: Record<string, unknown>
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
   timestamp: number
   duration?: number
   result?: unknown
@@ -188,7 +188,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
   
   updateMessage: (id, updates) => set((state) => ({
     messages: state.messages.map(m => 
-      m.id === id ? { ...m, ...updates } : m
+      m.id === id ? { ...m, ...updates } as KiloMessage : m
     )
   })),
   
@@ -224,7 +224,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
       if (existingCalls.some(tc => tc.id === toolCall.id)) {
         return m // 已存在，不添加
       }
-      return { ...m, toolCalls: [...existingCalls, toolCall] }
+      return { ...m, toolCalls: [...existingCalls, toolCall] } as KiloMessage
     })
   })),
   
@@ -236,7 +236,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
         toolCalls: m.toolCalls.map(tc => 
           tc.id === toolCallId ? { ...tc, ...updates } : tc
         )
-      }
+      } as KiloMessage
     })
   })),
   
@@ -245,7 +245,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
     messages: state.messages.map(m => {
       if (m.id !== messageId) return m
       const existingBlocks = m.blocks || []
-      return { ...m, blocks: [...existingBlocks, block] }
+      return { ...m, blocks: [...existingBlocks, block] } as KiloMessage
     })
   })),
   
@@ -258,7 +258,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
         blocks: m.blocks.map(b => 
           b.id === blockId ? { ...b, ...updates } : b
         )
-      }
+      } as KiloMessage
     })
   })),
   
@@ -277,7 +277,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
           return {
             ...m,
             blocks: [newBlock]
-          }
+          } as KiloMessage
         }
         return m
       }
@@ -292,7 +292,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
               ? { ...b, content: (b as TextBlock).content + text }
               : b
           )
-        }
+        } as KiloMessage
       } else {
         // 最后一个不是文本块，添加新文本块
         const newBlock: TextBlock = { 
@@ -304,7 +304,7 @@ export const useKiloStore = create<KiloState>((set, get) => ({
         return {
           ...m,
           blocks: [...m.blocks, newBlock]
-        }
+        } as KiloMessage
       }
     })
   }))

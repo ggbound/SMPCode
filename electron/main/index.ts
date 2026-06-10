@@ -21,6 +21,7 @@ import { commandRegistry, toolRegistry, runtimeEngine } from './cli'
 import { browseWebsite } from './services/browser-tool-service'
 import { 
   initReminderService,
+  getReminderService,
   addReminder,
   getAllReminders,
   removeReminder,
@@ -835,7 +836,7 @@ function setupIpcHandlers(): void {
         } else {
           log.warn(`[IPC] Cannot send stream chunk: mainWindow is ${mainWindow ? 'destroyed' : 'null'}`)
         }
-      }, messages, model)
+      }, messages, 0, model)
 
       return { success: true }
     } catch (error) {

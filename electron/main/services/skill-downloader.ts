@@ -671,13 +671,16 @@ export class SkillDownloader {
   /**
    * 执行命令
    */
-  private async execCommand(command: string, args: string[], cwd: string): Promise<void> {
+  private async execCommand(command: string, args: string[], cwd?: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = spawn(command, args, {
-        cwd,
+      const options: { cwd?: string; shell: boolean; env: NodeJS.ProcessEnv } = {
         shell: true,
         env: { ...process.env, PATH: `${process.env.PATH}:/opt/homebrew/bin:/usr/local/bin` }
-      });
+      }
+      if (cwd) {
+        options.cwd = cwd
+      }
+      const child = spawn(command, args, options)
 
       let stdout = '';
       let stderr = '';

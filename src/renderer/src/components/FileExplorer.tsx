@@ -12,7 +12,7 @@ import '../styles/fileExplorer.css'
 import '../styles/vscode-sidebar.css'
 
 // File extension to icon mapping using Lucide icons
-const FILE_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+const FILE_ICON_MAP: Record<string, React.ComponentType<{ size?: number | string; className?: string }>> = {
   // JavaScript/TypeScript
   'js': FileCode,
   'jsx': FileCode,
@@ -97,7 +97,7 @@ const FILE_ICON_MAP: Record<string, React.ComponentType<{ size?: number; classNa
 }
 
 // Special file names to icon mapping
-const FILENAME_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+const FILENAME_ICON_MAP: Record<string, React.ComponentType<{ size?: number | string; className?: string }>> = {
   'package.json': Braces,
   'package-lock.json': Braces,
   'composer.json': Braces,
@@ -119,7 +119,7 @@ const FILENAME_ICON_MAP: Record<string, React.ComponentType<{ size?: number; cla
 }
 
 // Get icon component for a file
-function getFileIconComponent(filename: string, isDirectory: boolean, isOpen?: boolean): React.ComponentType<{ size?: number; className?: string }> {
+function getFileIconComponent(filename: string, isDirectory: boolean, isOpen?: boolean): React.ComponentType<{ size?: number | string; className?: string }> {
   if (isDirectory) {
     return isOpen ? FolderOpen : Folder
   }
@@ -421,7 +421,9 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
         }
 
         const expansionMap = new Map<string, boolean>()
-        buildExpansionMap(fileTreeRef.current, expansionMap)
+        if (Array.isArray(fileTreeRef.current)) {
+          buildExpansionMap(fileTreeRef.current, expansionMap)
+        }
 
         fetch(`${API_BASE}/fs/list?path=${encodeURIComponent(rootPath)}`)
           .then(res => res.json())
@@ -1009,7 +1011,9 @@ function FileExplorer({ onFileSelect, selectedPath, onRootPathChange, openFile, 
       }
 
       const expansionMap = new Map<string, boolean>()
-      buildExpansionMap(fileTreeRef.current, expansionMap)
+      if (Array.isArray(fileTreeRef.current)) {
+        buildExpansionMap(fileTreeRef.current, expansionMap)
+      }
 
       const items = await loadDirectory(rootPath)
 

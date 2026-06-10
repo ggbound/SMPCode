@@ -21,7 +21,7 @@ export interface WorkspaceState {
   // 选中的文件路径
   selectedFilePath: string | null
   // 当前活动侧边栏
-  activeActivity: 'explorer' | 'search' | 'git' | 'settings'
+  activeActivity: 'explorer' | 'search' | 'git' | 'reminders' | 'mcp-skill' | 'settings'
   // 保存时间戳
   timestamp: number
 }

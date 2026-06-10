@@ -17,8 +17,7 @@ import DiffViewer from './components/DiffViewer'
 import BrowserView from './components/BrowserView'
 import FileTabs, { type Tab } from './components/FileTabs'
 import Terminal, { type TerminalRef } from './components/Terminal'
-import SessionSidebar from './components/SessionSidebar'
-import SessionBar from './components/SessionBar'
+
 import CommandPalette, { type Command } from './components/CommandPalette'
 import { t } from './i18n'
 import { useChatMode, useAgentMode, useUnifiedConversation } from './hooks'
@@ -2096,7 +2095,7 @@ function App() {
   const latestTabsRef = useRef<Tab[]>(tabs)
   const latestActiveTabIdRef = useRef<string | null>(activeTabId)
   const latestSelectedFilePathRef = useRef<string | null>(selectedFilePath)
-  const latestActiveActivityRef = useRef<'explorer' | 'search' | 'git' | 'settings'>(activeActivity)
+  const latestActiveActivityRef = useRef<ActivityBarItem>(activeActivity)
 
   // Update refs whenever state changes
   useEffect(() => {

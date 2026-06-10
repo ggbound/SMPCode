@@ -56,17 +56,19 @@ function getBrowserWindow(): BrowserWindow {
     allowRunningInsecureContent: true // 允许运行不安全内容
   }
 
-  // 如果有代理配置，添加到 webPreferences
-  if (proxyRules) {
-    webPreferences.proxyRules = proxyRules
-  }
-
   browserWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false, // 隐藏窗口
     webPreferences
   })
+
+  // 如果有代理配置，使用 session.setProxy 设置
+  if (proxyRules) {
+    browserWindow.webContents.session.setProxy({ proxyRules })
+      .then(() => log.info('[BrowserTool] Proxy configured successfully'))
+      .catch(err => log.error('[BrowserTool] Failed to set proxy:', err))
+  }
 
   // 窗口关闭时清理引用
   browserWindow.on('closed', () => {

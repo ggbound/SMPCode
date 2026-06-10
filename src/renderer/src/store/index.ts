@@ -471,3 +471,6 @@ export const useStore = create<AppState>((set) => ({
     return newIndex
   }
 }))
+
+// Export kiloStore types and hooks
+export * from './kiloStore'

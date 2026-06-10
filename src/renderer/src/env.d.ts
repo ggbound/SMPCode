@@ -188,6 +188,14 @@ declare global {
         setEnabled: (id: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
         onInstallProgress: (callback: (event: unknown, data: { skillId: string; status: string; progress?: number; message: string; error?: string }) => void) => () => void
       }
+      // Reminder API
+      reminder: {
+        getAll: () => Promise<any[]>
+        add: (content: string, cronExpression: string, targetType: 'user' | 'group', targetId: string, description?: string) => Promise<{ success: boolean; reminder?: any; error?: string }>
+        remove: (id: string) => Promise<{ success: boolean; error?: string }>
+        update: (id: string, updates: Partial<{ content?: string; cronExpression?: string; enabled?: boolean }>) => Promise<{ success: boolean; reminder?: any; error?: string }>
+        toggle: (id: string) => Promise<{ success: boolean; reminder?: any; error?: string }>
+      }
     }
   }
 }

@@ -243,7 +243,7 @@ export const KiloMessageInline = memo(function KiloMessageInline({
   
   // 如果有 toolCalls 但没有对应的 blocks，添加它们
   if (message.toolCalls && message.toolCalls.length > 0) {
-    message.toolCalls.forEach((tc) => {
+    message.toolCalls.forEach((tc: KiloToolCall) => {
       const existingBlock = blocks.find(b => 
         b.type === 'tool_call' && (b as ToolCallBlock).toolCall.id === tc.id
       )
