@@ -47,7 +47,7 @@ export interface StreamChunk {
   toolCall?: {
     id: string
     name: string
-    arguments: string
+    arguments: Record<string, unknown> | string
   }
   toolResult?: {
     toolCallId: string
@@ -207,10 +207,18 @@ CRITICAL INSTRUCTIONS FOR TOOL USAGE:
 
 9. For file operations, ALWAYS use the EXACT path provided by the user. If user says "delete test file", use <tool name="list_directory" path="..."/> first to find it, then <tool name="delete_file" path="..."/>.
 
+10. CRITICAL: When user asks to DELETE a file, you MUST follow this EXACT workflow:
+    Step 1: Use <tool name="search_files" pattern="filename"/> to find the file
+    Step 2: Tell user "找到文件: [filepath]"
+    Step 3: Use <tool name="delete_file" path="[filepath]"/> to delete it
+    Step 4: Use <tool name="search_files" pattern="filename"/> again to verify deletion
+    Step 5: Tell user "文件删除成功" or "文件删除失败"
+
+11. ABSOLUTELY FORBIDDEN: NEVER use execute_bash to delete files (rm, del, etc.). ALWAYS use delete_file tool for file deletion.
+    - WRONG: <tool name="execute_bash" command="rm -f /path/to/file"/>
+    - CORRECT: <tool name="delete_file" path="/path/to/file"/>
+
 CRITICAL: FOR LONG-RUNNING COMMANDS (servers, watchers, etc.):
-- DO NOT use background execution with & or redirect output to files (>, >>, 2>&1)
-- DO NOT use: npm run dev > /tmp/frontend.log 2>&1 &
-- DO NOT use: php artisan serve > /tmp/backend.log 2>&1 &
 - Instead, run commands directly in the terminal: npm run dev, php artisan serve
 - The terminal will handle process management automatically
 - You can stop processes later using: kill <PID> or killall <process_name>
@@ -743,12 +751,17 @@ export async function sendCLIMessageStream(
         }
       } else if (chunk.type === 'tool_use') {
         // 处理 Anthropic 格式的工具调用
+        const input = (chunk as { input?: Record<string, unknown> }).input || {}
         const toolCall = {
           id: (chunk as { id?: string }).id || uuidv4(),
           name: (chunk as { name?: string }).name || '',
-          arguments: JSON.stringify((chunk as { input?: unknown }).input || {})
+          arguments: input
         }
-        toolCalls.push(toolCall)
+        toolCalls.push({
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments: JSON.stringify(input)
+        })
         log.debug(`[CLI-Chat] Received tool_use (Anthropic): name=${toolCall.name}`)
         onChunk({
           type: 'tool_call',
@@ -760,6 +773,13 @@ export async function sendCLIMessageStream(
     // 流结束后，处理累积的 OpenAI 格式工具调用
     for (const [, pending] of pendingToolCalls) {
       if (pending.name) {
+        // ✅ 修复：解析 JSON 字符串为对象，用于发送给前端
+        let argsObj: Record<string, unknown> = {}
+        try {
+          argsObj = JSON.parse(pending.arguments || '{}')
+        } catch (e) {
+          log.debug(`[CLI-Chat] Failed to parse tool arguments: ${pending.arguments}`)
+        }
         toolCalls.push({
           id: pending.id,
           name: pending.name,
@@ -771,7 +791,7 @@ export async function sendCLIMessageStream(
           toolCall: {
             id: pending.id,
             name: pending.name,
-            arguments: pending.arguments || '{}'
+            arguments: argsObj
           }
         })
       }
@@ -923,50 +943,57 @@ export async function sendCLIMessageStream(
           }))
         })
 
-        // 执行提取的工具调用
-        for (const toolCall of extractedToolCalls) {
-          try {
-            log.debug(`[CLI-Chat] Executing extracted tool: ${toolCall.name}`)
-            
-            // 使用工具调用的实际 ID
-            const toolCallId = toolCall.id || `extracted-${toolCall.name}`
-            
-            // ✅ 修复：先发送 tool_call 事件，让前端显示工具调用
-            onChunk({
-              type: 'tool_call',
-              toolCall: {
-                id: toolCallId,
-                name: toolCall.name,
-                arguments: JSON.stringify(toolCall.arguments)
-              }
-            })
-            
-            const result = await executeToolCall(toolCall.name, toolCall.arguments, session.cwd)
+        // ✅ 修复：每次只执行第一个工具调用，让 AI 决定下一步
+        // 这样可以实现：搜索 -> 告知用户 -> 删除 -> 验证 的完整流程
+        const firstToolCall = extractedToolCalls[0]
+        const remainingToolCalls = extractedToolCalls.slice(1)
+        
+        if (remainingToolCalls.length > 0) {
+          log.debug(`[CLI-Chat] Deferring ${remainingToolCalls.length} additional tool(s) to next iteration`)
+        }
+        
+        try {
+          log.debug(`[CLI-Chat] Executing first tool: ${firstToolCall.name}`)
+          
+          // 使用工具调用的实际 ID
+          const toolCallId = firstToolCall.id || `extracted-${firstToolCall.name}`
+          
+          // ✅ 修复：先发送 tool_call 事件，让前端显示工具调用
+          // ✅ 修复：arguments 保持为对象，不要序列化为字符串，前端期望的是对象
+          onChunk({
+            type: 'tool_call',
+            toolCall: {
+              id: toolCallId,
+              name: firstToolCall.name,
+              arguments: firstToolCall.arguments
+            }
+          })
+          
+          const result = await executeToolCall(firstToolCall.name, firstToolCall.arguments, session.cwd)
 
-            // 发送 tool_result 事件
-            onChunk({
-              type: 'tool_result',
-              toolResult: {
-                toolCallId: toolCallId,
-                success: result.success,
-                output: result.output,
-                error: result.error
-              }
-            })
+          // 发送 tool_result 事件
+          onChunk({
+            type: 'tool_result',
+            toolResult: {
+              toolCallId: toolCallId,
+              success: result.success,
+              output: result.output,
+              error: result.error
+            }
+          })
 
-            // 添加工具结果到消息历史
-            session.messages.push({
-              role: 'tool',
-              name: toolCall.name,
-              content: result.success ? result.output : result.error || 'Error',
-              tool_call_id: `extracted-${toolCall.name}`
-            })
-          } catch (error) {
-            log.error(`[CLI-Chat] Extracted tool execution error: ${error}`)
-          }
+          // 添加工具结果到消息历史
+          session.messages.push({
+            role: 'tool',
+            name: firstToolCall.name,
+            content: result.success ? result.output : result.error || 'Error',
+            tool_call_id: toolCallId
+          })
+        } catch (error) {
+          log.error(`[CLI-Chat] Extracted tool execution error:`, error)
         }
 
-        // 继续对话
+        // 继续对话 - 让 AI 决定下一步
         const continuePrompt = `工具执行完成。请分析上述结果并决定下一步行动。
 
 重要提醒：
