@@ -1434,6 +1434,59 @@ function initializeCLIRegistries(): void {
   })
 
   toolRegistry.register({
+    name: 'delete_file',
+    description: 'Delete a file or directory at the specified path. Use this to remove files or directories that are no longer needed. Warning: This action is permanent and cannot be undone. Use with caution.',
+    sourceHint: 'builtin',
+    responsibility: 'Delete files or directories permanently',
+    parameters: {
+      path: {
+        type: 'string',
+        description: 'The path to the file or directory to delete',
+        required: true
+      }
+    },
+    required: ['path'],
+    execute: async (args, context) => {
+      try {
+        const fs = require('fs')
+        const path = require('path')
+        const targetPath = path.resolve(context.cwd, String(args.path))
+
+        if (!fs.existsSync(targetPath)) {
+          return {
+            success: false,
+            output: '',
+            error: `Path does not exist: ${args.path}`
+          }
+        }
+
+        const stats = fs.statSync(targetPath)
+        if (stats.isDirectory()) {
+          fs.rmSync(targetPath, { recursive: true, force: true })
+          return {
+            success: true,
+            output: `Directory deleted: ${targetPath}`,
+            data: { path: targetPath, type: 'directory' }
+          }
+        } else {
+          fs.unlinkSync(targetPath)
+          return {
+            success: true,
+            output: `File deleted: ${targetPath}`,
+            data: { path: targetPath, type: 'file' }
+          }
+        }
+      } catch (error) {
+        return {
+          success: false,
+          output: '',
+          error: String(error)
+        }
+      }
+    }
+  })
+
+  toolRegistry.register({
     name: 'execute_bash',
     description: 'Execute a bash command',
     sourceHint: 'builtin',
