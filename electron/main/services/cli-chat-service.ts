@@ -506,8 +506,7 @@ function extractToolCallsFromContent(content: string): {
 }
 
 // 最大迭代次数限制
-// ✅ 性能优化：降低最大迭代次数，防止栈溢出和内存泄漏
-const MAX_ITERATIONS = 20
+const MAX_ITERATIONS = 99999
 
 /**
  * 发送消息并获取流式响应
