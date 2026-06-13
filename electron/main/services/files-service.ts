@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import log from 'electron-log'
+import { BrowserWindow } from 'electron'
 
 export interface FileNode {
   name: string
@@ -132,6 +133,17 @@ export function writeFile(filePath: string, content: string): void {
     setTimeout(() => {
       // The watcher will detect this change automatically
       log.info(`[writeFile] File written and change notification triggered: ${filePath}`)
+      
+      // ✅ 修复：主动发送文件变化事件到前端，确保文件树立即刷新
+      const mainWindow = BrowserWindow.getAllWindows()[0]
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('fs:change', { 
+          eventType: 'add', 
+          filename: path.basename(filePath), 
+          dirPath: path.dirname(filePath) 
+        })
+        log.info(`[writeFile] Sent fs:change event for new file: ${filePath}`)
+      }
     }, 100)
   } catch (error) {
     log.error('[writeFile] Failed to write file:', error)

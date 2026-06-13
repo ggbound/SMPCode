@@ -4,7 +4,7 @@
  */
 
 import { useCallback } from 'react'
-import { useStore, type Message } from '../store'
+import { useStore, type Message, type ToolCall } from '../store'
 import { buildAgentModePrompt, getSystemInfo, type PromptCommand } from '../prompts'
 import {
   useConversationBase,
@@ -47,6 +47,10 @@ export function useAgentMode() {
     setupStreamListener,
     cleanupSession
   } = useConversationBase()
+  
+  // 获取 store 方法
+  const addToolCallToMessage = useStore(state => state.addToolCallToMessage)
+  const updateToolCallStatus = useStore(state => state.updateToolCallStatus)
 
   /**
    * 构建系统提示词
@@ -134,7 +138,14 @@ export function useAgentMode() {
         })
 
         // 转换消息格式并发送
-        const messagesForAPI = compressedMessages.map(m => ({ role: m.role, content: m.content }))
+        const messagesForAPI = compressedMessages.map(m => {
+          const baseMsg = { role: m.role, content: m.content }
+          // 保留 tool 角色的 name 字段
+          if (m.role === 'tool' && m.name) {
+            return { ...baseMsg, name: m.name }
+          }
+          return baseMsg
+        })
         console.log(`[useAgentMode] Sending to IPC: messagesCount=${messagesForAPI.length}`)
 
         const sendResult = await sendMessage(sessionId, content, messagesForAPI)
@@ -158,7 +169,7 @@ export function useAgentMode() {
         let errorChunks = 0
 
         // 收集从 IPC 传来的工具调用
-        const receivedToolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
+        const receivedToolCalls: Array<{ tool: string; arguments: Record<string, unknown>; id: string }> = []
 
         for (const chunk of streamChunks) {
           if (abortControllerRef.current?.signal.aborted) break
@@ -172,8 +183,26 @@ export function useAgentMode() {
             toolCallChunks++
             console.log(`[useAgentMode] Received tool_call from IPC: ${chunk.toolCall.name}`)
             try {
-              const args = JSON.parse(chunk.toolCall.arguments)
-              receivedToolCalls.push({ tool: chunk.toolCall.name, arguments: args })
+              // arguments 可能是对象或字符串
+              const args = typeof chunk.toolCall.arguments === 'string' 
+                ? JSON.parse(chunk.toolCall.arguments) 
+                : chunk.toolCall.arguments
+              receivedToolCalls.push({ tool: chunk.toolCall.name, arguments: args, id: chunk.toolCall.id })
+              
+              // 立即将工具调用添加到消息中，以便 UI 可以显示
+              const messages = useStore.getState().messages
+              const lastMessageIndex = messages.length - 1
+              if (lastMessageIndex >= 0) {
+                const toolCallForStore: ToolCall = {
+                  id: chunk.toolCall.id,
+                  name: chunk.toolCall.name,
+                  args: args,
+                  status: 'pending',
+                  timestamp: Date.now()
+                }
+                addToolCallToMessage(lastMessageIndex, toolCallForStore)
+                console.log(`[useAgentMode] Added tool call to message ${lastMessageIndex}: ${chunk.toolCall.name}`)
+              }
             } catch (e) {
               console.error('[useAgentMode] Failed to parse tool call arguments:', e)
             }
@@ -232,11 +261,27 @@ export function useAgentMode() {
 
         console.log(`[useAgentMode] Executing tool: ${toolCall.tool}`)
         console.log(`[useAgentMode] Tool arguments:`, JSON.stringify(toolCall.arguments))
+        console.log(`[useAgentMode] Current CWD: ${currentCwd}`)
 
         try {
+          // 更新工具状态为运行中
+          const messages = useStore.getState().messages
+          const lastMessageIndex = messages.length - 1
+          const lastToolCall = messages[lastMessageIndex]?.toolCalls?.find(
+            tc => tc.name === toolCall.tool && tc.status === 'pending'
+          )
+          if (lastToolCall) {
+            updateToolCallStatus(lastMessageIndex, lastToolCall.id, 'running')
+          }
+          
           const { success, result } = await executeToolCall(toolCall, currentCwd)
           console.log(`[useAgentMode] Tool execution result: success=${success}, result length=${result.length}`)
           console.log(`[useAgentMode] Tool result (first 200 chars):`, result.substring(0, 200))
+
+          // 更新工具状态为完成或失败
+          if (lastToolCall) {
+            updateToolCallStatus(lastMessageIndex, lastToolCall.id, success ? 'completed' : 'failed', result)
+          }
 
           if (success && isFileOperationTool(toolCall.tool)) {
             triggerFileRefresh()
@@ -248,10 +293,11 @@ export function useAgentMode() {
           const cleanedIterationContent = cleanToolCallBlocks(iterationContent)
 
           // 更新对话历史
+          // 注意：需要添加 tool_call_id 以便 API 正确处理工具调用链
           conversationMessages = [
             ...conversationMessages,
             { role: 'assistant', content: cleanedIterationContent } as Message,
-            { role: 'tool', content: result, name: toolCall.tool } as Message,
+            { role: 'tool', content: result, name: toolCall.tool, tool_call_id: toolCall.id || 'unknown' } as Message,
             { role: 'user', content: verificationPrompt } as Message
           ]
 

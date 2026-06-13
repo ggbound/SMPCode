@@ -1,0 +1,236 @@
+/**
+ * 流式消息样式 - Streaming Message Styles
+ * 参考 Kilo Code 和 Cursor 设计
+ */
+
+/* 流式指示器动画 */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 流式指示器 */
+.streaming-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.streaming-indicator .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #3b82f6;
+  animation: pulse 1.4s infinite;
+}
+
+.streaming-indicator .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.streaming-indicator .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* 工具调用卡片 */
+.tool-call-card {
+  transition: all 0.2s ease;
+}
+
+.tool-call-card:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* 工具结果展开动画 */
+.tool-result {
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 旋转动画 */
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* 流式光标 */
+.cursor {
+  animation: blink 1s infinite;
+}
+
+/* 思考块 */
+.thinking-block {
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+/* 文本块 */
+.text-block {
+  line-height: 1.6;
+}
+
+.text-block p {
+  margin: 0.5em 0;
+}
+
+.text-block p:first-child {
+  margin-top: 0;
+}
+
+.text-block p:last-child {
+  margin-bottom: 0;
+}
+
+/* 代码块样式优化 */
+.text-block pre {
+  margin: 1em 0;
+  border-radius: 8px;
+  background-color: #1e1e1e;
+}
+
+.text-block code {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  font-size: 13px;
+}
+
+/* 内联代码 */
+.text-block code:not(pre code) {
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #e2e8f0;
+}
+
+/* 用户消息气泡 */
+.user-message {
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* AI 消息 */
+.assistant-message {
+  animation: fadeIn 0.2s ease;
+}
+
+/* 头像 */
+.avatar {
+  transition: transform 0.2s ease;
+}
+
+.avatar:hover {
+  transform: scale(1.05);
+}
+
+/* 滚动条样式 - 消息区域 */
+.streaming-chat-page main::-webkit-scrollbar {
+  width: 8px;
+}
+
+.streaming-chat-page main::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.streaming-chat-page main::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+
+.streaming-chat-page main::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 输入框焦点效果 */
+.streaming-chat-page textarea:focus {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+/* 按钮悬停效果 */
+.streaming-chat-page button {
+  transition: all 0.2s ease;
+}
+
+.streaming-chat-page button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.streaming-chat-page button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* 工具图标颜色 */
+.tool-icon {
+  transition: color 0.2s ease;
+}
+
+/* 状态指示器 */
+.status-running {
+  color: #3b82f6;
+}
+
+.status-completed {
+  color: #22c55e;
+}
+
+.status-failed {
+  color: #ef4444;
+}
+
+.status-pending {
+  color: #6b7280;
+}
+
+/* 响应式调整 */
+@media (max-width: 768px) {
+  .streaming-chat-page {
+    font-size: 14px;
+  }
+  
+  .tool-call-card {
+    padding: 10px 12px;
+  }
+  
+  .text-block pre {
+    font-size: 12px;
+  }
+}
+
+/* 打印样式 */
+@media print {
+  .streaming-chat-page {
+    background: white;
+    color: black;
+  }
+  
+  .tool-call-card {
+    border: 1px solid #ccc;
+    background: white;
+  }
+}

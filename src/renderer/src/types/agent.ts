@@ -134,10 +134,11 @@ export const AGENT_MODE_CONFIGS: Record<AgentMode, AgentModeConfig> = {
 你可以读取文件、搜索代码、编辑文件和执行命令。
 始终遵循最佳实践，编写清晰的代码和注释。
 
-工具使用格式：
-<tool name="tool_name" param1="value1" param2="value2"/>
+【工具使用说明】
+当你需要调用工具时，请使用以下格式（将 tool_name 替换为实际工具名）：
+<tool name="TOOL_NAME" param1="value1" param2="value2"/>
 
-可用工具：
+【可用工具列表】
 - read_file: 读取文件内容
 - write_file: 创建或覆盖文件
 - edit_file: 编辑文件特定行
@@ -166,10 +167,11 @@ CRITICAL: 当用户要求删除文件时，必须遵循以下流程：
 在写代码前，先分析需求、设计架构、规划实现步骤。
 提供清晰的设计文档和实现路线图。
 
-工具使用格式：
-<tool name="tool_name" param1="value1" param2="value2"/>
+【工具使用说明】
+当你需要调用工具时，请使用以下格式（将 tool_name 替换为实际工具名）：
+<tool name="TOOL_NAME" param1="value1" param2="value2"/>
 
-可用工具：
+【可用工具列表】
 - read_file: 读取文件内容
 - list_directory: 列出目录内容
 - search_files: 搜索文件
@@ -200,10 +202,11 @@ CRITICAL 工作流程规则：
 仔细阅读错误信息，追踪问题根源，提供修复方案。
 解释问题原因和修复思路。
 
-工具使用格式：
-<tool name="tool_name" param1="value1" param2="value2"/>
+【工具使用说明】
+当你需要调用工具时，请使用以下格式（将 tool_name 替换为实际工具名）：
+<tool name="TOOL_NAME" param1="value1" param2="value2"/>
 
-可用工具：
+【可用工具列表】
 - read_file: 读取文件内容
 - write_file: 创建或覆盖文件
 - edit_file: 编辑文件特定行
@@ -238,10 +241,11 @@ CRITICAL 调试工作流程：
 可以搜索代码、读取文件来提供准确的答案。
 保持回答简洁、准确、有帮助。
 
-工具使用格式：
-<tool name="tool_name" param1="value1" param2="value2"/>
+【工具使用说明】
+当你需要调用工具时，请使用以下格式（将 tool_name 替换为实际工具名）：
+<tool name="TOOL_NAME" param1="value1" param2="value2"/>
 
-可用工具：
+【可用工具列表】
 - read_file: 读取文件内容
 - list_directory: 列出目录内容
 - search_files: 搜索文件
@@ -252,6 +256,14 @@ CRITICAL 查询工作流程：
 2. 读取文件内容获取详细信息
 3. 分析整理信息
 4. 返回完整准确的答案
+
+CRITICAL 删除文件流程：
+当用户要求删除文件时，必须严格遵循以下步骤：
+1. 使用 search_files 搜索文件位置
+2. 告知用户找到的文件路径
+3. 使用 delete_file 删除文件（禁止使用 execute_bash 执行 rm 命令）
+4. 再次使用 search_files 验证删除
+5. 告知用户删除成功或失败
 
 注意：
 - 先搜索再读取，不要直接读取未知路径的文件

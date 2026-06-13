@@ -38,6 +38,7 @@ interface CLISession {
   messages: LLMMessage[]
   isStreaming: boolean
   abortController?: AbortController
+  useCodeGeneration?: boolean  // ✅ 是否使用代码生成模式
 }
 
 // 流式响应块
@@ -65,10 +66,177 @@ export interface StreamChunk {
 // 会话存储
 const sessions = new Map<string, CLISession>()
 
+/**
+ * ✅ 智能上下文压缩
+ * 参考先进 AI Coding 工具（Claude Code、Cursor、GitHub Copilot）的做法
+ * 将历史对话压缩为简洁的摘要，保留关键信息
+ */
+function compressMessageHistory(messages: LLMMessage[]): LLMMessage[] {
+  if (messages.length <= 10) return messages
+  
+  log.info(`[Context Compression] Original messages: ${messages.length}`)
+  
+  // 1. 保留系统消息
+  const systemMessages = messages.filter(m => m.role === 'system')
+  
+  // 2. 保留最新的用户消息
+  const userMessages = messages.filter(m => m.role === 'user')
+  const latestUserMessage = userMessages[userMessages.length - 1]
+  
+  // 3. 压缩中间的对话历史
+  const nonSystemMessages = messages.filter(m => m.role !== 'system')
+  
+  // 4. 提取关键信息（文件操作、搜索结果等）
+  const keyOperations: string[] = []
+  let lastFileOperation: string | null = null
+  
+  for (const msg of nonSystemMessages) {
+    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+    
+    // 提取文件操作
+    if (content.includes('File written:') || content.includes('File deleted:')) {
+      const match = content.match(/File\s+(written|deleted):\s*(.+)/i)
+      if (match) {
+        lastFileOperation = `${match[1]}: ${match[2]}`
+        keyOperations.push(lastFileOperation)
+      }
+    }
+    
+    // 提取搜索结果
+    if (content.includes('Found:') || content.includes('搜索文件')) {
+      const lines = content.split('\n').filter(l => l.includes('Found:') || l.includes('/'))
+      if (lines.length > 0) {
+        keyOperations.push(`搜索: ${lines[0].substring(0, 100)}`)
+      }
+    }
+    
+    // 提取代码执行结果
+    if (content.includes('```python') && content.includes('print(')) {
+      // 保留代码执行结果
+      const lines = content.split('\n').filter(l => l.includes('print('))
+      if (lines.length > 0) {
+        keyOperations.push(`执行: ${lines.join(', ').substring(0, 100)}`)
+      }
+    }
+  }
+  
+  // 5. 构建压缩后的消息历史
+  const compressedMessages: LLMMessage[] = [...systemMessages]
+  
+  // 如果有关键操作，添加摘要
+  if (keyOperations.length > 0) {
+    // 去重并限制数量
+    const uniqueOps = keyOperations.slice(-5)  // 只保留最近 5 个关键操作
+    const summary = uniqueOps.map((op, i) => `${i + 1}. ${op}`).join('\n')
+    
+    compressedMessages.push({
+      role: 'user',
+      content: `[历史操作摘要]\n${summary}\n\n请继续当前任务。`
+    })
+  }
+  
+  // 添加最新的用户消息
+  if (latestUserMessage) {
+    compressedMessages.push(latestUserMessage)
+  }
+  
+  log.info(`[Context Compression] Compressed to ${compressedMessages.length} messages`)
+  
+  return compressedMessages
+}
+
+/**
+ * ✅ 智能上下文管理
+ * 根据对话阶段和重要性动态调整上下文
+ */
+function manageContext(messages: LLMMessage[], iterationCount: number): LLMMessage[] {
+  // 第一次迭代：保留完整上下文
+  if (iterationCount === 0) {
+    return compressMessageHistory(messages)
+  }
+  
+  // 后续迭代：只保留系统消息和最近几条
+  const systemMessages = messages.filter(m => m.role === 'system')
+  const recentMessages = messages.filter(m => m.role !== 'system').slice(-5)
+  
+  return [...systemMessages, ...recentMessages]
+}
+
 // 获取主窗口
 function getMainWindow(): BrowserWindow | null {
   const { BrowserWindow } = require('electron')
   return BrowserWindow.getAllWindows()[0] || null
+}
+
+/**
+ * ✅ 重复对话检测
+ * 检测当前用户输入是否与历史对话重复，如果重复则重置会话
+ */
+function checkAndHandleDuplicateConversation(
+  session: CLISession, 
+  userMessage: string
+): { isDuplicate: boolean; resetSession?: boolean } {
+  // 标准化用户输入（去除空格、标点，转为小写）
+  const normalize = (text: string) => {
+    return text.toLowerCase()
+      .replace(/[\s,，.。!！?？]/g, '')
+      .replace(/帮我|请|帮我一下|麻烦/g, '')
+      .trim()
+  }
+  
+  const normalizedInput = normalize(userMessage)
+  
+  // 如果输入太短（少于5个字符），不检测
+  if (normalizedInput.length < 5) {
+    return { isDuplicate: false }
+  }
+  
+  // 获取历史用户消息
+  const userMessages = session.messages
+    .filter(m => m.role === 'user')
+    .map(m => typeof m.content === 'string' ? m.content : '')
+  
+  // 检查是否重复（排除最后一条，因为是当前输入）
+  for (let i = 0; i < userMessages.length - 1; i++) {
+    const historicalMsg = normalize(userMessages[i])
+    
+    // 完全匹配
+    if (historicalMsg === normalizedInput) {
+      log.warn(`[Duplicate Detection] Exact duplicate detected: "${userMessage.substring(0, 50)}"`)
+      return { isDuplicate: true, resetSession: true }
+    }
+    
+    // 相似度匹配（包含关系）
+    if (historicalMsg.includes(normalizedInput) || normalizedInput.includes(historicalMsg)) {
+      if (historicalMsg.length > 5 && normalizedInput.length > 5) {
+        log.warn(`[Duplicate Detection] Similar message detected: "${userMessage.substring(0, 50)}"`)
+        return { isDuplicate: true, resetSession: true }
+      }
+    }
+  }
+  
+  return { isDuplicate: false }
+}
+
+/**
+ * ✅ 重置会话为初始状态
+ * 保留系统提示词，清除所有对话历史
+ */
+function resetSession(session: CLISession): void {
+  log.info(`[Session Reset] Resetting session ${session.id} due to duplicate conversation`)
+  
+  // 只保留系统消息
+  const systemMessages = session.messages.filter(m => m.role === 'system')
+  
+  // 添加重置提示
+  systemMessages.push({
+    role: 'user',
+    content: '[系统提示：检测到重复对话，已重置上下文。请继续您的任务。]'
+  })
+  
+  session.messages = systemMessages
+  
+  log.info(`[Session Reset] Session reset complete, ${session.messages.length} messages remaining`)
 }
 
 // 发送流式数据到渲染进程
@@ -143,89 +311,245 @@ export function stopCLISession(sessionId: string): boolean {
   return false
 }
 
+// 模型能力缓存
+const modelCapabilityCache = new Map<string, { supportsFunctionCalling: boolean; supportsCodeGeneration: boolean }>()
+
 /**
- * 构建系统提示词
+ * 检测模型是否支持 function calling
+ * 通过发送实际请求测试，而不是依赖硬编码列表
  */
-function buildSystemPrompt(mode: 'chat' | 'agent', cwd: string): string {
-  const systemInfo = `
-Operating System: ${process.platform}
-Working Directory: ${cwd}
-Node Version: ${process.version}
-`.trim()
+async function detectModelCapability(apiKey: string, model: string, apiUrl?: string): Promise<{ supportsFunctionCalling: boolean; supportsCodeGeneration: boolean }> {
+  // 检查缓存
+  const cacheKey = `${apiUrl || 'default'}-${model}`
+  if (modelCapabilityCache.has(cacheKey)) {
+    return modelCapabilityCache.get(cacheKey)!
+  }
+
+  log.info(`[CLI-Chat] Detecting model capability for ${model} by actual testing...`)
+
+  // 测试 1: 检测是否支持 function calling
+  try {
+    // 使用一个明确的场景测试：获取当前时间
+    // 这个场景需要模型理解并使用工具
+    const testTools = [{
+      type: 'function',
+      function: {
+        name: 'get_current_time',
+        description: 'Get the current time',
+        parameters: { 
+          type: 'object', 
+          properties: {
+            timezone: {
+              type: 'string',
+              description: 'Timezone, e.g., UTC, Asia/Shanghai'
+            }
+          }
+        }
+      }
+    }]
+    
+    const response = await sendChatMessage({
+      apiKey,
+      model,
+      messages: [{ 
+        role: 'user', 
+        content: 'What time is it now? Please use the get_current_time function to check.' 
+      }],
+      tools: testTools,
+      stream: false,
+      apiUrl
+    })
+    
+    // 检查是否返回了 tool_calls
+    const hasToolCalls = !!response.tool_calls && response.tool_calls.length > 0
+    const hasFunctionCall = hasToolCalls && response.tool_calls!.some(tc => tc.function?.name === 'get_current_time')
+    
+    if (hasFunctionCall) {
+      log.info(`[CLI-Chat] Model ${model} supports function calling (detected by actual test)`)
+      const result = { supportsFunctionCalling: true, supportsCodeGeneration: true }
+      modelCapabilityCache.set(cacheKey, result)
+      return result
+    }
+    
+    // 测试 2: 检测是否支持代码生成
+    log.info(`[CLI-Chat] Model ${model} does not support function calling, testing code generation...`)
+    
+    const codeResponse = await sendChatMessage({
+      apiKey,
+      model,
+      messages: [{ 
+        role: 'user', 
+        content: 'Write a Python code to print "Hello World"' 
+      }],
+      stream: false,
+      apiUrl
+    })
+    
+    const content = typeof codeResponse.content === 'string' ? codeResponse.content : JSON.stringify(codeResponse.content)
+    const hasCodeBlock = content.includes('```python') || content.includes('```')
+    
+    if (hasCodeBlock) {
+      log.info(`[CLI-Chat] Model ${model} supports code generation`)
+      const result = { supportsFunctionCalling: false, supportsCodeGeneration: true }
+      modelCapabilityCache.set(cacheKey, result)
+      return result
+    }
+    
+    // 如果都不支持，降级为 chat 模式
+    log.warn(`[CLI-Chat] Model ${model} does not support function calling or code generation, falling back to chat mode`)
+    const result = { supportsFunctionCalling: false, supportsCodeGeneration: false }
+    modelCapabilityCache.set(cacheKey, result)
+    return result
+    
+  } catch (error) {
+    log.warn(`[CLI-Chat] Failed to detect model capability for ${model}:`, error)
+    // 默认使用代码生成模式
+    const result = { supportsFunctionCalling: false, supportsCodeGeneration: true }
+    modelCapabilityCache.set(cacheKey, result)
+    return result
+  }
+}
+
+/**
+ * 构建系统提示词 - 根据模型能力选择不同模式
+ */
+function buildSystemPrompt(mode: 'chat' | 'agent', cwd: string, useCodeGeneration: boolean = false): string {
+  const systemInfo = `Operating System: ${process.platform}
+Working Directory: ${cwd}`
 
   if (mode === 'chat') {
-    return `You are a helpful AI coding assistant. You are running in an integrated development environment.
+    return `You are a helpful AI coding assistant.
 
 ${systemInfo}
 
-Provide helpful, accurate, and concise responses to the user's questions about code, development, and programming.
-When showing code, use proper code blocks with language identifiers.`
-  } else {
-    return `You are an AI coding agent that can help with software development tasks.
-
-${systemInfo}
-
-You have access to various tools to help you complete tasks:
-- read_file: Read the contents of a file
-- write_file: Create or overwrite a file
-- edit_file: Edit specific lines in a file
-- list_directory: List files in a directory
-- execute_bash: Execute shell commands
-- search_files: Find files matching a pattern
-- delete_file: Delete a file
-- append_file: Append content to a file
-
-CRITICAL INSTRUCTIONS FOR TOOL USAGE:
-
-1. When you need to use a tool, you MUST output it in this EXACT format:
-   <tool name="tool_name" param1="value1" param2="value2"/>
-
-2. The tool call MUST be on its own line, without any markdown formatting, code blocks, or bullet points.
-
-3. CORRECT examples:
-   <tool name="read_file" path="/Users/test/project/README.md"/>
-   <tool name="list_directory" path="/Users/test/project/src"/>
-   <tool name="execute_bash" command="npm install"/>
-   <tool name="write_file" path="/Users/test/output.txt" content="Hello World"/>
-   <tool name="delete_file" path="/Users/test/project/old-file.txt"/>
-
-4. INCORRECT formats (NEVER use these):
-   - DO NOT use markdown code blocks like \`\`\`bash ... \`\`\` 
-   - DO NOT use JSON format: {"tool": "read_file", "path": "..."}
-   - DO NOT use parentheses format: read_file(/path/to/file)
-   - DO NOT say "I'll use read_file" or "让我查看" - JUST USE THE TOOL DIRECTLY
-   - DO NOT explain what you're going to do - JUST DO IT
-
-5. Use the EXACT tool names: read_file, write_file, edit_file, list_directory, execute_bash, search_files, delete_file, append_file
-   Do NOT use: file_read, file_write, bash, glob, or any other names.
-
-6. Output the tool call directly in your response. Do NOT say "I'll use X tool" - just use it.
-
-7. IMPORTANT: When suggesting commands to the user, use the <tool> format above. Do NOT wrap commands in markdown code blocks.
-
-8. CRITICAL: When user asks you to perform an action (like delete file, read file, etc.), you MUST use the appropriate tool IMMEDIATELY. Do NOT ask for confirmation or explain what you're going to do. Just output the tool call.
-
-9. For file operations, ALWAYS use the EXACT path provided by the user. If user says "delete test file", use <tool name="list_directory" path="..."/> first to find it, then <tool name="delete_file" path="..."/>.
-
-10. CRITICAL: When user asks to DELETE a file, you MUST follow this EXACT workflow:
-    Step 1: Use <tool name="search_files" pattern="filename"/> to find the file
-    Step 2: Tell user "找到文件: [filepath]"
-    Step 3: Use <tool name="delete_file" path="[filepath]"/> to delete it
-    Step 4: Use <tool name="search_files" pattern="filename"/> again to verify deletion
-    Step 5: Tell user "文件删除成功" or "文件删除失败"
-
-11. ABSOLUTELY FORBIDDEN: NEVER use execute_bash to delete files (rm, del, etc.). ALWAYS use delete_file tool for file deletion.
-    - WRONG: <tool name="execute_bash" command="rm -f /path/to/file"/>
-    - CORRECT: <tool name="delete_file" path="/path/to/file"/>
-
-CRITICAL: FOR LONG-RUNNING COMMANDS (servers, watchers, etc.):
-- Instead, run commands directly in the terminal: npm run dev, php artisan serve
-- The terminal will handle process management automatically
-- You can stop processes later using: kill <PID> or killall <process_name>
-- To check if a service is running, use: lsof -i :<port> or ps aux | grep <process>
-
-Always think step by step and explain your reasoning, but when you need to use a tool, output it in the correct format immediately.`
+Provide helpful, accurate, and concise responses to the user's questions.`
   }
+
+  // Agent Mode - 根据是否使用代码生成模式选择不同提示词
+  if (useCodeGeneration) {
+    // 代码生成模式 - 简化提示词，只保留核心要求
+    return `You are Claude Code, an AI coding assistant.
+
+${systemInfo}
+
+TASK: Generate Python code to complete the user's request.
+
+STRICT REQUIREMENTS:
+1. Output ONLY Python code wrapped in triple backticks
+2. Format must be exactly: \`\`\`python ...code... \`\`\`
+3. ABSOLUTELY NO text outside code blocks
+4. NEVER output "File written:" or "File deleted:" - these will be rejected
+5. ALWAYS search for files first using Path('.').rglob()
+
+SEARCH RULES - CRITICAL:
+- Use Path('.').rglob('**/*filename*') for fuzzy search (searches all subdirectories)
+- Use Path('.').rglob('filename') for exact match
+- rglob('**/*') searches ALL files recursively
+- DO NOT use shell commands like 'find' or 'ls'
+- ALWAYS check if file exists before operating
+
+FORBIDDEN PATTERNS (NEVER USE):
+- "File written: ..."
+- "File deleted: ..."
+- "工具执行结果：..."
+- Shell commands: os.system(), subprocess, etc.
+- Any text before \`\`\`python or after \`\`\`
+
+CORRECT EXAMPLE - User: "delete test.txt"
+\`\`\`python
+import os
+from pathlib import Path
+
+# Step 1: Search for the file in ALL subdirectories
+found = list(Path('.').rglob('**/test.txt'))
+print(f"Searching for test.txt...")
+
+if found:
+    print(f"Found {len(found)} file(s):")
+    for f in found:
+        print(f"  - {f}")
+    
+    # Step 2: Delete all found files
+    for f in found:
+        try:
+            os.remove(f)
+            print(f"Deleted: {f}")
+        except Exception as e:
+            print(f"Error deleting {f}: {e}")
+else:
+    print("File not found: test.txt")
+\`\`\`
+
+CORRECT EXAMPLE - User: "find files with 'test' in name"
+\`\`\`python
+from pathlib import Path
+
+# Fuzzy search - finds all files containing 'test' in name
+found = list(Path('.').rglob('**/*test*'))
+print(f"Found {len(found)} file(s) matching '*test*':")
+for f in found:
+    print(f"  - {f}")
+\`\`\`
+
+CORRECT EXAMPLE - User: "create test.txt with content"
+\`\`\`python
+from pathlib import Path
+
+# Step 1: Check if file already exists anywhere
+found = list(Path('.').rglob('**/test.txt'))
+if found:
+    path = found[0]
+    print(f"File exists at: {path}")
+else:
+    # Create in current directory
+    path = "test.txt"
+    print(f"Will create new file at: {path}")
+
+# Step 2: Write content
+Path(path).write_text("content", encoding='utf-8')
+print(f"Written: {path}")
+\`\`\`
+
+YOUR RESPONSE MUST START WITH \`\`\`python AND END WITH \`\`\`
+ANY TEXT OUTSIDE THESE MARKERS WILL CAUSE ERRORS`
+  }
+
+  // Function Calling Mode - 支持 function calling 的模型
+  return `You are Claude Code, an AI coding assistant.
+
+${systemInfo}
+
+You have access to tools. Use them to complete tasks.
+
+When user asks you to work with a file:
+Step 1: Search for the file by name
+<tool name="search_files" pattern="filename" search_type="filename"/>
+
+Step 2: After finding the file, use the appropriate tool
+<tool name="delete_file" path="/full/path/to/file"/>
+
+Available tools:
+- search_files: Find files by pattern or filename. Use search_type="filename" to search by file name, search_type="content" to search file contents (default)
+- read_file: Read file contents
+- delete_file: Delete a file
+- write_file: Create or overwrite file
+- edit_file: Edit specific lines in file
+- list_directory: List directory contents
+- execute_bash: Execute shell commands
+
+CRITICAL RULES:
+1. ALWAYS search first if you don't know the exact file path
+2. When searching for a file by name, use: <tool name="search_files" pattern="filename" search_type="filename"/>
+3. Use XML format: <tool name="TOOL_NAME" param1="value1"/>
+4. Wait for tool result before next step
+5. Be concise, no explanations
+
+Example:
+User: delete test.txt
+You: <tool name="search_files" pattern="test.txt" search_type="filename"/>
+System: Found: /project/frontend/test.txt
+You: <tool name="delete_file" path="/project/frontend/test.txt"/>
+System: File deleted successfully`
 }
 
 /**
@@ -460,6 +784,25 @@ function extractToolCallsFromContent(content: string): {
     }
   }
 
+  // 2.5 匹配行内 JSON 格式（不在代码块中）
+  // 例如：{"tool": "search_files", "arguments": {"pattern": "test.txt"}}
+  const inlineJsonRegex = /\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^}]*\})\s*\}/g
+  let inlineMatch
+  while ((inlineMatch = inlineJsonRegex.exec(content)) !== null) {
+    try {
+      const toolName = inlineMatch[1]
+      const argsJson = inlineMatch[2]
+      const args = JSON.parse(argsJson)
+      if (knownTools.includes(toolName)) {
+        toolCalls.push({ id: uuidv4(), name: toolName, arguments: args })
+        log.info(`[CLI-Chat] Extracted tool call from inline JSON: ${toolName}`)
+        cleanedContent = cleanedContent.replace(inlineMatch[0], '')
+      }
+    } catch (e) {
+      log.debug(`[CLI-Chat] Failed to parse inline JSON: ${e}`)
+    }
+  }
+
   // 3. 匹配 file_read: "{...}" 格式（AI 错误输出的格式）
   const wrongFormatRegex = /(\w+):\s*"(\{[^}]*\})"/g
   let wrongMatch
@@ -575,24 +918,92 @@ export async function sendCLIMessageStream(
   session.isStreaming = true
 
   try {
+    // ✅ 检测模型能力（只在第一次迭代时检测）
+    let useCodeGeneration = session.useCodeGeneration
+    let supportsCodeGeneration = true
+    if (iterationCount === 0 && useCodeGeneration === undefined) {
+      const modelCapability = await detectModelCapability(apiKey, model, apiUrl)
+      useCodeGeneration = !modelCapability.supportsFunctionCalling
+      supportsCodeGeneration = modelCapability.supportsCodeGeneration
+      session.useCodeGeneration = useCodeGeneration
+      
+      if (!modelCapability.supportsFunctionCalling && !modelCapability.supportsCodeGeneration) {
+        // 纯 Chat 模式
+        log.warn(`[CLI-Chat] Model ${model} does not support function calling or code generation, using chat mode only`)
+        onChunk({
+          type: 'text',
+          content: `⚠️ 当前模型 ${model} 不支持工具调用和代码生成，只能使用对话模式。\n建议使用 Claude 3.5 Sonnet 或 GPT-4 以获得 Agent 功能。\n\n`
+        })
+        // 切换到 chat 模式
+        session.mode = 'chat'
+      } else if (useCodeGeneration) {
+        log.info(`[CLI-Chat] Model ${model} does not support function calling, using code generation mode`)
+        // 通知用户
+        onChunk({
+          type: 'text',
+          content: `ℹ️ 当前模型 ${model} 不支持工具调用，已切换到代码生成模式。\n建议使用 Claude 3.5 Sonnet 或 GPT-4 以获得更好的体验。\n\n`
+        })
+      } else {
+        log.info(`[CLI-Chat] Model ${model} supports function calling, using standard mode`)
+      }
+    }
+    
+    // ✅ 修复：每次新对话开始时，清理旧消息（保留系统消息和最近几条）
+    if (iterationCount === 0 && session.messages.length > 10) {
+      log.info(`[CLI-Chat] New conversation started, cleaning up old messages (current: ${session.messages.length})`)
+      const systemMessages = session.messages.filter(m => m.role === 'system')
+      const recentMessages = session.messages.filter(m => m.role !== 'system').slice(-5)
+      session.messages = [...systemMessages, ...recentMessages]
+      log.info(`[CLI-Chat] Cleaned up messages, now: ${session.messages.length}`)
+    }
+    
     // 构建消息历史
+    // ✅ 修复：根据模型能力选择不同的系统提示词
+    const systemPrompt = buildSystemPrompt(session.mode, session.cwd, useCodeGeneration || false)
+    
     if (messages && messages.length > 0) {
-      // 如果提供了完整消息历史，使用它（前端传来的包含系统提示词）
-      log.debug(`[CLI-Chat] Using provided messages: count=${messages.length}`)
-      session.messages = messages.map(m => {
-        const msg: LLMMessage = { 
-          role: m.role as 'system' | 'user' | 'assistant' | 'tool', 
-          content: m.content
+      // 如果提供了完整消息历史，合并到 session.messages
+      // 注意：不要完全覆盖，而是追加新消息，保留后端添加的 tool 结果
+      log.debug(`[CLI-Chat] Merging provided messages: count=${messages.length}, session.messages: ${session.messages.length}`)
+      
+      // 找到 session.messages 中最后一条助手消息的位置
+      const lastAssistantIndex = session.messages.findIndex(m => m.role === 'assistant')
+      
+      // 遍历前端提供的消息，追加到 session.messages
+      for (const m of messages) {
+        // 跳过系统消息（保留后端的系统提示词）
+        if (m.role === 'system') continue
+        
+        // 检查消息是否已存在（避免重复）
+        const exists = session.messages.some(sm => 
+          sm.role === m.role && sm.content === m.content
+        )
+        
+        if (!exists) {
+          const msg: LLMMessage = { 
+            role: m.role as 'system' | 'user' | 'assistant' | 'tool', 
+            content: m.content
+          }
+          if (m.name) msg.name = m.name
+          if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+          session.messages.push(msg)
+          log.debug(`[CLI-Chat] Added message: role=${m.role}, content=${m.content.substring(0, 50)}...`)
         }
-        if (m.name) msg.name = m.name
-        return msg
-      })
+      }
+      
+      // 确保系统提示词是最新的
+      const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
+      if (existingSystemIndex >= 0) {
+        session.messages[existingSystemIndex].content = systemPrompt
+      } else {
+        session.messages.unshift({ role: 'system', content: systemPrompt })
+      }
     } else if (session.messages.length === 0) {
       // 否则，只在会话消息为空时添加系统提示词
       log.debug('[CLI-Chat] Building system prompt for new session')
       session.messages.push({
         role: 'system',
-        content: buildSystemPrompt(session.mode, session.cwd)
+        content: systemPrompt
       })
     }
 
@@ -615,20 +1026,39 @@ export async function sendCLIMessageStream(
           content: message
         })
       }
-    } else if (!wasProvidedMessages) {
-      // 没有提供完整消息历史，添加 message 作为用户消息
+    } else if (!wasProvidedMessages && message.trim()) {
+      // 没有提供完整消息历史，且 message 不为空，添加 message 作为用户消息
       session.messages.push({
         role: 'user',
         content: message
       })
-    } else {
+    } else if (message.trim()) {
       // 提供了消息历史，但最后一条不是用户消息（可能是 tool 或 assistant）
-      // 需要添加用户消息
+      // 且 message 不为空，需要添加用户消息
       log.debug('[CLI-Chat] Last message is not user, adding new user message')
       session.messages.push({
         role: 'user',
         content: message
       })
+    }
+    
+    // ✅ 修复：检测重复对话
+    if (iterationCount === 0 && message.trim()) {
+      const duplicateCheck = checkAndHandleDuplicateConversation(session, message)
+      if (duplicateCheck.isDuplicate && duplicateCheck.resetSession) {
+        // 重置会话
+        resetSession(session)
+        // 重新添加当前用户消息
+        session.messages.push({
+          role: 'user',
+          content: message
+        })
+        // 通知用户
+        onChunk({
+          type: 'text',
+          content: `🔄 检测到重复对话，已重置上下文。\n\n`
+        })
+      }
     }
     
     // ✅ 性能优化：降低日志级别
@@ -667,6 +1097,106 @@ export async function sendCLIMessageStream(
     
     log.debug(`[CLI-Chat] Tools count: ${tools?.length || 0}, mode: ${session.mode}`)
 
+    // ✅ 修复：添加日志，检查消息历史
+    log.info(`[CLI-Chat] [Iteration ${iterationCount}] Messages before sending: count=${session.messages.length}`)
+    log.info(`[CLI-Chat] [Iteration ${iterationCount}] Message roles: ${session.messages.map(m => m.role).join(', ')}`)
+    log.info(`[CLI-Chat] [Iteration ${iterationCount}] First message role: ${session.messages[0]?.role}`)
+    const firstMsg = session.messages[0]
+    const firstContent = firstMsg && typeof firstMsg.content === 'string' ? firstMsg.content : JSON.stringify(firstMsg?.content || '')
+    log.info(`[CLI-Chat] [Iteration ${iterationCount}] First message content preview: ${firstContent.substring(0, 200)}...`)
+    if (session.messages.length > 1) {
+      const lastMsg = session.messages[session.messages.length - 1]
+      log.info(`[CLI-Chat] [Iteration ${iterationCount}] Last message role: ${lastMsg?.role}`)
+      const lastContent = lastMsg && typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg?.content || '')
+      log.info(`[CLI-Chat] [Iteration ${iterationCount}] Last message content preview: ${lastContent.substring(0, 100)}...`)
+    }
+    
+    // ✅ 修复：限制消息历史长度，防止 AI 混淆
+    const MAX_MESSAGES = 20
+    if (session.messages.length > MAX_MESSAGES) {
+      log.warn(`[CLI-Chat] Message history too long (${session.messages.length}), trimming to ${MAX_MESSAGES}`)
+      // 保留系统消息和最近的消息
+      const systemMessages = session.messages.filter(m => m.role === 'system')
+      const nonSystemMessages = session.messages.filter(m => m.role !== 'system')
+      const recentMessages = nonSystemMessages.slice(-(MAX_MESSAGES - systemMessages.length))
+      session.messages = [...systemMessages, ...recentMessages]
+      log.info(`[CLI-Chat] Trimmed message history to ${session.messages.length} messages`)
+    }
+    
+    // ✅ 修复：过滤掉包含幻觉的消息，防止 AI 学习错误模式
+    const filteredMessages = session.messages.filter(m => {
+      if (m.role === 'system') return true
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      
+      // 规则 1: 过滤掉包含 "File written:" 或 "File deleted:" 但没有代码块的消息
+      if (content.includes('File written:') || content.includes('File deleted:')) {
+        if (!content.includes('```python')) {
+          log.warn(`[CLI-Chat] Filtering out hallucinated file operation message`)
+          return false
+        }
+      }
+      
+      // 规则 2: 过滤掉包含 "工具执行结果：" 的幻觉消息
+      if (content.includes('工具执行结果：') || content.includes('**工具执行结果：**')) {
+        log.warn(`[CLI-Chat] Filtering out hallucinated tool result message`)
+        return false
+      }
+      
+      // 规则 3: 过滤掉只包含路径但没有代码块的消息
+      if (/^\s*\/Users\/[^\n]+\.(txt|md|json|js|ts|py)\s*$/i.test(content)) {
+        log.warn(`[CLI-Chat] Filtering out standalone path message`)
+        return false
+      }
+      
+      // 规则 4: 过滤掉包含 "任务已完成" 但没有代码块的消息
+      if (content.includes('任务已完成') && !content.includes('```python')) {
+        log.warn(`[CLI-Chat] Filtering out hallucinated completion message`)
+        return false
+      }
+      
+      // 规则 5: 过滤掉重复的 "File written/deleted" 消息（保留最新的）
+      // 这个在后续处理
+      
+      return true
+    })
+    
+    if (filteredMessages.length < session.messages.length) {
+      log.info(`[CLI-Chat] Filtered out ${session.messages.length - filteredMessages.length} hallucinated messages`)
+      session.messages = filteredMessages
+    }
+    
+    // ✅ 修复：去重 - 移除重复的消息内容（保留最后一个）
+    const seenContents = new Set<string>()
+    const dedupedMessages: typeof session.messages = []
+    // 从后往前遍历，保留最新的
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      const m = session.messages[i]
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      // 对于 assistant 消息，检查是否重复
+      if (m.role === 'assistant') {
+        const normalizedContent = content.replace(/\s+/g, ' ').trim().substring(0, 200)
+        if (seenContents.has(normalizedContent)) {
+          log.warn(`[CLI-Chat] Removing duplicate assistant message: ${normalizedContent.substring(0, 50)}`)
+          continue
+        }
+        seenContents.add(normalizedContent)
+      }
+      dedupedMessages.unshift(m)
+    }
+    
+    if (dedupedMessages.length < session.messages.length) {
+      log.info(`[CLI-Chat] Removed ${session.messages.length - dedupedMessages.length} duplicate messages`)
+      session.messages = dedupedMessages
+    }
+    
+    // ✅ 修复：智能上下文压缩
+    // 参考先进 AI Coding 工具的做法，将历史对话压缩为简洁摘要
+    if (iterationCount === 0 && session.messages.length > 10) {
+      log.info(`[CLI-Chat] Applying smart context compression`)
+      session.messages = compressMessageHistory(session.messages)
+      log.info(`[CLI-Chat] Compressed context to ${session.messages.length} messages`)
+    }
+
     // 发送流式请求
     let fullContent = ''
     let toolCalls: Array<{ id: string; name: string; arguments: string }> = []
@@ -681,11 +1211,13 @@ export async function sendCLIMessageStream(
       arguments: string
     }> = new Map()
 
+    // ✅ 修复：同时传递 tools 给 API，支持 function calling 和 XML 格式
+    // 这样 AI 可以选择使用 function calling 或 XML 格式
     for await (const chunk of streamChatMessage({
       apiKey,
       model,
       messages: session.messages,
-      tools,
+      tools,  // 传递 tools，支持 function calling
       stream: true,
       apiUrl,
       signal: session.abortController?.signal
@@ -876,14 +1408,41 @@ export async function sendCLIMessageStream(
       }
 
       // 工具执行后，继续对话让 AI 分析结果
+      // ✅ 修复：在每次迭代时重新添加系统提示词，确保 AI 记住工具使用格式
+      const systemPrompt = buildSystemPrompt(session.mode, session.cwd)
+      
+      // 检查是否已有系统提示词，如果有则替换，如果没有则添加
+      const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
+      if (existingSystemIndex >= 0) {
+        session.messages[existingSystemIndex] = {
+          role: 'system',
+          content: systemPrompt
+        }
+      } else {
+        session.messages.unshift({
+          role: 'system',
+          content: systemPrompt
+        })
+      }
+      
       // 添加一个明确的用户消息来提示 AI 继续分析
-      const continuePrompt = `工具执行完成。请分析上述结果并决定下一步行动。
+      // ✅ 修复：明确告诉 AI 必须使用工具调用格式
+      const continuePrompt = `工具执行完成。
 
-重要提醒：
-1. 如果任务已完成，提供最终总结
-2. 如果需要更多信息，调用下一个工具继续探索
-3. 如果需要修改文件，使用 write_file 或 edit_file
-4. 不要停止，继续分析直到任务完全完成
+CRITICAL: 你必须使用工具调用格式来继续任务。
+
+如果任务已完成，请说"任务已完成"。
+如果任务未完成，你必须输出工具调用格式：
+<tool name="TOOL_NAME" param1="value1" param2="value2"/>
+
+可用工具：
+- <tool name="write_file" path="..." content="..."/>
+- <tool name="edit_file" path="..." old_string="..." new_string="..."/>
+- <tool name="delete_file" path="..."/>
+- <tool name="search_files" pattern="..."/>
+- <tool name="read_file" path="..."/>
+- <tool name="list_directory" path="..."/>
+- <tool name="execute_bash" command="..."/>
 
 当前迭代: ${iterationCount + 1}/${MAX_ITERATIONS}`
 
@@ -921,9 +1480,260 @@ export async function sendCLIMessageStream(
 
     // 检查 AI 响应中是否包含 JSON 工具调用（从文本内容中提取）
     log.debug(`[CLI-Chat] Checking for tool calls in content: mode=${session.mode}, hasContent=${!!fullContent.trim()}`)
+    log.info(`[CLI-Chat] [Iteration ${iterationCount}] Full content preview: ${fullContent.substring(0, 500)}...`)
+    
+    // ✅ 代码生成模式：提取并执行 Python 代码
+    if (session.mode === 'agent' && session.useCodeGeneration && fullContent.trim()) {
+      const codeBlockMatch = fullContent.match(/```python\n([\s\S]*?)\n```/)
+      if (codeBlockMatch) {
+        const pythonCode = codeBlockMatch[1].trim()
+        log.info(`[CLI-Chat] [Code Generation] Extracted Python code:\n${pythonCode.substring(0, 200)}...`)
+        
+        // 添加助手回复到消息历史
+        session.messages.push({
+          role: 'assistant',
+          content: fullContent
+        })
+        
+        // 执行 Python 代码
+        try {
+          const { exec } = require('child_process')
+          const { promisify } = require('util')
+          const fs = require('fs')
+          const path = require('path')
+          const execAsync = promisify(exec)
+          
+          // ✅ 修复：在执行前记录文件状态
+          const filesBefore = new Set(fs.readdirSync(session.cwd, { recursive: true }))
+          
+          // 在会话工作目录下执行 Python 代码
+          const { stdout, stderr } = await execAsync(`python3 -c "${pythonCode.replace(/"/g, '\\"')}"`, {
+            cwd: session.cwd,
+            timeout: 30000
+          })
+          
+          // ✅ 修复：在执行后检查文件变化
+          const filesAfter = new Set(fs.readdirSync(session.cwd, { recursive: true }))
+          const newFiles = new Set([...filesAfter].filter(x => !filesBefore.has(x)))
+          const deletedFiles = new Set([...filesBefore].filter(x => !filesAfter.has(x)))
+          
+          const hasRealChanges = newFiles.size > 0 || deletedFiles.size > 0
+          
+          let output = stdout || stderr || '执行完成'
+          
+          // ✅ 修复：验证执行结果
+          if (!hasRealChanges && (pythonCode.includes('open(') || pythonCode.includes('os.remove'))) {
+            // AI 声称创建了/删除了文件，但实际没有变化
+            log.warn(`[CLI-Chat] [Code Generation] AI claimed file operation but no changes detected`)
+            output += '\n\n⚠️ 警告：代码执行后文件系统没有变化，请检查代码是否正确。'
+          }
+          
+          log.info(`[CLI-Chat] [Code Generation] Execution result: ${output.substring(0, 200)}`)
+          log.info(`[CLI-Chat] [Code Generation] File changes: +${newFiles.size} -${deletedFiles.size}`)
+          
+          // 发送执行结果
+          onChunk({
+            type: 'tool_result',
+            toolResult: {
+              toolCallId: `code-gen-${iterationCount}`,
+              success: true,
+              output: output
+            }
+          })
+          
+          // 添加工具结果到消息历史
+          session.messages.push({
+            role: 'tool',
+            name: 'code_execution',
+            content: output,
+            tool_call_id: `code-gen-${iterationCount}`
+          })
+          
+          // 继续对话
+          const continuePrompt = `代码执行结果：\n${output}\n\n任务是否完成？如果未完成，请生成下一段代码。`
+          session.messages.push({
+            role: 'user',
+            content: continuePrompt
+          })
+          
+          // ✅ 修复：递归调用时添加错误处理
+          try {
+            await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            log.error(`[CLI-Chat] [Code Generation] Recursive call failed:`, errorMsg)
+            onChunk({
+              type: 'error',
+              error: `后续对话失败: ${errorMsg}`
+            })
+            onChunk({ type: 'done' })
+          }
+          return
+        } catch (error) {
+          const errorMsg = error instanceof Error ? error.message : String(error)
+          log.error(`[CLI-Chat] [Code Generation] Execution failed:`, errorMsg)
+          
+          onChunk({
+            type: 'error',
+            error: `代码执行失败: ${errorMsg}`
+          })
+          
+          // 添加错误到消息历史
+          session.messages.push({
+            role: 'tool',
+            name: 'code_execution',
+            content: `Error: ${errorMsg}`,
+            tool_call_id: `code-gen-${iterationCount}`
+          })
+          
+          // 继续对话，让 AI 修复代码
+          const continuePrompt = `代码执行失败：${errorMsg}\n\n请修复代码并重试。`
+          session.messages.push({
+            role: 'user',
+            content: continuePrompt
+          })
+          
+          // ✅ 修复：递归调用时添加错误处理
+          try {
+            await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+          } catch (error) {
+            const retryErrorMsg = error instanceof Error ? error.message : String(error)
+            log.error(`[CLI-Chat] [Code Generation] Retry failed:`, retryErrorMsg)
+            onChunk({
+              type: 'error',
+              error: `重试失败: ${retryErrorMsg}`
+            })
+            onChunk({ type: 'done' })
+          }
+          return
+        }
+      } else {
+        // ✅ AI 没有生成代码，检查是否声称了文件操作
+        log.warn(`[CLI-Chat] [Code Generation] No Python code block found in response, will retry`)
+        
+        // 添加助手回复到消息历史
+        session.messages.push({
+          role: 'assistant',
+          content: fullContent
+        })
+        
+        // ✅ 修复：验证 AI 是否声称了文件操作但实际没有代码
+        const claimedFileWrite = fullContent.match(/File\s+written:\s*(.+)/i)
+        const claimedFileDelete = fullContent.match(/File\s+deleted:\s*(.+)/i)
+        
+        if (claimedFileWrite || claimedFileDelete) {
+          // AI 声称了文件操作，但没有生成代码
+          const fs = require('fs')
+          const path = require('path')
+          const claimedPath = claimedFileWrite ? claimedFileWrite[1].trim() : claimedFileDelete![1].trim()
+          const fullPath = path.resolve(session.cwd, claimedPath)
+          
+          // 检查文件是否真的存在/被删除
+          const fileExists = fs.existsSync(fullPath)
+          
+          if (claimedFileWrite && !fileExists) {
+            // AI 声称创建了文件，但实际不存在
+            log.error(`[CLI-Chat] [Code Generation] AI claimed to write file but it doesn't exist: ${fullPath}`)
+            
+            // 添加警告到消息历史
+            session.messages.push({
+              role: 'tool',
+              name: 'code_execution',
+              content: `⚠️ 错误：AI 声称创建了文件 ${claimedPath}，但实际不存在。请生成实际的 Python 代码来创建文件。`,
+              tool_call_id: `code-gen-${iterationCount}`
+            })
+            
+            // 强制重试
+            const retryPrompt = `你声称创建了文件 ${claimedPath}，但实际不存在。请生成实际的 Python 代码来创建文件，不要只输出文字描述。`
+            session.messages.push({
+              role: 'user',
+              content: retryPrompt
+            })
+            
+            await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+            return
+          }
+          
+          if (claimedFileDelete && fileExists) {
+            // AI 声称删除了文件，但实际还存在
+            log.error(`[CLI-Chat] [Code Generation] AI claimed to delete file but it still exists: ${fullPath}`)
+            
+            session.messages.push({
+              role: 'tool',
+              name: 'code_execution',
+              content: `⚠️ 错误：AI 声称删除了文件 ${claimedPath}，但实际仍存在。请生成实际的 Python 代码来删除文件。`,
+              tool_call_id: `code-gen-${iterationCount}`
+            })
+            
+            const retryPrompt = `你声称删除了文件 ${claimedPath}，但实际仍存在。请生成实际的 Python 代码来删除文件，不要只输出文字描述。`
+            session.messages.push({
+              role: 'user',
+              content: retryPrompt
+            })
+            
+            // ✅ 修复：递归调用时添加错误处理
+            try {
+              await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+            } catch (error) {
+              const errorMsg = error instanceof Error ? error.message : String(error)
+              log.error(`[CLI-Chat] [Code Generation] Retry after claim failed:`, errorMsg)
+              onChunk({
+                type: 'error',
+                error: `重试失败: ${errorMsg}`
+              })
+              onChunk({ type: 'done' })
+            }
+            return
+          }
+        }
+        
+        // 检查重试次数（最多重试 2 次）
+        const retryCount = (session as any).codeGenRetryCount || 0
+        if (retryCount < 2) {
+          (session as any).codeGenRetryCount = retryCount + 1
+          log.info(`[CLI-Chat] [Code Generation] Retrying (${retryCount + 1}/2)...`)
+          
+          // 添加重试提示
+          const retryPrompt = `你没有生成 Python 代码。请严格按照系统提示的要求，只输出 Python 代码块，不要输出其他内容。\n\n任务：${session.messages[session.messages.length - 1]?.content}`
+          session.messages.push({
+            role: 'user',
+            content: retryPrompt
+          })
+          
+          // ✅ 修复：递归调用时添加错误处理
+          try {
+            await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error)
+            log.error(`[CLI-Chat] [Code Generation] Retry failed:`, errorMsg)
+            onChunk({
+              type: 'error',
+              error: `重试失败: ${errorMsg}`
+            })
+            onChunk({ type: 'done' })
+          }
+          return
+        }
+        
+        // 重试次数用尽，提示用户
+        log.error(`[CLI-Chat] [Code Generation] Retry exhausted, model is not suitable for code generation`)
+        onChunk({
+          type: 'text',
+          content: `⚠️ AI 没有生成 Python 代码（已重试 2 次）。当前模型可能不适合代码生成模式。\n\n建议更换为 Claude 3.5 Sonnet 或 GPT-4。\n\n原始回复：\n${fullContent}`
+        })
+        
+        onChunk({ type: 'done' })
+        return
+      }
+    }
+    
+    // 标准工具调用模式
     if (session.mode === 'agent' && fullContent.trim()) {
       const { toolCalls: extractedToolCalls, cleanedContent } = extractToolCallsFromContent(fullContent)
-      log.debug(`[CLI-Chat] Extraction result: ${extractedToolCalls.length} tool calls found`)
+      log.info(`[CLI-Chat] Extraction result: ${extractedToolCalls.length} tool calls found`)
+      if (extractedToolCalls.length > 0) {
+        log.info(`[CLI-Chat] Extracted tools: ${extractedToolCalls.map(tc => tc.name).join(', ')}`)
+      }
       if (extractedToolCalls.length > 0) {
         log.info(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
 
@@ -951,6 +1761,9 @@ export async function sendCLIMessageStream(
           log.debug(`[CLI-Chat] Deferring ${remainingToolCalls.length} additional tool(s) to next iteration`)
         }
         
+        // ✅ 修复：声明变量用于存储搜索结果中的文件路径
+        let filePathFromSearch = ''
+        
         try {
           log.debug(`[CLI-Chat] Executing first tool: ${firstToolCall.name}`)
           
@@ -970,6 +1783,16 @@ export async function sendCLIMessageStream(
           
           const result = await executeToolCall(firstToolCall.name, firstToolCall.arguments, session.cwd)
 
+          // ✅ 修复：从搜索结果中提取文件路径
+          if (firstToolCall.name === 'search_files' && result.success) {
+            // 尝试从搜索结果中提取文件路径
+            const lines = result.output.split('\n').filter(line => line.trim())
+            if (lines.length > 0) {
+              // 取第一行作为文件路径
+              filePathFromSearch = lines[0].trim()
+            }
+          }
+
           // 发送 tool_result 事件
           onChunk({
             type: 'tool_result',
@@ -988,20 +1811,39 @@ export async function sendCLIMessageStream(
             content: result.success ? result.output : result.error || 'Error',
             tool_call_id: toolCallId
           })
+          
+          // ✅ 修复：简化 continuePrompt，让 AI 明确知道需要继续任务
+          const continuePrompt = result.success 
+            ? `任务已完成：${firstToolCall.name} 执行成功。${result.output ? `输出：${result.output}` : ''}`
+            : `任务执行失败：${result.error || '未知错误'}。请重试或报告问题。`
+          
+          // 保存 continuePrompt 供后续使用
+          ;(session as any)._continuePrompt = continuePrompt
         } catch (error) {
           log.error(`[CLI-Chat] Extracted tool execution error:`, error)
         }
 
         // 继续对话 - 让 AI 决定下一步
-        const continuePrompt = `工具执行完成。请分析上述结果并决定下一步行动。
-
-重要提醒：
-1. 如果任务已完成，提供最终总结
-2. 如果需要更多信息，调用下一个工具继续探索
-3. 如果需要修改文件，使用 write_file 或 edit_file
-4. 不要停止，继续分析直到任务完全完成
-
-当前迭代: ${iterationCount + 1}/${MAX_ITERATIONS}`
+        // ✅ 修复：在每次迭代时重新添加系统提示词，确保 AI 记住工具使用格式
+        const systemPrompt = buildSystemPrompt(session.mode, session.cwd)
+        
+        // 检查是否已有系统提示词，如果有则替换，如果没有则添加
+        const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
+        if (existingSystemIndex >= 0) {
+          session.messages[existingSystemIndex] = {
+            role: 'system',
+            content: systemPrompt
+          }
+        } else {
+          session.messages.unshift({
+            role: 'system',
+            content: systemPrompt
+          })
+        }
+        
+        // ✅ 修复：使用之前保存的 continuePrompt
+        const continuePrompt = (session as any)._continuePrompt || '请继续任务'
+        delete (session as any)._continuePrompt
 
         session.messages.push({
           role: 'user',

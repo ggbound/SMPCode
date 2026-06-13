@@ -78,6 +78,7 @@ export interface Message {
   toolCalls?: ToolCall[]   // TRAE风格：工具调用链
   isStreaming?: boolean    // 是否流式输出中
   isBuilder?: boolean      // TRAE Builder模式消息
+  tool_call_id?: string    // tool 角色的工具调用 ID
   thinkingSteps?: Array<{   // Builder模式思考步骤
     type: 'search' | 'analysis' | 'code' | 'command' | 'result'
     title: string

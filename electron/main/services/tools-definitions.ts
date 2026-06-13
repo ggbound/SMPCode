@@ -212,6 +212,14 @@ const searchPathParam: ToolParameter = {
   required: false
 }
 
+const searchTypeParam: ToolParameter = {
+  type: 'string',
+  description: 'The type of search to perform. Use "content" to search file contents (default), or "filename" to search for files by name',
+  enum: ['content', 'filename'],
+  required: false,
+  default: 'content'
+}
+
 const processIdParam: ToolParameter = {
   type: 'string',
   description: 'The process ID of the process to manage',
@@ -738,16 +746,18 @@ const executeBashTool: ToolExecutor = {
  */
 const searchCodeTool: ToolExecutor = {
   name: 'search_files',
-  description: 'Search for files by pattern in the project using grep. Use this to find specific files or content across multiple files. Best for: finding where a function is defined, finding all usages of a variable, searching for specific patterns.',
+  description: 'Search for files by pattern in the project. Use "content" mode (default) to search file contents with grep, or "filename" mode to search for files by name. Best for: finding where a function is defined, finding all usages of a variable, searching for specific patterns, or finding files by name.',
   parameters: {
     pattern: patternParam,
-    path: searchPathParam
+    path: searchPathParam,
+    search_type: searchTypeParam
   },
   required: ['pattern'],
   execute: async (args, context): Promise<ToolExecutionResult> => {
     try {
       // Support both 'pattern' and 'query' as parameter names for compatibility
       const pattern = (args.pattern as string) || (args.query as string)
+      const searchType = (args.search_type as string) || 'content'
       
       if (!pattern) {
         return createErrorResult('Missing required parameter: pattern (or query)')
@@ -760,6 +770,27 @@ const searchCodeTool: ToolExecutor = {
         return createErrorResult(`Path does not exist: ${searchPath || '.'}`)
       }
 
+      // ✅ 修复：支持文件名搜索
+      if (searchType === 'filename') {
+        // 使用 find 命令搜索文件名（不限制文件类型）
+        const { stdout, stderr } = await execAsync(
+          `find "${targetPath}" -type f -name "*${pattern.replace(/"/g, '\\"')}*" 2>/dev/null | head -50`,
+          { timeout: 30000 }
+        )
+
+        if (stderr && !stdout) {
+          return createErrorResult(stderr)
+        }
+
+        const files = stdout.trim().split('\n').filter(f => f)
+        if (files.length === 0) {
+          return createSuccessResult('No files found matching the pattern')
+        }
+
+        return createSuccessResult(files.join('\n'), { matchCount: files.length, searchType: 'filename' })
+      }
+
+      // 默认：使用 grep 搜索文件内容
       // Escape special shell characters and use single quotes for the pattern
       // This handles quotes, backslashes, and other special regex characters
       const escapedPattern = pattern.replace(/'/g, "'\"'\"'").replace(/\\/g, '\\\\')
@@ -778,7 +809,7 @@ const searchCodeTool: ToolExecutor = {
         return createSuccessResult('No matches found')
       }
 
-      return createSuccessResult(files.join('\n'), { matchCount: files.length })
+      return createSuccessResult(files.join('\n'), { matchCount: files.length, searchType: 'content' })
     } catch (error) {
       return createErrorResult(String(error))
     }

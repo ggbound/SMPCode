@@ -14,7 +14,7 @@ export interface StreamChunk {
   toolCall?: {
     id: string
     name: string
-    arguments: string
+    arguments: Record<string, unknown> | string
   }
   toolResult?: {
     toolCallId: string
@@ -28,6 +28,7 @@ export interface StreamChunk {
 export interface ToolCall {
   tool: string
   arguments: Record<string, unknown>
+  id?: string  // 工具调用 ID，用于 tool_call_id
 }
 
 export interface ConversationResult {

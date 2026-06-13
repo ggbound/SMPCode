@@ -5,9 +5,10 @@
 
 import { readFile, writeFile, mkdir, readdir, stat, rm } from 'fs/promises'
 import { existsSync } from 'fs'
-import { join, dirname, resolve } from 'path'
+import { join, dirname, resolve, basename } from 'path'
 import { spawn } from 'child_process'
 import { promisify } from 'util'
+import { BrowserWindow } from 'electron'
 import { exec } from 'child_process'
 import log from 'electron-log'
 import type { ToolExecutionResult } from '../../../src/shared/types/tool-call'
@@ -79,6 +80,17 @@ export async function executeWriteFile(
 
     await writeFile(fullPath, content, 'utf-8')
 
+    // ✅ 修复：主动发送文件变化事件到前端，确保文件树立即刷新
+    const mainWindow = BrowserWindow.getAllWindows()[0]
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fs:change', { 
+        eventType: 'add', 
+        filename: basename(fullPath), 
+        dirPath: dirname(fullPath) 
+      })
+      log.info(`[executeWriteFile] Sent fs:change event for new file: ${filePath}`)
+    }
+
     return {
       success: true,
       output: `File written successfully: ${filePath}`,
@@ -142,14 +154,37 @@ export async function executeDeleteFile(
 
   try {
     const fullPath = resolve(cwd, filePath)
+    
+    // 添加详细日志
+    log.info(`[executeDeleteFile] CWD: ${cwd}`)
+    log.info(`[executeDeleteFile] File path (relative): ${filePath}`)
+    log.info(`[executeDeleteFile] Full path (resolved): ${fullPath}`)
+    log.info(`[executeDeleteFile] File exists: ${existsSync(fullPath)}`)
+    
+    // 检查文件是否存在
+    if (!existsSync(fullPath)) {
+      return {
+        success: false,
+        output: '',
+        error: `File does not exist: ${filePath} (resolved to: ${fullPath})`
+      }
+    }
+    
     await rm(fullPath, { recursive: true, force: true })
+    
+    // 验证文件是否被删除
+    const stillExists = existsSync(fullPath)
+    log.info(`[executeDeleteFile] File still exists after delete: ${stillExists}`)
 
     return {
-      success: true,
-      output: `File deleted successfully: ${filePath}`,
-      metadata: { path: fullPath }
+      success: !stillExists,
+      output: stillExists 
+        ? `Failed to delete file: ${filePath}` 
+        : `File deleted successfully: ${filePath} (full path: ${fullPath})`,
+      metadata: { path: fullPath, cwd, stillExists }
     }
   } catch (error) {
+    log.error(`[executeDeleteFile] Error:`, error)
     return {
       success: false,
       output: '',
@@ -292,13 +327,36 @@ export async function executeSearchFiles(
 ): Promise<ToolExecutionResult> {
   const pattern = (args.pattern as string) || (args.query as string)
   const path = (args.path as string) || '.'
+  const searchType = (args.search_type as string) || 'content' // 'content' 或 'filename'
 
   if (!pattern) {
     return { success: false, output: '', error: 'Pattern is required' }
   }
 
   try {
-    // 使用 grep 进行搜索
+    // ✅ 修复：支持文件名搜索
+    if (searchType === 'filename') {
+      // 使用 find 命令搜索文件名
+      const { stdout } = await execAsync(
+        `find "${path}" -type f -name "*${pattern.replace(/"/g, '\\"')}*" 2>/dev/null | head -50`,
+        { cwd, timeout: 30000 }
+      )
+
+      const files = stdout.trim().split('\n').filter(Boolean)
+      const results = files.map(file => ({
+        file: file,
+        line: 0,
+        content: 'File match'
+      }))
+
+      return {
+        success: true,
+        output: JSON.stringify(results, null, 2),
+        metadata: { count: results.length, searchType: 'filename' }
+      }
+    }
+
+    // 默认：使用 grep 搜索文件内容
     const { stdout } = await execAsync(
       `grep -r -n "${pattern.replace(/"/g, '\\"')}" "${path}" 2>/dev/null || true`,
       { cwd, timeout: 30000 }
@@ -316,7 +374,7 @@ export async function executeSearchFiles(
     return {
       success: true,
       output: JSON.stringify(results.slice(0, 50), null, 2),
-      metadata: { count: results.length }
+      metadata: { count: results.length, searchType: 'content' }
     }
   } catch (error) {
     return {
