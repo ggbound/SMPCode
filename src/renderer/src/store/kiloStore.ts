@@ -66,6 +66,11 @@ export interface KiloMessage {
   reasoning?: string
   // 是否折叠思考过程
   isReasoningCollapsed?: boolean
+  // Token 使用情况
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+  }
 }
 
 // Kilo Code 风格工具调用

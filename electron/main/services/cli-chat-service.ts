@@ -39,6 +39,10 @@ interface CLISession {
   isStreaming: boolean
   abortController?: AbortController
   useCodeGeneration?: boolean  // ✅ 是否使用代码生成模式
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+  }
 }
 
 // 流式响应块
@@ -1053,11 +1057,8 @@ export async function sendCLIMessageStream(
           role: 'user',
           content: message
         })
-        // 通知用户
-        onChunk({
-          type: 'text',
-          content: `🔄 检测到重复对话，已重置上下文。\n\n`
-        })
+        // 只在日志中记录，不显示给用户
+        log.info('[CLI-Chat] Duplicate conversation detected and reset')
       }
     }
     
@@ -1278,6 +1279,15 @@ export async function sendCLIMessageStream(
             if (toolCallDelta.function?.arguments) {
               pending.arguments += toolCallDelta.function.arguments
             }
+          }
+        }
+      } else if (chunk.type === 'usage') {
+        // ✅ 修复：捕获 usage 数据
+        log.debug('[CLI-Chat] Usage data received from stream:', chunk.usage)
+        if (chunk.usage) {
+          session.usage = {
+            inputTokens: chunk.usage.input_tokens,
+            outputTokens: chunk.usage.output_tokens
           }
         }
       } else if (chunk.type === 'tool_use') {
@@ -1896,8 +1906,31 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
 
     log.debug(`[CLI-Chat] Iteration ${iterationCount + 1} complete, sending done signal`)
 
-    // 发送完成信号
-    onChunk({ type: 'done' })
+    // 发送完成信号 - 包含 usage 数据
+    // 优先使用从流中接收到的 usage 数据，如果没有则使用估算
+    let usageData = session.usage
+    
+    // 如果没有从流中收到 usage，进行估算
+    if (!usageData) {
+      const inputChars = session.messages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0)
+      const outputChars = fullContent.length
+      // 估算：平均每个 token 约 4 个字符（英文）或 2 个字符（中文）
+      usageData = {
+        inputTokens: Math.ceil(inputChars / 3),
+        outputTokens: Math.ceil(outputChars / 3)
+      }
+      log.debug('[CLI-Chat] No usage data received from stream, using estimation')
+    } else {
+      log.debug('[CLI-Chat] Using usage data from stream:', usageData)
+    }
+    
+    // 清除本次迭代的 usage 数据
+    session.usage = undefined
+    
+    onChunk({ 
+      type: 'done',
+      usage: usageData
+    })
 
   } catch (error) {
     // ✅ 修复：忽略 AbortError，这是正常的取消操作（如应用退出时）
@@ -1923,7 +1956,7 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
 export async function sendCLIMessage(
   sessionId: string,
   message: string
-): Promise<{ content: string; toolCalls?: Array<{ name: string; result: string }> }> {
+): Promise<{ content: string; toolCalls?: Array<{ name: string; result: string }>; usage?: { input_tokens: number; output_tokens: number } }> {
   const session = sessions.get(sessionId)
   if (!session) {
     throw new Error(`Session not found: ${sessionId}`)
@@ -2026,15 +2059,22 @@ export async function sendCLIMessage(
       content = String(response.content || '')
     }
 
-    // 更新消息历史
+    // 更新消息历史 - 包含 usage 数据
+    const messageUsage = response.usage ? {
+      input_tokens: response.usage.input_tokens,
+      output_tokens: response.usage.output_tokens
+    } : undefined
+    
     session.messages.push({
       role: 'assistant',
-      content
+      content,
+      usage: messageUsage
     })
 
     return {
       content,
-      toolCalls: toolCallResults.length > 0 ? toolCallResults : undefined
+      toolCalls: toolCallResults.length > 0 ? toolCallResults : undefined,
+      usage: messageUsage
     }
 
   } catch (error) {

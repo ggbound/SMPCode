@@ -40,6 +40,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
   const abortControllerRef = useRef<AbortController | null>(null)
   const unsubscribeRef = useRef<(() => void) | null>(null)
   const sessionIdRef = useRef<string | null>(null)
+  const originalSessionIdRef = useRef<string | null>(null) // 保存发送消息时的会话ID
   const [error, setError] = useState<string | null>(null)
   
   // 使用 ref 存储最新的 model 值，确保发送消息时使用最新值
@@ -125,6 +126,10 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     
     store.addMessage(userMessage)
     store.setInput('')
+    
+    // 记录发送消息时的会话ID，防止切换会话后保存到错误的会话
+    originalSessionIdRef.current = store.currentSession
+    console.log('[useKiloConversation] Recording original session ID:', originalSessionIdRef.current)
     
     // 创建 AI 消息占位 - 使用 blocks 支持内联工具调用
     const assistantMessageId = uuidv4()
@@ -323,6 +328,12 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
               store.updateMessage(assistantMessageId, {
                 content: currentContent + resultText
               })
+              
+              // ✅ 文件操作完成后立即刷新资源管理器
+              if (chunk.toolResult.success) {
+                console.log('[useKiloConversation] Tool execution completed, triggering file tree refresh')
+                window.dispatchEvent(new CustomEvent('file-operation-completed'))
+              }
             }
             break
             
@@ -358,10 +369,26 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             break
             
           case 'done':
-            console.log('[useKiloConversation] Conversation complete')
-            store.updateMessage(assistantMessageId, {
+            console.log('[useKiloConversation] Conversation complete', chunk)
+            // 更新消息，包含 usage 数据
+            const updateData: Partial<KiloMessage> = {
               isStreaming: false
-            })
+            }
+            if (chunk.usage) {
+              console.log('[useKiloConversation] Updating message with usage:', chunk.usage)
+              updateData.usage = {
+                inputTokens: chunk.usage.inputTokens,
+                outputTokens: chunk.usage.outputTokens
+              }
+            } else {
+              console.log('[useKiloConversation] No usage data in done chunk')
+            }
+            store.updateMessage(assistantMessageId, updateData)
+            
+            // 验证消息是否更新成功
+            const updatedMsg = store.messages.find(m => m.id === assistantMessageId)
+            console.log('[useKiloConversation] Updated message usage:', updatedMsg?.usage)
+            
             store.stopStreaming()
             
             // 更新会话
@@ -372,8 +399,46 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
               })
             }
             
-            // 自动保存到项目目录
-            saveCurrentConversation()
+            // 自动保存到项目目录 - 延迟执行确保消息已更新
+            setTimeout(() => {
+              // 从 store 获取最新状态
+              const currentStore = useKiloStore.getState()
+              console.log('[useKiloConversation] Saving after done, messages count:', currentStore.messages.length)
+              const msgToSave = currentStore.messages.find(m => m.id === assistantMessageId)
+              console.log('[useKiloConversation] Message to save usage:', msgToSave?.usage)
+              
+              // 直接执行保存逻辑 - 使用原始会话ID，防止切换会话后保存到错误的会话
+              const targetSessionId = originalSessionIdRef.current || currentStore.currentSession
+              console.log('[useKiloConversation] Target session ID for saving:', targetSessionId, 'Original:', originalSessionIdRef.current, 'Current:', currentStore.currentSession)
+              
+              if (projectPath && window.api?.saveConversation && targetSessionId) {
+                const session = currentStore.sessions.find(s => s.id === targetSessionId)
+                if (session) {
+                  const messagesToSave = currentStore.messages.map(m => ({
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    timestamp: m.timestamp,
+                    mode: m.mode,
+                    blocks: m.blocks,
+                    toolCalls: m.toolCalls,
+                    reasoning: m.reasoning,
+                    usage: m.usage
+                  }))
+                  console.log('[useKiloConversation] Direct saving conversation:', session.id, 'Messages:', messagesToSave.length)
+                  window.api.saveConversation(projectPath, session.id, messagesToSave, session.title)
+                    .then(() => {
+                      console.log('[useKiloConversation] Direct save successful')
+                      // ✅ AI对话完成后刷新资源管理器，让用户看到文件变化
+                      console.log('[useKiloConversation] Triggering file tree refresh after AI conversation')
+                      window.dispatchEvent(new CustomEvent('file-operation-completed'))
+                    })
+                    .catch(err => console.error('[useKiloConversation] Direct save failed:', err))
+                } else {
+                  console.error('[useKiloConversation] Session not found for saving:', targetSessionId)
+                }
+              }
+            }, 100)
             
             // 取消订阅
             if (unsubscribeRef.current) {
@@ -483,7 +548,8 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
         mode: m.mode,
         blocks: m.blocks,
         toolCalls: m.toolCalls,
-        reasoning: m.reasoning
+        reasoning: m.reasoning,
+        usage: m.usage
       }))
       
       // 保存到文件（主进程会自动更新 updatedAt）

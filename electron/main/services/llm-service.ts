@@ -15,6 +15,10 @@ export interface Message {
       arguments: string
     }
   }>
+  usage?: {
+    input_tokens: number
+    output_tokens: number
+  }
 }
 
 export interface ChatRequest {
@@ -50,6 +54,10 @@ export interface ChatResponse {
 
 export interface StreamChunk {
   type: string
+  usage?: {
+    input_tokens: number
+    output_tokens: number
+  }
   [key: string]: unknown
 }
 
@@ -392,6 +400,18 @@ async function* streamOpenAIMessage(
           }
           try {
             const parsed = JSON.parse(data)
+            
+            // ✅ 修复：捕获 usage 数据（OpenAI 在最后一个 chunk 中返回）
+            if (parsed.usage) {
+              log.debug('[LLM] Stream: Usage data received:', parsed.usage)
+              yield {
+                type: 'usage',
+                usage: {
+                  input_tokens: parsed.usage.prompt_tokens || 0,
+                  output_tokens: parsed.usage.completion_tokens || 0
+                }
+              }
+            }
             
             // CRITICAL: Pass through the entire delta including tool_calls
             // This is how VSCode and Claude Code handle streaming tool calls

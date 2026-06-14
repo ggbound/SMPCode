@@ -158,7 +158,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                   blocks: msg.blocks,
                   toolCalls: msg.toolCalls,
                   reasoning: msg.reasoning,
-                  isStreaming: false
+                  isStreaming: false,
+                  usage: msg.usage
                 })
               })
             }
@@ -259,7 +260,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                           content: msg.content,
                           timestamp: msg.timestamp || Date.now(),
                           mode: 'ask',
-                          isStreaming: false
+                          isStreaming: false,
+                          usage: msg.usage
                         })
                       })
                       console.log('[KiloPage] Feishu session messages refreshed:', result.messages.length)
@@ -292,6 +294,13 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const createSession = useCallback(async (title?: string) => {
     if (!projectPath) {
       alert('请先打开一个项目')
+      return
+    }
+    
+    // ✅ 修复：如果正在生成中，禁止创建新会话
+    if (conversation.isGenerating) {
+      console.log('[KiloPage] Cannot create new session while generating')
+      alert('请等待当前对话完成后再创建新会话')
       return
     }
     
@@ -329,6 +338,14 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     if (!projectPath) return
     
+    // ✅ 修复：如果正在生成中，禁止切换会话
+    if (conversation.isGenerating) {
+      console.log('[KiloPage] Cannot switch session while generating')
+      // 可以在这里添加提示，比如 toast 或 alert
+      alert('请等待当前对话完成后再切换会话')
+      return
+    }
+    
     // 先保存当前会话的消息（如果不是飞书会话）
     const currentSessionId = store.currentSession
     if (currentSessionId && store.messages.length > 0 && window.api?.saveConversation) {
@@ -344,8 +361,10 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             mode: m.mode,
             blocks: m.blocks,
             toolCalls: m.toolCalls,
-            reasoning: m.reasoning
+            reasoning: m.reasoning,
+            usage: m.usage  // ✅ 修复：添加 usage 字段
           }))
+          console.log('[KiloPage] Saving messages with usage:', messagesToSave.map(m => ({ id: m.id, usage: m.usage })))
           await window.api.saveConversation(projectPath, currentSessionId, messagesToSave, currentSession.title)
           console.log('[KiloPage] Current session saved before switch')
         } catch (err) {
@@ -379,7 +398,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                 content: msg.content,
                 timestamp: msg.timestamp || Date.now(),
                 mode: 'ask', // 飞书对话使用 ask 模式（只读）
-                isStreaming: false
+                isStreaming: false,
+                usage: msg.usage
               })
             })
           } else {
@@ -424,7 +444,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
               blocks: msg.blocks,
               toolCalls: cleanedToolCalls,
               reasoning: msg.reasoning,
-              isStreaming: false
+              isStreaming: false,
+              usage: msg.usage
             })
           })
         } else {
@@ -466,7 +487,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             mode: m.mode,
             blocks: m.blocks,
             toolCalls: m.toolCalls,
-            reasoning: m.reasoning
+            reasoning: m.reasoning,
+            usage: m.usage  // ✅ 修复：添加 usage 字段
           }))
           await window.api.saveConversation(projectPath, editingSessionId, messages, editingTitle.trim())
         }
@@ -622,6 +644,28 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
     }
   }, [conversation.isGenerating, scrollToBottom])
   
+  // ✅ 修复：同步消息到 mainStore，确保 App.tsx 的自动保存能获取 usage 数据
+  // 使用消息长度和最后一条消息的 ID 作为依赖，避免无限循环
+  // 注意：只在当前项目路径匹配且有当前会话时才同步，避免会话错乱
+  // ⚠️ 暂时禁用：可能导致数据错乱，使用 KiloPage 自己的保存逻辑
+  // const lastMessageId = kiloMessages.length > 0 ? kiloMessages[kiloMessages.length - 1]?.id : null
+  // useEffect(() => {
+  //   // 只在有当前会话且项目路径匹配时才同步
+  //   if (kiloMessages.length > 0 && store.currentSession && projectPath) {
+  //     // 将 KiloMessage 转换为 Message 格式（只同步必要字段）
+  //     const mainMessages = kiloMessages.map(km => ({
+  //       role: km.role as 'user' | 'assistant' | 'system',
+  //       content: km.content,
+  //       timestamp: km.timestamp,
+  //       isStreaming: km.isStreaming,
+  //       usage: km.usage
+  //     }))
+  //     mainStore.setMessages(mainMessages as any)
+  //       // 同时同步当前会话 ID，确保 App.tsx 保存到正确的会话
+  //       mainStore.selectSession(store.currentSession)
+  //   }
+  // }, [lastMessageId, kiloMessages.length, store.currentSession, projectPath])
+  
   return (
     <div className="kilo-page">
       {/* 悬浮抽屉式侧边栏 */}
@@ -633,7 +677,15 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
         
         {/* 新建会话按钮 */}
         <div className="kilo-sidebar-header">
-          <button className="kilo-new-chat-btn-modern" onClick={() => createSession()}>
+          <button 
+            className="kilo-new-chat-btn-modern" 
+            onClick={() => createSession()}
+            disabled={conversation.isGenerating}
+            style={{ 
+              opacity: conversation.isGenerating ? 0.5 : 1,
+              cursor: conversation.isGenerating ? 'not-allowed' : 'pointer'
+            }}
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -660,8 +712,12 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                 {store.sessions.map(session => (
                   <div
                     key={session.id}
-                    className={`kilo-session-item-modern ${session.id === store.currentSession ? 'active' : ''}`}
+                    className={`kilo-session-item-modern ${session.id === store.currentSession ? 'active' : ''} ${conversation.isGenerating ? 'disabled' : ''}`}
                     onClick={() => handleSwitchSession(session.id)}
+                    style={{ 
+                      opacity: conversation.isGenerating ? 0.5 : 1,
+                      cursor: conversation.isGenerating ? 'not-allowed' : 'pointer'
+                    }}
                   >
                     <div className="kilo-session-item-content">
                       {editingSessionId === session.id ? (
@@ -702,22 +758,40 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                           <div className="kilo-session-item-actions">
                             <button 
                               className="kilo-session-action-btn"
-                              title="重命名"
+                              title={conversation.isGenerating ? '请等待对话完成' : '重命名'}
+                              disabled={conversation.isGenerating}
                               onClick={(e) => {
                                 e.stopPropagation()
+                                if (conversation.isGenerating) {
+                                  alert('请等待当前对话完成后再编辑会话')
+                                  return
+                                }
                                 startRenameSession(session, e)
+                              }}
+                              style={{ 
+                                opacity: conversation.isGenerating ? 0.3 : 1,
+                                cursor: conversation.isGenerating ? 'not-allowed' : 'pointer'
                               }}
                             >
                               <Edit3 size={12} />
                             </button>
                             <button 
                               className="kilo-session-action-btn kilo-session-action-btn--delete"
-                              title="删除"
+                              title={conversation.isGenerating ? '请等待对话完成' : '删除'}
+                              disabled={conversation.isGenerating}
                               onClick={(e) => {
                                 e.stopPropagation()
+                                if (conversation.isGenerating) {
+                                  alert('请等待当前对话完成后再删除会话')
+                                  return
+                                }
                                 if (confirm(`确定要删除对话「${session.title}」吗？`)) {
                                   handleDeleteSession(session.id, e)
                                 }
+                              }}
+                              style={{ 
+                                opacity: conversation.isGenerating ? 0.3 : 1,
+                                cursor: conversation.isGenerating ? 'not-allowed' : 'pointer'
                               }}
                             >
                               <Trash2 size={12} />

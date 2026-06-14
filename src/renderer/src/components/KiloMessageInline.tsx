@@ -23,7 +23,10 @@ import {
   Globe,
   HelpCircle,
   GitPullRequest,
-  Wrench
+  Wrench,
+  Copy,
+  Check,
+  Hash
 } from 'lucide-react'
 import { KiloToolCall, TOOL_CONFIG } from '../types/agent'
 import type { KiloMessage as KiloMessageType, ContentBlock, TextBlock, ToolCallBlock } from '../store/kiloStore'
@@ -220,6 +223,105 @@ const ContentBlockRenderer = memo(function ContentBlockRenderer({
   }
 })
 
+// 格式化时间戳
+function formatTime(timestamp?: number): string {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+// 格式化 Token 数量
+function formatTokens(tokens?: number): string {
+  if (!tokens || tokens === 0) return ''
+  if (tokens >= 1000) {
+    return `${(tokens / 1000).toFixed(1)}k`
+  }
+  return tokens.toString()
+}
+
+// 消息工具栏组件
+const MessageToolbar = memo(function MessageToolbar({ 
+  message
+}: { 
+  message: KiloMessageType
+}) {
+  const [copied, setCopied] = useState(false)
+  
+  // 从 message 中提取完整内容（优先使用 content，否则从 blocks 拼接）
+  const getFullContent = (): string => {
+    // 如果有直接的 content，优先使用
+    if (message.content && message.content.trim()) {
+      return message.content
+    }
+    
+    // 否则从 blocks 拼接内容
+    if (message.blocks && message.blocks.length > 0) {
+      return message.blocks
+        .filter(b => b.type === 'text')
+        .map(b => (b as TextBlock).content)
+        .join('\n\n')
+    }
+    
+    return ''
+  }
+  
+  const handleCopy = async () => {
+    try {
+      const fullContent = getFullContent()
+      await navigator.clipboard.writeText(fullContent)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+  
+  const timeStr = formatTime(message.timestamp)
+  const inputTokens = formatTokens(message.usage?.inputTokens)
+  const outputTokens = formatTokens(message.usage?.outputTokens)
+  
+  // 只有 AI 消息显示工具栏
+  if (message.role !== 'assistant') return null
+  
+  return (
+    <div className="kilo-message-toolbar">
+      {/* 复制按钮 */}
+      <button 
+        className="kilo-toolbar-btn"
+        onClick={handleCopy}
+        title="复制内容"
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+        <span>{copied ? '已复制' : '复制'}</span>
+      </button>
+      
+      {/* Token 使用情况 */}
+      {(inputTokens || outputTokens) && (
+        <div className="kilo-toolbar-info" title="Token 使用情况">
+          <Hash size={12} />
+          <span>
+            {inputTokens && `${inputTokens} in`}
+            {inputTokens && outputTokens && ' / '}
+            {outputTokens && `${outputTokens} out`}
+          </span>
+        </div>
+      )}
+      
+      {/* 消息时间 */}
+      {timeStr && (
+        <div className="kilo-toolbar-info" title="消息时间">
+          <Clock size={12} />
+          <span>{timeStr}</span>
+        </div>
+      )}
+    </div>
+  )
+})
+
 // 主消息组件 - 简洁左右布局，无头像无标识
 export const KiloMessageInline = memo(function KiloMessageInline({ 
   message, 
@@ -259,6 +361,17 @@ export const KiloMessageInline = memo(function KiloMessageInline({
     // 按时间戳排序
     blocks.sort((a, b) => a.timestamp - b.timestamp)
   }
+  
+  // 是否显示工具栏（非流式状态且是 AI 消息）
+  const showToolbar = !message.isStreaming && message.role === 'assistant' && message.content
+  
+  // 调试日志
+  console.log('[KiloMessageInline] message:', { 
+    role: message.role, 
+    isStreaming: message.isStreaming, 
+    contentLength: message.content?.length,
+    showToolbar 
+  })
 
   return (
     <div className={`kilo-message-simple ${isUser ? 'user' : 'assistant'} ${message.isStreaming ? 'streaming' : ''}`}>
@@ -284,6 +397,11 @@ export const KiloMessageInline = memo(function KiloMessageInline({
           <span>思考中...</span>
         </div>
       ) : null}
+      
+      {/* 消息工具栏 - 始终显示用于测试 */}
+      {message.role === 'assistant' && (
+        <MessageToolbar message={message} />
+      )}
     </div>
   )
 })

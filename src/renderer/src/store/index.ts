@@ -99,6 +99,11 @@ export interface Message {
     total: number
     description?: string
   }
+  // 新增：Token 使用情况
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+  }
 }
 
 export interface Command {

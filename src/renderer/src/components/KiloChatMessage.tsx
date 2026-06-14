@@ -28,6 +28,8 @@ import {
   Wrench,
   Zap,
   Code2,
+  Copy,
+  Check,
   Eye,
   Globe,
   Bell,
@@ -415,6 +417,62 @@ function extractToolCallsFromSteps(messageSteps?: Array<{
   return toolCalls
 }
 
+// 格式化时间戳
+ function formatTime(timestamp?: number): string {
+   if (!timestamp) return ''
+   const date = new Date(timestamp)
+   return date.toLocaleTimeString('zh-CN', { 
+     hour: '2-digit', 
+     minute: '2-digit',
+     second: '2-digit'
+   })
+ }
+
+// 消息工具栏组件
+const MessageToolbar = memo(function MessageToolbar({ 
+  message,
+  content
+}: { 
+  message: Message
+  content: string 
+}) {
+  const [copied, setCopied] = useState(false)
+  
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+  
+  const timeStr = formatTime(message.timestamp)
+   
+  return (
+    <div className="kilo-message-toolbar">
+      {/* 复制按钮 */}
+      <button 
+        className="kilo-toolbar-btn"
+        onClick={handleCopy}
+        title="复制内容"
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+        <span>{copied ? '已复制' : '复制'}</span>
+      </button>
+      
+      {/* 消息时间 */}
+      {timeStr && (
+        <div className="kilo-toolbar-info" title="消息时间">
+          <Clock size={14} />
+          <span>{timeStr}</span>
+        </div>
+      )}
+    </div>
+  )
+})
+
 // 主组件
 export const KiloChatMessage = memo(function KiloChatMessage({ 
   message, 
@@ -430,6 +488,9 @@ export const KiloChatMessage = memo(function KiloChatMessage({
   
   // 打字机效果
   const displayedContent = useTypewriter(cleaned, message.isStreaming ?? false, 5)
+  
+  // 是否显示工具栏（非流式状态且是 AI 消息）
+  const showToolbar = !message.isStreaming && message.role === 'assistant' && displayedContent
 
   return (
     <div className={`kilo-message ${message.isStreaming ? 'streaming' : ''}`}>
@@ -464,6 +525,11 @@ export const KiloChatMessage = memo(function KiloChatMessage({
           </div>
         ) : null}
       </div>
+
+      {/* 消息工具栏 */}
+      {showToolbar && (
+        <MessageToolbar message={message} content={cleaned} />
+      )}
 
       {/* 流式光标 */}
       {message.isStreaming && (
