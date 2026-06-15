@@ -7,7 +7,7 @@ import KiloPage from './pages/KiloPage'
 import SettingsModal from './components/SettingsModal'
 import TitleBar from './components/TitleBar'
 import ActivityBar, { type ActivityBarItem } from './components/ActivityBar'
-import FileExplorer from './components/FileExplorer'
+import JackFileExplorer from './components/JackFileExplorer'
 import SearchPanel from './components/SearchPanel'
 import GitPanel from './components/GitPanel'
 import ReminderPanel from './components/ReminderPanel'
@@ -30,8 +30,10 @@ import {
 import { useCodeCompletion } from './hooks/useCodeCompletion'
 import { useCodeIntelligence } from './hooks/useCodeIntelligence'
 import FileWriteIndicator, { useFileWriteStatus } from './components/FileWriteIndicator'
+import Resizer from './components/Resizer'
 import './styles/completion.css'
 import './styles/vscode-sidebar.css'
+import './styles/resizer.css'
 import { getLanguageFromPath } from './utils/languageMap'
 import { saveWorkspaceState, loadWorkspaceState } from './utils/workspaceState'
 
@@ -144,6 +146,14 @@ function App() {
   // Activity Bar state - 默认为 'explorer' 以确保文件浏览器始终可见
   const [activeActivity, setActiveActivity] = useState<ActivityBarItem>('explorer')
   const [previousActivity, setPreviousActivity] = useState<ActivityBarItem>('explorer')
+
+  // Panel widths state - 可调整的面板宽度
+  const [leftPanelWidth, setLeftPanelWidth] = useState(320)
+  const [rightPanelWidth, setRightPanelWidth] = useState(420)
+  const MIN_LEFT_WIDTH = 200
+  const MAX_LEFT_WIDTH = 500
+  const MIN_RIGHT_WIDTH = 300
+  const MAX_RIGHT_WIDTH = 600
   
   // Activity Bar click handler
   const handleActivityClick = useCallback((item: ActivityBarItem) => {
@@ -2002,7 +2012,7 @@ function App() {
     console.log('[App] New tab created:', newTab.id)
   }, [tabs, generateTabId, getFileLanguage])
 
-  // Handle file selection from FileExplorer
+  // Handle file selection from JackFileExplorer
   const handleFileSelect = useCallback((path: string, content: string) => {
     openFile(path, content)
   }, [openFile])
@@ -2150,7 +2160,7 @@ function App() {
 
     // Always save workspace state (even when empty, to clear previous state)
     saveWorkspaceState(projectPath, {
-      expandedPaths: [], // Will be populated by FileExplorer
+      expandedPaths: [], // Will be populated by JackFileExplorer
       openTabs,
       activeTabId,
       selectedFilePath,
@@ -2390,7 +2400,7 @@ function App() {
     
     // Refresh File Tree
     const unsubFileRefresh = window.api?.onFileRefresh?.(() => {
-      // Dispatch custom event to FileExplorer for refresh
+      // Dispatch custom event to JackFileExplorer for refresh
       window.dispatchEvent(new CustomEvent('file-operation-completed'))
     })
     
@@ -2528,7 +2538,7 @@ function App() {
     }
   }, [activeTabId, tabs, activeTab, openFile, handleTabSave, handleNewSession, projectPath, setProjectPath, setTabs])
 
-  // Handle file renamed from FileExplorer
+  // Handle file renamed from JackFileExplorer
   const handleFileRenamed = useCallback((oldPath: string, newPath: string, newName: string) => {
     setTabs(prev => prev.map(tab => {
       if (tab.path === oldPath) {
@@ -2542,7 +2552,7 @@ function App() {
     }
   }, [selectedFilePath])
 
-  // Handle file deleted from FileExplorer
+  // Handle file deleted from JackFileExplorer
   const handleFileDeleted = useCallback((deletedPath: string) => {
     setTabs(prev => {
       const tabToDelete = prev.find(tab => tab.path === deletedPath)
@@ -2744,69 +2754,79 @@ function App() {
               />
             </div>
 
-            {/* Left: Sidebar (File Explorer or Search) - Unified width */}
-            <div className="sidebar-panel-container" style={{ display: activeActivity === 'explorer' ? 'flex' : 'none' }}>
-              <FileExplorer
-                projectPath={projectPath}
-                onFileSelect={handleFileSelect}
-                selectedPath={selectedFilePath}
-                onRootPathChange={handleProjectPathChange}
-                openFile={openFile}
-                onFileRenamed={handleFileRenamed}
-                onFileDeleted={handleFileDeleted}
-              />
-            </div>
-
-            <div className="sidebar-panel-container" style={{ display: activeActivity === 'search' ? 'flex' : 'none' }}>
-              <SearchPanel
-                projectPath={projectPath}
-                onFileClick={(filePath, line) => {
-                  // 打开文件并跳转到指定行
-                  console.log('[App] onFileClick called with:', filePath, line)
-                  const existingTab = tabs.find(tab => tab.path === filePath)
-                  if (existingTab) {
-                    console.log('[App] Tab already exists, switching to it')
-                    setActiveTabId(existingTab.id)
-                    // 延迟跳转，等待标签页切换完成
-                    setTimeout(() => goToLine(line), 100)
-                  } else {
-                    console.log('[App] Opening new file')
-                    // 读取文件内容 via IPC
-                    const api = window.api as unknown as { 
-                      executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
-                    }
-                    if (api?.executeTool) {
-                      api.executeTool(
-                        `open-search-result-${Date.now()}`,
-                        'read_file',
-                        { path: filePath },
-                        projectPath || '/'
-                      ).then(data => {
-                        if (data.success && data.output !== undefined) {
-                          console.log('[App] File loaded, opening in editor')
-                          openFile(filePath, data.output)
-                          // 延迟跳转，等待编辑器渲染完成
-                          setTimeout(() => goToLine(line), 200)
+            {/* Left: Sidebar (File Explorer or Search) - 可调整宽度 */}
+            {(activeActivity === 'explorer' || activeActivity === 'search' || activeActivity === 'git' || activeActivity === 'reminders' || activeActivity === 'mcp-skill') && (
+              <>
+                <div 
+                  className="sidebar-panel-container" 
+                  style={{ 
+                    display: 'flex',
+                    width: leftPanelWidth,
+                    minWidth: MIN_LEFT_WIDTH,
+                    maxWidth: MAX_LEFT_WIDTH
+                  }}
+                >
+                  {activeActivity === 'explorer' && (
+                    <JackFileExplorer
+                      projectPath={projectPath}
+                      onFileSelect={handleFileSelect}
+                      selectedPath={selectedFilePath}
+                      onRootPathChange={handleProjectPathChange}
+                      onFileRenamed={handleFileRenamed}
+                      onFileDeleted={handleFileDeleted}
+                    />
+                  )}
+                  {activeActivity === 'search' && (
+                    <SearchPanel
+                      projectPath={projectPath}
+                      onFileClick={(filePath, line) => {
+                        // 打开文件并跳转到指定行
+                        console.log('[App] onFileClick called with:', filePath, line)
+                        const existingTab = tabs.find(tab => tab.path === filePath)
+                        if (existingTab) {
+                          console.log('[App] Tab already exists, switching to it')
+                          setActiveTabId(existingTab.id)
+                          // 延迟跳转，等待标签页切换完成
+                          setTimeout(() => goToLine(line), 100)
+                        } else {
+                          console.log('[App] Opening new file')
+                          // 读取文件内容 via IPC
+                          const api = window.api as unknown as { 
+                            executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
+                          }
+                          if (api?.executeTool) {
+                            api.executeTool(
+                              `open-search-result-${Date.now()}`,
+                              'read_file',
+                              { path: filePath },
+                              projectPath || '/'
+                            ).then(data => {
+                              if (data.success && data.output !== undefined) {
+                                console.log('[App] File loaded, opening in editor')
+                                openFile(filePath, data.output)
+                                // 延迟跳转，等待编辑器渲染完成
+                                setTimeout(() => goToLine(line), 200)
+                              }
+                            }).catch((err: Error) => console.error('Failed to read file:', err))
+                          }
                         }
-                      }).catch((err: Error) => console.error('Failed to read file:', err))
-                    }
-                  }
-                }}
-              />
-            </div>
-
-            <div className="sidebar-panel-container" style={{ display: activeActivity === 'git' ? 'flex' : 'none' }}>
-              <GitPanel repoPath={projectPath} openFile={openFile} />
-            </div>
-
-            <div className="sidebar-panel-container" style={{ display: activeActivity === 'reminders' ? 'flex' : 'none' }}>
-              <ReminderPanel />
-            </div>
-
-            {/* MCP & Skill Panel */}
-            <div className="sidebar-panel-container" style={{ display: activeActivity === 'mcp-skill' ? 'flex' : 'none' }}>
-              <MCPSkillPanel />
-            </div>
+                      }}
+                    />
+                  )}
+                  {activeActivity === 'git' && <GitPanel repoPath={projectPath} openFile={openFile} />}
+                  {activeActivity === 'reminders' && <ReminderPanel />}
+                  {activeActivity === 'mcp-skill' && <MCPSkillPanel />}
+                </div>
+                {/* Left Resizer */}
+                <Resizer
+                  direction="horizontal"
+                  onResize={(delta) => {
+                    const newWidth = Math.max(MIN_LEFT_WIDTH, Math.min(MAX_LEFT_WIDTH, leftPanelWidth + delta))
+                    setLeftPanelWidth(newWidth)
+                  }}
+                />
+              </>
+            )}
 
             {/* Center: File Tabs + File Viewer + Terminal - 使用 CSS 控制在设置页面时隐藏 */}
             <div className="center-column" style={{ display: activeActivity === 'settings' ? 'none' : 'flex' }}>
@@ -2868,8 +2888,28 @@ function App() {
               />
             </div>
 
-            {/* Right: Chat Area - Kilo Style - 始终挂载，使用 CSS 控制显示 */}
-            <div className="right-column" style={{ display: activeActivity === 'settings' ? 'none' : 'flex' }}>
+            {/* Right Resizer */}
+            {activeActivity !== 'settings' && (
+              <Resizer
+                direction="horizontal"
+                onResize={(delta) => {
+                  const newWidth = Math.max(MIN_RIGHT_WIDTH, Math.min(MAX_RIGHT_WIDTH, rightPanelWidth - delta))
+                  setRightPanelWidth(newWidth)
+                }}
+              />
+            )}
+
+            {/* Right: Chat Area - Kilo Style - 可调整宽度 */}
+            <div 
+              className="right-column" 
+              style={{ 
+                display: activeActivity === 'settings' ? 'none' : 'flex',
+                width: rightPanelWidth,
+                minWidth: MIN_RIGHT_WIDTH,
+                maxWidth: MAX_RIGHT_WIDTH,
+                flex: '0 0 auto'
+              }}
+            >
               <KiloPage 
                 apiKey={apiKey}
                 model={model}

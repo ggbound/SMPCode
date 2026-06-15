@@ -387,9 +387,6 @@ body {
 .sidebar-panel-container {
   display: flex;
   flex-direction: column;
-  width: 280px;
-  min-width: 200px;
-  max-width: 400px;
   height: 100%;
   flex-shrink: 0;
   background: #0D1117;
@@ -407,9 +404,7 @@ body {
 .right-column {
   display: flex;
   flex-direction: column;
-  flex: 0 0 420px;  /* 固定宽度 420px，不伸缩 */
-  min-width: 420px;
-  max-width: 420px;
+  flex-shrink: 0;
   min-height: 0;
   max-height: 100%;
   overflow: hidden;

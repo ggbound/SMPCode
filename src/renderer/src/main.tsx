@@ -7,6 +7,8 @@ import './styles/search.css'
 import './styles/lsp.css'
 import './styles/sidebar-panels.css'
 import '@xterm/xterm/css/xterm.css'
+// Import jack-file-tree keyboard shield for Monaco-safe input
+import '@knurdz/jack-file-tree/keyboard-shield'
 import { initializeToolClient } from './services/tool-client'
 import { setupGlobalErrorHandler } from './services/error-handler'
 

@@ -730,7 +730,7 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
     if (contextMenu.file && repoPath) {
       // 在资源管理器中显示 - 通过触发文件选择事件
       const fullPath = `${repoPath}/${contextMenu.file.path}`
-      // 发送自定义事件通知 FileExplorer 选中该文件
+      // 发送自定义事件通知 JackFileExplorer 选中该文件
       window.dispatchEvent(new CustomEvent('git:revealInExplorer', { 
         detail: { path: fullPath } 
       }))
