@@ -33,6 +33,9 @@ function getDirectoryPath(filePath: string): string {
   return filePath.substring(0, lastSeparatorIndex) || '/'
 }
 
+// 需要隐藏的文件夹列表
+const HIDDEN_FOLDERS = ['vendor', 'node_modules', '.smp-code']
+
 // 文件系统适配器 - 通过 IPC 与主进程通信
 const fsAdapter: FileTreeFsAdapter = {
   // 读取目录内容
@@ -53,12 +56,14 @@ const fsAdapter: FileTreeFsAdapter = {
       }
 
       const entries = JSON.parse(result.output)
-      return entries.map((entry: any) => ({
-        name: entry.name,
-        path: `${path}/${entry.name}`.replace(/\/+/g, '/').replace(/\/\/+/g, '/'),
-        type: entry.isDirectory ? 'directory' : 'file',
-        extension: entry.isDirectory ? undefined : entry.name.split('.').pop()
-      }))
+      return entries
+        .filter((entry: any) => !HIDDEN_FOLDERS.includes(entry.name))
+        .map((entry: any) => ({
+          name: entry.name,
+          path: `${path}/${entry.name}`.replace(/\/+/g, '/').replace(/\/\/+/g, '/'),
+          type: entry.isDirectory ? 'directory' : 'file',
+          extension: entry.isDirectory ? undefined : entry.name.split('.').pop()
+        }))
     } catch (error) {
       console.error('[JackFileExplorer] Failed to read directory:', error)
       throw error
