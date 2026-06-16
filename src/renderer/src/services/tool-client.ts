@@ -37,20 +37,11 @@ export function initializeToolClient(): void {
   // 监听工具状态变化事件
   if (window.api?.onToolStatusChanged) {
     window.api.onToolStatusChanged((event: unknown, data: ToolStatusEvent) => {
-      console.log('[ToolClient] ========== Received Tool Status Event ==========')
-      console.log('[ToolClient] Event type:', data.type)
-      console.log('[ToolClient] Call ID:', data.callId)
-      console.log('[ToolClient] Tool name:', data.toolName)
-      console.log('[ToolClient] Full data:', JSON.stringify(data, null, 2))
-      
       const store = getToolStore()
-      console.log('[ToolClient] Calling store.handleStatusEvent...')
       store.handleStatusEvent(data)
       
       // 验证 store 状态
       const state = useToolStore.getState()
-      console.log('[ToolClient] Store calls count:', state.calls.size)
-      console.log('[ToolClient] Store active calls:', state.activeCalls().length)
     })
     console.log('[ToolClient] Tool client initialized successfully')
   } else {
@@ -133,12 +124,6 @@ export async function executeTool(
   const cwd = options.cwd || '/'
 
   // CRITICAL: Log tool call details
-  console.log(`[ToolClient] ========== Tool Call Start ==========`)
-  console.log(`[ToolClient] Tool name: ${toolName}`)
-  console.log(`[ToolClient] Arguments type:`, typeof args)
-  console.log(`[ToolClient] Arguments keys:`, args ? Object.keys(args) : 'null')
-  console.log(`[ToolClient] Arguments:`, JSON.stringify(args, null, 2))
-  console.log(`[ToolClient] Working directory: ${cwd}`)
   
   // Validate execute_bash arguments
   if (toolName === 'execute_bash') {

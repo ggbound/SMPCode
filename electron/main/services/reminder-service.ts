@@ -62,7 +62,6 @@ class ReminderService {
     // 配置文件存储在用户数据目录
     const userDataPath = app.getPath('userData')
     this.configPath = path.join(userDataPath, CONFIG_FILE_NAME)
-    log.info(`[ReminderService] Config path: ${this.configPath}`)
   }
 
   /**

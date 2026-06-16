@@ -1126,17 +1126,11 @@ export async function sendCLIMessageStream(
     log.debug(`[CLI-Chat] Tools count: ${tools?.length || 0}, mode: ${session.mode}`)
 
     // ✅ 修复：添加日志，检查消息历史
-    log.info(`[CLI-Chat] [Iteration ${iterationCount}] Messages before sending: count=${session.messages.length}`)
-    log.info(`[CLI-Chat] [Iteration ${iterationCount}] Message roles: ${session.messages.map(m => m.role).join(', ')}`)
-    log.info(`[CLI-Chat] [Iteration ${iterationCount}] First message role: ${session.messages[0]?.role}`)
     const firstMsg = session.messages[0]
     const firstContent = firstMsg && typeof firstMsg.content === 'string' ? firstMsg.content : JSON.stringify(firstMsg?.content || '')
-    log.info(`[CLI-Chat] [Iteration ${iterationCount}] First message content preview: ${firstContent.substring(0, 200)}...`)
     if (session.messages.length > 1) {
       const lastMsg = session.messages[session.messages.length - 1]
-      log.info(`[CLI-Chat] [Iteration ${iterationCount}] Last message role: ${lastMsg?.role}`)
       const lastContent = lastMsg && typeof lastMsg.content === 'string' ? lastMsg.content : JSON.stringify(lastMsg?.content || '')
-      log.info(`[CLI-Chat] [Iteration ${iterationCount}] Last message content preview: ${lastContent.substring(0, 100)}...`)
     }
     
     // ✅ 修复：限制消息历史长度，防止 AI 混淆
@@ -1537,10 +1531,6 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
       // 递归调用内部会处理完成信号，这里直接返回
       return
     }
-
-    // 检查 AI 响应中是否包含 JSON 工具调用（从文本内容中提取）
-    log.debug(`[CLI-Chat] Checking for tool calls in content: mode=${session.mode}, hasContent=${!!fullContent.trim()}`)
-    log.info(`[CLI-Chat] [Iteration ${iterationCount}] Full content preview: ${fullContent.substring(0, 500)}...`)
     
     // ✅ 代码生成模式：提取并执行 Python 代码
     if (session.mode === 'agent' && session.useCodeGeneration && fullContent.trim()) {

@@ -43,7 +43,6 @@ class ToolManager {
   // 注册工具
   register(name: string, handler: ToolHandler): void {
     this.tools.set(name, handler)
-    log.info(`[ToolManager] Registered tool: ${name}`)
   }
 
   // 获取工具
@@ -110,17 +109,10 @@ class ToolManager {
       log.error(`[ToolManager] ${error}`)
       return { success: false, output: '', error }
     }
-
-    log.info(`[ToolManager] Executing tool: ${toolName} (id: ${callId})`)
-    log.info(`[ToolManager] Arguments:`, JSON.stringify(args, null, 2))
-    log.info(`[ToolManager] Working directory: ${cwd}`)
     
     try {
       const result = await handler(args, cwd)
-      log.info(`[ToolManager] Tool ${toolName} completed: ${result.success ? 'success' : 'failed'}`)
-      if (result.metadata) {
-        log.info(`[ToolManager] Metadata:`, JSON.stringify(result.metadata, null, 2))
-      }
+      if (result.metadata) {}
       return result
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error)
@@ -142,9 +134,6 @@ class ToolManager {
     }
 
     const [, serverId, actualToolName] = parts
-
-    log.info(`[ToolManager] Executing MCP tool: ${actualToolName} on server ${serverId} (id: ${callId})`)
-    log.info(`[ToolManager] Arguments:`, JSON.stringify(args, null, 2))
 
     try {
       const result = await mcpManager.executeTool(serverId, actualToolName, args)

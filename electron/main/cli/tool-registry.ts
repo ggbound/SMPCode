@@ -51,7 +51,6 @@ class ToolRegistry {
    */
   register(tool: ToolDefinition): void {
     this.tools.set(tool.name.toLowerCase(), tool)
-    log.info(`[ToolRegistry] Registered tool: ${tool.name}`)
   }
 
   /**
@@ -59,7 +58,6 @@ class ToolRegistry {
    */
   unregister(name: string): void {
     this.tools.delete(name.toLowerCase())
-    log.info(`[ToolRegistry] Unregistered tool: ${name}`)
   }
 
   /**

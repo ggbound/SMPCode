@@ -98,8 +98,6 @@ export class SkillManager extends EventEmitter {
 
     this.configs.set(config.id, config);
     this.skills.set(config.id, { config, executor });
-    
-    log.info(`[Skill] Registered: ${config.name} (${config.id})`);
     this.emit('skill-registered', config);
 
     // 同时注册为 AI 可调用的工具

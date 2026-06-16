@@ -62,7 +62,6 @@ export function loadWorkspaceState(projectPath: string): WorkspaceState | null {
     const data = localStorage.getItem(key)
     if (data) {
       const state = JSON.parse(data) as WorkspaceState
-      console.log('[WorkspaceState] Loaded state for:', projectPath)
       return state
     }
   } catch (error) {

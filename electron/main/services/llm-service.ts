@@ -176,7 +176,6 @@ async function sendOpenAIMessage(
   if (tools && tools.length > 0) {
     log.info(`[LLM] First 3 tool names:`, tools.slice(0, 3).map((t: any) => t.function?.name || t.name))
   }
-  log.info(`[LLM] Request body keys:`, Object.keys(requestBody))
   log.info(`[LLM] =========================================`)
 
   try {
@@ -336,11 +335,6 @@ async function* streamOpenAIMessage(
     max_tokens: 16384,  // Increased for large file operations
     stream: true
   }
-  
-  // DEBUG: 打印完整的请求参数
-  log.info('[LLM Stream] === FULL REQUEST BODY ===')
-  log.info(JSON.stringify(requestBody, null, 2))
-  log.info('[LLM Stream] === END REQUEST BODY ===')
     
   // CRITICAL: For kimi-k2.5, ALWAYS use temperature=0.3 (aggressive fix for loop issue)
   // temperature=0.7 still caused loops in some cases, 0.3 is more conservative
@@ -359,9 +353,6 @@ async function* streamOpenAIMessage(
   const url = getApiUrl(apiUrl, false)
 
   try {
-    log.info(`[LLM Stream] Fetching URL: ${url}`)
-    log.info(`[LLM Stream] Request headers: Content-Type: application/json, Authorization: Bearer ${apiKey.substring(0, 10)}...`)
-    
     const response = await fetch(url, {
       method: 'POST',
       headers: {

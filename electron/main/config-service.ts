@@ -111,7 +111,6 @@ export function loadConfig(): AppConfig {
   try {
     const s = getStore()
     const rawProviders = s.get('providers')
-    log.info(`Raw providers from store: ${JSON.stringify(rawProviders)}`)
     
     const config: AppConfig = {
       apiKey: s.get('apiKey', defaultConfig.apiKey) as string,

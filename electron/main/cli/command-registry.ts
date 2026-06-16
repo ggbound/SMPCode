@@ -34,7 +34,6 @@ class CommandRegistry {
    */
   register(command: CommandDefinition): void {
     this.commands.set(command.name.toLowerCase(), command)
-    log.info(`[CommandRegistry] Registered command: ${command.name}`)
   }
 
   /**
@@ -42,7 +41,6 @@ class CommandRegistry {
    */
   unregister(name: string): void {
     this.commands.delete(name.toLowerCase())
-    log.info(`[CommandRegistry] Unregistered command: ${name}`)
   }
 
   /**

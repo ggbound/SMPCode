@@ -81,20 +81,11 @@ export async function executeTool(
   args: Record<string, unknown>,
   cwd: string
 ): Promise<ToolExecutionResult> {
-  log.info(`[ToolExecutor] ========== Tool Execution Start ==========`)
-  log.info(`[ToolExecutor] Call ID: ${callId}`)
-  log.info(`[ToolExecutor] Tool name (original): ${toolName}`)
-  
   // 规范化具名称（支持别名）
   const normalizedToolName = normalizeToolName(toolName)
   if (normalizedToolName !== toolName) {
     log.info(`[ToolExecutor] Tool name mapped: ${toolName} -> ${normalizedToolName}`)
   }
-  
-  log.info(`[ToolExecutor] Arguments type:`, typeof args)
-  log.info(`[ToolExecutor] Arguments keys:`, args ? Object.keys(args) : 'null')
-  log.info(`[ToolExecutor] Arguments:`, JSON.stringify(args, null, 2))
-  log.info(`[ToolExecutor] Working directory: ${cwd}`)
   
   // CRITICAL: Validate arguments for execute_bash
   if (normalizedToolName === 'execute_bash') {
@@ -109,10 +100,8 @@ export async function executeTool(
   // 创建执行记录
   createCallRecord(callId, toolName, args)
   activeCalls.add(callId)
-  log.info(`[ToolExecutor] Call record created, active calls: ${activeCalls.size}`)
 
   // 通知前端开始执行
-  log.info(`[ToolExecutor] Notifying frontend: started`)
   notifyFrontend({
     type: 'started',
     callId,
@@ -122,18 +111,13 @@ export async function executeTool(
 
   try {
     // 使用统一的工具管理器执行
-    log.info(`[ToolExecutor] Delegating to toolManager.execute() with normalized tool name: ${normalizedToolName}`)
     const result = await toolManager.execute(callId, normalizedToolName, args, cwd)
-
-    log.info(`[ToolExecutor] Tool execution result: success=${result.success}`)
     
     // 更新状态
     updateCallStatus(callId, result.success ? 'completed' : 'failed', result)
     activeCalls.delete(callId)
-    log.info(`[ToolExecutor] Call record updated, active calls: ${activeCalls.size}`)
 
     // 通知前端执行完成
-    log.info(`[ToolExecutor] Notifying frontend: ${result.success ? 'completed' : 'failed'}`)
     notifyFrontend({
       type: result.success ? 'completed' : 'failed',
       callId,
@@ -142,7 +126,6 @@ export async function executeTool(
       result
     })
 
-    log.info(`[ToolExecutor] ========== Tool Execution End ==========`)
     return result
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
@@ -157,10 +140,8 @@ export async function executeTool(
     // 更新状态
     updateCallStatus(callId, 'failed', failedResult)
     activeCalls.delete(callId)
-    log.info(`[ToolExecutor] Call record updated (failed), active calls: ${activeCalls.size}`)
 
     // 通知前端执行失败
-    log.info(`[ToolExecutor] Notifying frontend: failed`)
     notifyFrontend({
       type: 'failed',
       callId,
@@ -169,7 +150,6 @@ export async function executeTool(
       error: errorMessage
     })
 
-    log.info(`[ToolExecutor] ========== Tool Execution End ==========`)
     return failedResult
   }
 }

@@ -272,15 +272,11 @@ function App() {
         }
         
         if (api?.getCommands) {
-          console.log('Loading commands via IPC...')
           commands = await api.getCommands()
-          console.log('Loaded commands via IPC:', commands.length)
         }
         
         if (api?.getTools) {
-          console.log('Loading tools via IPC...')
           tools = await api.getTools()
-          console.log('Loaded tools via IPC:', tools.length)
         }
         
         // 添加 source_hint 字段以匹配类型要求
@@ -317,7 +313,6 @@ function App() {
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        console.log('Loading config from store...')
         const api = window.api as unknown as { getConfig?: () => Promise<{
           apiKey: string
           model: string
@@ -328,7 +323,6 @@ function App() {
         
         if (api?.getConfig) {
           const config = await api.getConfig()
-          console.log('Loaded config:', config)
           
           if (config) {
             setApiKey(config.apiKey || '')
@@ -336,7 +330,6 @@ function App() {
             setDefaultModel(config.defaultModel || '')
             setPermissionMode(config.permissionMode || 'workspace-write')
             setProviders(config.providers || [])
-            console.log(`Config loaded: ${config.providers?.length || 0} providers`)
           }
         }
         
@@ -350,7 +343,6 @@ function App() {
             initFeishuService(parsedConfig, (status) => {
               setSyncStatus({ ...syncStatus, ...status })
             })
-            console.log('Feishu config loaded:', parsedConfig)
 
             // 如果启用了机器人功能，初始化 WebSocket 长连接
             if (parsedConfig.botEnabled && window.api?.feishu) {
@@ -465,7 +457,6 @@ function App() {
     
     // Clear pending continuation to prevent it from being executed on next message
     if (pendingContinuation) {
-      console.log('[handleStopGeneration] Clearing pending continuation due to user stop')
       setPendingContinuation(null)
     }
     setIsLoading(false)
@@ -478,7 +469,6 @@ function App() {
       return
     }
 
-    console.log('[handleContinueExecution] Continuing execution...')
     setIsLoading(true)
 
     try {
@@ -499,7 +489,6 @@ function App() {
 
       // Get current working directory from projectPath
       const currentCwd = projectPath || '/'
-      console.log('[handleContinueExecution] Current working directory:', currentCwd)
 
       // Clear pending continuation
       setPendingContinuation(null)
@@ -543,7 +532,6 @@ function App() {
           addSession(newSession)
           selectSession(newSessionId)
           clearMessages()
-          console.log('Created session via IPC:', newSessionId)
         } catch (error) {
           console.error('Failed to create initial session:', error)
         }
@@ -558,8 +546,6 @@ function App() {
     userContent: string,
     sessionId: string | null
   ) => {
-    console.log('[handleSendMessage] processWithTools returned:', result.content?.substring(0, 100))
-    console.log('[handleSendMessage] writtenFiles:', result.writtenFiles)
     // processWithTools already updates the message, no need to update again
 
     // Clear needsAction from all messages to hide all "继续执行" buttons when task completes
@@ -605,12 +591,10 @@ function App() {
   const fetchProjectContext = useCallback(async (projectPath: string): Promise<string> => {
     // Return cached context if path hasn't changed
     if (cachedProjectContext && cachedProjectPath === projectPath) {
-      console.log('[ProjectContext] Using cached context for:', projectPath)
       return cachedProjectContext
     }
 
     try {
-      console.log('[ProjectContext] Fetching context for:', projectPath)
       // 使用 IPC 调用获取项目上下文
       const api = window.api as unknown as { 
         executeTool?: (callId: string, toolName: string, args: Record<string, unknown>, cwd: string) => Promise<{ success: boolean; output?: string; error?: string }>
@@ -626,7 +610,6 @@ function App() {
           const context = `Project structure:\n${result.output}`
           cachedProjectContext = context
           cachedProjectPath = projectPath
-          console.log('[ProjectContext] Context fetched successfully, length:', context.length)
           return context
         }
       }
@@ -651,16 +634,11 @@ function App() {
       return
     }
 
-    console.log('[handleProjectPathChange] New project path:', newPath)
-    console.log('[handleProjectPathChange] Path length:', newPath.length)
-    console.log('[handleProjectPathChange] Path chars:', newPath.split('').map(c => c.charCodeAt(0)))
-
     // Save current project state before switching
     // Use refs to get the latest state, not the stale closure values
     // Fallback to projectPath state if ref is not set (e.g., first time opening folder)
     const currentPath = currentProjectPathRef.current || projectPath
-    console.log('[handleProjectPathChange] Current path for saving:', currentPath, 'ref:', currentProjectPathRef.current, 'state:', projectPath)
-    console.log('[handleProjectPathChange] New path:', newPath, 'tabs count:', latestTabsRef.current.length)
+
     if (currentPath && currentPath !== newPath) {
       console.log('[handleProjectPathChange] Saving current project state:', currentPath)
       const openTabs = latestTabsRef.current.map(tab => ({
@@ -669,7 +647,6 @@ function App() {
         type: tab.language === 'browser' ? 'browser' : 'file' as 'file' | 'diff' | 'browser',
         browserUrl: tab.browserUrl
       }))
-      console.log('[handleProjectPathChange] Saving tabs:', openTabs.length, 'tabs')
       saveWorkspaceState(currentPath, {
         expandedPaths: [],
         openTabs,
@@ -678,14 +655,12 @@ function App() {
         activeActivity: latestActiveActivityRef.current
       })
     } else {
-      console.log('[handleProjectPathChange] Skipping save: currentPath=', currentPath, 'newPath=', newPath)
     }
 
     // Reset the saved state refs to prevent auto-save from saving old tabs to new project
     // This is crucial: we reset lastSavedProjectRef so the effect will skip saving
     // until both projectPath and tabs have been updated
     lastSavedProjectRef.current = null
-    console.log('[handleProjectPathChange] Reset lastSavedProjectRef to prevent cross-project save')
 
     // 先清空当前会话和消息，防止旧消息被保存到新项目
     clearMessages()
@@ -710,7 +685,6 @@ function App() {
 
     // Load workspace state for this project
     const workspaceState = loadWorkspaceState(newPath)
-    console.log('[handleProjectPathChange] Workspace state loaded:', workspaceState, 'for path:', newPath)
     
     // Always clear tabs first, then restore if there's saved state
     // This ensures old project tabs are cleared even if new project has no saved state
@@ -722,7 +696,6 @@ function App() {
     }
     
     if (workspaceState) {
-      console.log('[handleProjectPathChange] Loading workspace state:', workspaceState)
       
       // Restore active activity
       if (workspaceState.activeActivity) {
@@ -736,7 +709,6 @@ function App() {
       
       // Restore open tabs immediately
       if (workspaceState.openTabs && workspaceState.openTabs.length > 0) {
-        console.log('[handleProjectPathChange] Restoring tabs:', workspaceState.openTabs.length)
         
         const restoredTabs: Tab[] = []
         // Map to track old ID -> new ID for active tab restoration
@@ -748,7 +720,6 @@ function App() {
               // Try to read file content
               const api = window.api as any
               if (api?.fsReadFile) {
-                console.log('[handleProjectPathChange] Reading file:', savedTab.path)
                 const result = await api.fsReadFile(savedTab.path)
                 if (result.success) {
                   // Generate new ID but keep track of the mapping
@@ -766,7 +737,6 @@ function App() {
                     isPreview: false
                   }
                   restoredTabs.push(newTab)
-                  console.log('[handleProjectPathChange] Restored tab:', savedTab.name, 'new ID:', newId)
                 } else {
                   console.error('[handleProjectPathChange] Failed to read file:', savedTab.path, result.error)
                 }
@@ -786,14 +756,11 @@ function App() {
                 isPreview: false
               }
               restoredTabs.push(newTab)
-              console.log('[handleProjectPathChange] Restored browser tab:', savedTab.name)
             }
           } catch (error) {
             console.error('[handleProjectPathChange] Failed to restore tab:', savedTab, error)
           }
         }
-        
-        console.log('[handleProjectPathChange] Restored tabs count:', restoredTabs.length)
         
         // Always set tabs to clear old project tabs, even if restoredTabs is empty
         setTabs(restoredTabs)
@@ -813,21 +780,17 @@ function App() {
               if (activeTab) {
                 setActiveTabId(activeTab.id)
                 setSelectedFilePath(activeTab.path)
-                console.log('[handleProjectPathChange] Restored active tab by path:', activeTab.id, activeTab.path)
               } else {
                 setActiveTabId(restoredTabs[0].id)
                 setSelectedFilePath(restoredTabs[0].path)
-                console.log('[handleProjectPathChange] Set first tab as active:', restoredTabs[0].id)
               }
             } else {
               setActiveTabId(restoredTabs[0].id)
               setSelectedFilePath(restoredTabs[0].path)
-              console.log('[handleProjectPathChange] Set first tab as active:', restoredTabs[0].id)
             }
           } else {
             setActiveTabId(restoredTabs[0].id)
             setSelectedFilePath(restoredTabs[0].path)
-            console.log('[handleProjectPathChange] Set first tab as active:', restoredTabs[0].id)
           }
         } else {
           // No tabs to restore, clear active tab
@@ -839,7 +802,6 @@ function App() {
     }
 
     // Working directory is now managed by projectPath, no need to sync with backend
-    console.log('[handleProjectPathChange] Working directory set to:', newPath)
 
     try {
       // TRAE风格：从本地存储加载会话列表
@@ -865,7 +827,6 @@ function App() {
             const msgResult = await window.api.loadConversation(newPath, latestSession.id)
             if (msgResult.success && msgResult.messages) {
               setMessages(msgResult.messages)
-              console.log('[handleProjectPathChange] Loaded session with', msgResult.messages.length, 'messages')
             }
           } else {
             // 没有会话，创建新的
@@ -981,13 +942,11 @@ function App() {
       
       // 跳过飞书会话，避免覆盖飞书消息
       if (session.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
-        console.log('[AutoSave] Skipping save for Feishu session:', currentSession)
         return
       }
       
       // 如果会话有 projectPath 属性，验证是否匹配当前项目
       if (session.projectPath && session.projectPath !== projectPath) {
-        console.log('[AutoSave] Skipping save - session belongs to different project:', session.projectPath)
         return
       }
       
@@ -1018,7 +977,6 @@ function App() {
       addSession(newSession)
       selectSession(newSessionId)
       clearMessages()
-      console.log('Created new session:', newSessionId)
     } catch (error) {
       console.error('Failed to create new session:', error)
     }
@@ -1027,9 +985,6 @@ function App() {
   // Parse tool calls from AI response text
   const parseToolCalls = (text: string): Array<{ tool: string; arguments: Record<string, unknown> }> | null => {
     const toolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
-    
-    console.log('[parseToolCalls] Input text length:', text.length)
-    console.log('[parseToolCalls] Input text preview:', text.substring(0, 300))
 
     // Method 0: Parse special tool call format <|tool_calls_section_begin|>...</think>
     const toolCallsSectionRegex = /<\|tool_calls_section_begin\|>([\s\S]*?)<\|tool_calls_section_end\|>/g
@@ -1045,14 +1000,12 @@ function App() {
         
         // Validate JSON before parsing
         if (!argsJson || argsJson.length < 2) {
-          console.log('[parseToolCalls] Empty or too short args JSON, skipping')
           continue
         }
         
         try {
           const args = JSON.parse(argsJson)
           toolCalls.push({ tool: toolName, arguments: args })
-          console.log('Parsed tool call from special format:', toolName, args)
         } catch (e) {
           console.error('Failed to parse tool call args:', argsJson.substring(0, 200))
           console.error('Parse error:', e)
@@ -1066,12 +1019,8 @@ function App() {
     let searchIndex = 0
     let matchCount = 0
     
-    console.log('[parseToolCalls] Searching for code blocks, text length:', text.length)
-    console.log('[parseToolCalls] First 500 chars:', text.substring(0, 500))
-    
     // 检查文本中是否包含 ```
     const firstBacktick = text.indexOf('`')
-    console.log('[parseToolCalls] First backtick position:', firstBacktick)
     if (firstBacktick !== -1) {
       console.log('[parseToolCalls] Text around first backtick:', text.substring(firstBacktick, firstBacktick + 20))
     }
@@ -1080,13 +1029,9 @@ function App() {
       // 找到代码块开始标记
       const blockStart = text.indexOf(codeBlockMarker, searchIndex)
       if (blockStart === -1) {
-        console.log('[parseToolCalls] No more code block markers found after position', searchIndex)
         break
       }
-      
-      console.log('[parseToolCalls] Found code block marker at position:', blockStart)
-      console.log('[parseToolCalls] Text at marker:', text.substring(blockStart, blockStart + 20))
-      
+
       // 找到代码块结束标记
       const blockEnd = text.indexOf(codeBlockMarker, blockStart + codeBlockMarker.length)
       if (blockEnd === -1) {
@@ -1105,9 +1050,6 @@ function App() {
       // 提取代码块内部内容
       const contentStart = hasJsonMarker ? blockStart + 7 : blockStart + 3
       const blockContent = text.substring(contentStart, blockEnd).trim()
-      
-      console.log(`[parseToolCalls] Found code block #${matchCount} at ${blockStart}-${blockEnd}, hasJsonMarker: ${hasJsonMarker}`)
-      console.log(`[parseToolCalls] Block content preview:`, blockContent.substring(0, 100))
       
       try {
         // Try to parse the entire block as JSON
@@ -1819,9 +1761,7 @@ function App() {
     })
 
     // 监听状态变化
-    const unsubscribeStatus = window.api.feishu.onStatusChange((_: unknown, status: any) => {
-      console.log('[App] Feishu WebSocket status:', status)
-    })
+    const unsubscribeStatus = window.api.feishu.onStatusChange((_: unknown, status: any) => {})
 
     return () => {
       unsubscribe()

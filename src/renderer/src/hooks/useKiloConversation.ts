@@ -114,12 +114,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
   
   // 发送消息
   const sendMessage = useCallback(async (content: string, images?: ImageContent[]) => {
-    console.log('[useKiloConversation] sendMessage called:', { 
-      content: content?.substring(0, 50), 
-      hasImages: !!images?.length,
-      imageCount: images?.length || 0,
-      isGenerating: store.isGenerating
-    })
     
     if ((!content.trim() && !images?.length) || store.isGenerating) {
       console.log('[useKiloConversation] sendMessage early return:', {
@@ -164,18 +158,12 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       images: images  // 保留 images 字段用于前端展示
     }
     
-    console.log('[useKiloConversation] ========== CREATING USER MESSAGE ==========')
-    console.log('[useKiloConversation] messageContent type:', typeof messageContent)
-    console.log('[useKiloConversation] messageContent is Array:', Array.isArray(messageContent))
     if (Array.isArray(messageContent)) {
-      console.log('[useKiloConversation] messageContent length:', messageContent.length)
       messageContent.forEach((part, i) => {
-        console.log(`[useKiloConversation]   Part ${i}: type=${part.type}`)
         if (part.type === 'image_url') {
-          console.log(`[useKiloConversation]     - has url: ${!!part.image_url?.url}`)
-          console.log(`[useKiloConversation]     - url length: ${part.image_url?.url?.length || 0}`)
+          
         } else {
-          console.log(`[useKiloConversation]     - text length: ${(part as {type: 'text', text: string}).text?.length || 0}`)
+
         }
       })
     }
@@ -400,10 +388,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             // ✅ 修复：前端不再执行工具，只显示工具调用状态
             // 工具执行由后端 cli-chat-service.ts 全权处理
             if (chunk.toolCall) {
-              console.log('[useKiloConversation] ========== Tool Call Received (Backend will execute) ==========')
-              console.log('[useKiloConversation] Tool name:', chunk.toolCall.name)
-              console.log('[useKiloConversation] Tool arguments:', JSON.stringify(chunk.toolCall.arguments))
-              
               const toolCall: KiloToolCall = {
                 id: chunk.toolCall.id || uuidv4(),
                 name: chunk.toolCall.name,
@@ -513,13 +497,11 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             break
             
           case 'done':
-            console.log('[useKiloConversation] Conversation complete', chunk)
             // 更新消息，包含 usage 数据
             const updateData: Partial<KiloMessage> = {
               isStreaming: false
             }
             if (chunk.usage) {
-              console.log('[useKiloConversation] Updating message with usage:', chunk.usage)
               updateData.usage = {
                 inputTokens: chunk.usage.inputTokens,
                 outputTokens: chunk.usage.outputTokens
@@ -531,7 +513,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             
             // 验证消息是否更新成功
             const updatedMsg = store.messages.find(m => m.id === assistantMessageId)
-            console.log('[useKiloConversation] Updated message usage:', updatedMsg?.usage)
             
             store.stopStreaming()
             
@@ -549,7 +530,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
               const currentStore = useKiloStore.getState()
               console.log('[useKiloConversation] Saving after done, messages count:', currentStore.messages.length)
               const msgToSave = currentStore.messages.find(m => m.id === assistantMessageId)
-              console.log('[useKiloConversation] Message to save usage:', msgToSave?.usage)
               
               // 直接执行保存逻辑 - 使用原始会话ID，防止切换会话后保存到错误的会话
               const targetSessionId = originalSessionIdRef.current || currentStore.currentSession
@@ -574,8 +554,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                     tool_calls: m.tool_calls,
                     name: m.name
                   }))
-                  console.log('[useKiloConversation] Direct saving conversation:', session.id, 'Messages:', messagesToSave.length)
-                  console.log('[useKiloConversation] Messages with images:', messagesToSave.filter(m => m.images && m.images.length > 0).length)
                   window.api.saveConversation(projectPath, session.id, messagesToSave, session.title)
                     .then(() => {
                       console.log('[useKiloConversation] Direct save successful')
@@ -609,8 +587,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       // DEBUG: 详细检查要发送的消息（包含所有消息，不仅仅是用户消息）
       console.log('[useKiloConversation] ========== MESSAGES TO SEND ==========')
       messages.forEach((m, i) => {
-        console.log(`[useKiloConversation] Message ${i}: role=${m.role}`)
-        console.log(`[useKiloConversation]   content type: ${typeof m.content}`)
         if (typeof m.content === 'string') {
           console.log(`[useKiloConversation]   content (string): ${m.content.substring(0, 100)}...`)
         } else {
@@ -662,8 +638,6 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
         }
       }))
       // DEBUG: 检查发送给后端的消息
-      console.log('[useKiloConversation] ======= SENDING TO BACKEND =======')
-      console.log('[useKiloConversation] messages count:', messages.length)
       const lastMsg = messages[messages.length - 1]
       console.log('[useKiloConversation] Last message:', {
         role: lastMsg?.role,
@@ -774,9 +748,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       }))
       
       // 保存到文件（主进程会自动更新 updatedAt）
-      console.log('[useKiloConversation] Saving conversation:', session.id, 'Title:', session.title, 'Messages:', messagesToSave.length)
       await window.api.saveConversation(projectPath, session.id, messagesToSave, session.title)
-      console.log('[useKiloConversation] Conversation saved successfully')
     } catch (err) {
       console.error('[useKiloConversation] Failed to save conversation:', err)
     }

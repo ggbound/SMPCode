@@ -1155,8 +1155,6 @@ function setupConversationHandlers(): void {
       const dir = ensureConversationDir(projectPath)
       const filePath = join(dir, `${sessionId}.json`)
       
-      log.info(`[conversation:save] Saving to ${filePath}, messages count: ${messages.length}`)
-      
       const data = {
         sessionId,
         title: sessionTitle || `会话 ${new Date().toLocaleString()}`,
@@ -1165,19 +1163,15 @@ function setupConversationHandlers(): void {
       }
       
       const jsonData = JSON.stringify(data, null, 2)
-      log.info(`[conversation:save] JSON data length: ${jsonData.length} bytes, messages in data: ${data.messages.length}`)
-      
       writeFileSync(filePath, jsonData, 'utf-8')
       
       // 验证文件是否写入成功
       if (existsSync(filePath)) {
         const stats = statSync(filePath)
-        log.info(`[conversation:save] File saved successfully: ${filePath}, size: ${stats.size} bytes`)
         
         // 读取文件验证内容
         const savedContent = readFileSync(filePath, 'utf-8')
         const savedData = JSON.parse(savedContent)
-        log.info(`[conversation:save] Verified: messages in file: ${savedData.messages.length}`)
       } else {
         log.error(`[conversation:save] File not found after write: ${filePath}`)
       }
@@ -1206,7 +1200,6 @@ function setupConversationHandlers(): void {
       }
       
       const data = JSON.parse(readFileSync(filePath, 'utf-8'))
-      log.info(`Conversation loaded from ${filePath}`)
       return { success: true, messages: data.messages || [], title: data.title }
     } catch (error) {
       log.error('Failed to load conversation:', error)

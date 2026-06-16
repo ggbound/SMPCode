@@ -878,10 +878,6 @@ export async function startApiServer(): Promise<void> {
       // Use new tool executor for execution with event notifications
       const result = await executeToolNew(callId || `call_${Date.now()}`, tool, args || {}, workingDir)
 
-      log.info(`[API] ========== Tool Execution Result ==========`)
-      log.info(`[API] Tool: ${tool}`)
-      log.info(`[API] Success: ${result.success}`)
-      log.info(`[API] Output length: ${result.output?.length || 0}`)
       if (result.metadata) {
         log.info(`[API] Metadata:`, JSON.stringify(result.metadata, null, 2))
       }
