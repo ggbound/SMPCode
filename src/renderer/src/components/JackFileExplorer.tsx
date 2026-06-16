@@ -228,16 +228,15 @@ export function JackFileExplorer({
   const [refreshKey, setRefreshKey] = useState(0)
   const [newFileTrigger, setNewFileTrigger] = useState(0)
 
-  // 同步外部 projectPath
+  // 同步外部 projectPath - 仅在 projectPath 真正变化时更新，不触发 onRootPathChange
   useEffect(() => {
     if (projectPath && projectPath !== workspaceRoot) {
       setWorkspaceRoot(projectPath)
       clearFileTreeUndoStack()
-      if (onRootPathChange) {
-        onRootPathChange(projectPath)
-      }
+      // 注意：这里不调用 onRootPathChange，因为 onRootPathChange 是由父组件传递的
+      // 用于通知父组件文件夹已打开，不应该在同步 projectPath 时调用
     }
-  }, [projectPath, workspaceRoot, onRootPathChange])
+  }, [projectPath, workspaceRoot])
 
   // 同步 selectedPath
   useEffect(() => {
@@ -583,6 +582,9 @@ export function JackFileExplorer({
         newFileTrigger={newFileTrigger}
         showHeader={true}
         showHeaderActions={true}
+        showOpenFolderButton={true}
+        openFolderButtonPosition="center"
+        headerTitle={customLabels.explorer}
         iconTheme="material"
         enableUndoHotkeys={true}
         theme={{
