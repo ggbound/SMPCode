@@ -87,7 +87,7 @@ interface ApiMessage {
 }
 
 // 转换消息内容为多模态格式
-function buildMultimodalContent(content: string, images?: ImageContent[]): string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> {
+export function buildMultimodalContent(content: string, images?: ImageContent[]): string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> {
   if (!images || images.length === 0) {
     return content
   }
@@ -100,11 +100,18 @@ function buildMultimodalContent(content: string, images?: ImageContent[]): strin
   }
 
   // 添加图片
+  // ✅ 修复：img.data 已经是完整的 data URL (data:image/xxx;base64,...)
+  // 不需要再添加前缀
   images.forEach(img => {
+    // 检查 img.data 是否已经是 data URL 格式
+    const imageUrl = img.data.startsWith('data:') 
+      ? img.data  // 已经是 data URL，直接使用
+      : `data:${img.mimeType};base64,${img.data}`  // 不是 data URL，添加前缀
+    
     contentParts.push({
       type: 'image_url',
       image_url: {
-        url: `data:${img.mimeType};base64,${img.data}`
+        url: imageUrl
       }
     })
   })
@@ -1303,7 +1310,8 @@ function App() {
       messages.forEach(m => {
         if (m.role !== 'system') {
           // 如果有图片，转换为多模态格式
-          const messageContent = m.images && m.images.length > 0
+          const hasImages = m.images && m.images.length > 0
+          const messageContent = hasImages
             ? buildMultimodalContent(m.content, m.images)
             : m.content
           apiMessages.push({ role: m.role, content: messageContent })
@@ -1407,7 +1415,11 @@ function App() {
         api?: {
           cliChat?: {
             createSession: (mode: 'chat' | 'agent', cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-            sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>, model?: string) => Promise<{ success: boolean; error?: string }>
+            // ✅ 修复：content 支持 string 或 多模态数组
+            sendMessage: (sessionId: string, message: string, messages?: Array<{ 
+              role: string; 
+              content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> 
+            }>, model?: string) => Promise<{ success: boolean; error?: string }>
             onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
             stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
           }

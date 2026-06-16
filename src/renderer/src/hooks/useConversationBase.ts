@@ -259,7 +259,11 @@ export function cleanToolCallBlocks(content: string): string {
  */
 export interface CliChatAPI {
   createSession: (mode: 'chat' | 'agent', cwd: string, initialPrompt?: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-  sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>) => Promise<{ success: boolean; error?: string }>
+  // ✅ 修复：content 支持 string 或 多模态数组
+  sendMessage: (sessionId: string, message: string, messages?: Array<{ 
+    role: string; 
+    content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> 
+  }>) => Promise<{ success: boolean; error?: string }>
   onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: StreamChunk }) => void) => () => void
   stopSession?: (sessionId: string) => Promise<{ success: boolean }>
   deleteSession?: (sessionId: string) => Promise<{ success: boolean }>

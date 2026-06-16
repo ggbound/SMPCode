@@ -252,10 +252,21 @@ const MessageToolbar = memo(function MessageToolbar({
   const [copied, setCopied] = useState(false)
   
   // 从 message 中提取完整内容（优先使用 content，否则从 blocks 拼接）
+  // 处理统一的 content 格式：string | MessageContentPart[]
   const getFullContent = (): string => {
     // 如果有直接的 content，优先使用
-    if (message.content && message.content.trim()) {
-      return message.content
+    if (message.content) {
+      if (typeof message.content === 'string') {
+        // 纯文本消息
+        return message.content.trim() || ''
+      } else {
+        // 多模态消息（数组格式）- 提取文本内容
+        return message.content
+          .filter((part: any) => part.type === 'text')
+          .map((part: any) => part.text)
+          .join('\n\n')
+          .trim()
+      }
     }
     
     // 否则从 blocks 拼接内容
@@ -334,13 +345,33 @@ export const KiloMessageInline = memo(function KiloMessageInline({
   const blocks: ContentBlock[] = message.blocks || []
   
   // 如果没有 blocks，从 content 构建
+  // 处理统一的 content 格式：string | MessageContentPart[]
   if (blocks.length === 0 && message.content) {
-    blocks.push({
-      id: `text-${message.timestamp}`,
-      type: 'text',
-      content: message.content,
-      timestamp: message.timestamp
-    })
+    if (typeof message.content === 'string') {
+      // 纯文本消息
+      blocks.push({
+        id: `text-${message.timestamp}`,
+        type: 'text',
+        content: message.content,
+        timestamp: message.timestamp
+      })
+    } else {
+      // 多模态消息（数组格式）
+      // 提取所有文本内容并合并
+      const textContent = message.content
+        .filter((part: any) => part.type === 'text')
+        .map((part: any) => part.text)
+        .join('\n\n')
+      
+      if (textContent.trim()) {
+        blocks.push({
+          id: `text-${message.timestamp}`,
+          type: 'text',
+          content: textContent,
+          timestamp: message.timestamp
+        })
+      }
+    }
   }
   
   // 如果有 toolCalls 但没有对应的 blocks，添加它们
@@ -364,17 +395,24 @@ export const KiloMessageInline = memo(function KiloMessageInline({
   
   // 是否显示工具栏（非流式状态且是 AI 消息）
   const showToolbar = !message.isStreaming && message.role === 'assistant' && message.content
-  
-  // 调试日志
-  console.log('[KiloMessageInline] message:', { 
-    role: message.role, 
-    isStreaming: message.isStreaming, 
-    contentLength: message.content?.length,
-    showToolbar 
-  })
 
   return (
     <div className={`kilo-message-simple ${isUser ? 'user' : 'assistant'} ${message.isStreaming ? 'streaming' : ''}`}>
+      {/* 用户消息的图片显示 - 优先从 images 字段获取，其次从 content 数组中提取 */}
+      {isUser && message.images && message.images.length > 0 && (
+        <div className="kilo-message-images">
+          {message.images.map((image, index) => (
+            <div key={index} className="kilo-message-image-item">
+              <img 
+                src={image.data} 
+                alt={image.name || 'uploaded image'}
+                className="kilo-message-image"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      
       {/* 消息内容 - 直接渲染，无包裹 */}
       {blocks.length > 0 ? (
         <div className="kilo-content-blocks">

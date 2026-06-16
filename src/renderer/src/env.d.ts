@@ -153,7 +153,11 @@ declare global {
       // CLI Chat API - 替代 HTTP API 模式
       cliChat: {
         createSession: (mode: 'chat' | 'agent', cwd: string, initialPrompt?: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-        sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>, model?: string) => Promise<{ success: boolean; error?: string }>
+        // ✅ 修复：content 支持 string 或 多模态数组
+        sendMessage: (sessionId: string, message: string, messages?: Array<{ 
+          role: string; 
+          content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> 
+        }>, model?: string) => Promise<{ success: boolean; error?: string }>
         stopSession: (sessionId: string) => Promise<{ success: boolean }>
         deleteSession: (sessionId: string) => Promise<{ success: boolean }>
         onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void

@@ -37,7 +37,6 @@ export function useFileWriteStatus() {
     const setupIPCListener = async () => {
       if (window.api?.onFileOperation) {
         const unsubscribe = await window.api.onFileOperation((_event: unknown, data: { operation: 'writing' | 'editing' | 'creating' | 'completed' | 'error'; path: string; timestamp: number; message?: string }) => {
-          console.log('[FileWriteIndicator] Received file operation:', data.operation, data.path)
           if (data.operation === 'writing' || data.operation === 'editing' || data.operation === 'creating') {
             setStatus({
               path: data.path,

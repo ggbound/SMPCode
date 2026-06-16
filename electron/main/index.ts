@@ -821,8 +821,34 @@ function setupIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('cli-chat:send-message', async (_event, { sessionId, message, messages, model }: { sessionId: string; message: string; messages?: Array<{ role: string; content: string }>; model?: string }) => {
+  ipcMain.handle('cli-chat:send-message', async (_event, { sessionId, message, messages, model }: { 
+    sessionId: string; 
+    message: string; 
+    messages?: Array<{ 
+      role: string; 
+      content: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}> 
+    }>; 
+    model?: string 
+  }) => {
     try {
+      // DEBUG: 检查接收到的消息
+      log.info('[IPC] === RECEIVED MESSAGES ===')
+      if (messages) {
+        messages.forEach((m, i) => {
+          if (typeof m.content === 'string') {
+            log.info(`[IPC] Message ${i}: role=${m.role}, type=text`)
+          } else {
+            log.info(`[IPC] Message ${i}: role=${m.role}, type=multimodal, parts=${m.content.length}`)
+            m.content.forEach((c, j) => {
+              if (c.type === 'image_url') {
+                log.info(`[IPC]   Part ${j}: image_url, url_length=${c.image_url?.url?.length || 0}`)
+              }
+            })
+          }
+        })
+      }
+      log.info('[IPC] === END RECEIVED MESSAGES ===')
+      
       const session = getCLISession(sessionId)
       if (!session) {
         return { success: false, error: 'Session not found' }
@@ -1209,11 +1235,22 @@ function setupConversationHandlers(): void {
           try {
             const filePath = join(dir, file)
             const data = JSON.parse(readFileSync(filePath, 'utf-8'))
+            
+            // 获取最后一条消息的时间戳（如果存在）
+            const messages = data.messages || []
+            let lastMessageTime = data.updatedAt
+            if (messages.length > 0) {
+              const lastMessage = messages[messages.length - 1]
+              if (lastMessage.timestamp) {
+                lastMessageTime = lastMessage.timestamp
+              }
+            }
+            
             sessions.push({
               id: data.sessionId,
               title: data.title || `会话 ${data.updatedAt || file}`,
-              updatedAt: data.updatedAt,
-              messageCount: data.messages?.length || 0
+              updatedAt: lastMessageTime,
+              messageCount: messages.length
             })
           } catch (e) {
             log.error(`Failed to parse session file ${file}:`, e)
@@ -1221,7 +1258,7 @@ function setupConversationHandlers(): void {
         }
       }
       
-      // 按更新时间排序
+      // 按最后消息时间排序
       sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
       
       return { success: true, sessions }

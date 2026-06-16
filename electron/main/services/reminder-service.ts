@@ -249,7 +249,6 @@ class ReminderService {
           timezone: 'Asia/Shanghai'  // 使用中国时区
         })
         this.cronJobs.set(reminder.id, job)
-        log.debug(`[ReminderService] Started cron job for reminder: ${reminder.id}`)
       } catch (error) {
         log.error(`[ReminderService] Failed to schedule cron job for ${reminder.id}:`, error)
       }
@@ -283,7 +282,6 @@ class ReminderService {
     }, delay)
 
     this.timeoutJobs.set(reminder.id, timeout)
-    log.debug(`[ReminderService] Scheduled timeout for reminder: ${reminder.id} in ${delay}ms`)
   }
 
   /**

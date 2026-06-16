@@ -68,7 +68,6 @@ async function notifyFrontend(event: ToolStatusEvent): Promise<void> {
     }
 
     mainWindow.webContents.send('tool-status-changed', event)
-    log.debug(`[ToolExecutor] Notified frontend: ${event.type} - ${event.callId}`)
   } catch (error) {
     log.error(`[ToolExecutor] Failed to notify frontend:`, error)
   }

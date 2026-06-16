@@ -264,7 +264,6 @@ export function JackFileExplorer({
 
   // 处理文件点击 - 打开文件
   const handleFileClick = useCallback((path: string, name: string) => {
-    console.log('[JackFileExplorer] File clicked:', path, name)
     setActiveFilePath(path)
 
     // 读取并打开文件
@@ -280,7 +279,6 @@ export function JackFileExplorer({
   // onFileOpened 在 jack-file-tree 中不是双击事件
   // 它是在文件被"打开"时调用（如粘贴后），我们不需要处理它
   const handleFileOpened = useCallback((path: string, name: string, isPreview?: boolean) => {
-    console.log('[JackFileExplorer] File opened event (paste/create):', path, name, isPreview)
     // 不需要额外处理，因为 onFileClick 已经处理了文件打开
   }, [])
 
@@ -330,7 +328,6 @@ export function JackFileExplorer({
         throw new Error(result.error || 'Failed to delete')
       }
 
-      console.log('[JackFileExplorer] Hard deleted:', path)
       
       // 通知外部
       if (onFileDeleted) {
@@ -350,7 +347,6 @@ export function JackFileExplorer({
 
   // 处理文件重命名
   const handleFileRenamed = useCallback((oldPath: string, newPath: string) => {
-    console.log('[JackFileExplorer] File renamed:', oldPath, '->', newPath)
     const newName = newPath.split('/').pop() || ''
     if (onFileRenamed) {
       onFileRenamed(oldPath, newPath, newName)
@@ -362,25 +358,21 @@ export function JackFileExplorer({
 
   // 处理文件创建
   const handleFileCreated = useCallback((path: string, name: string, savedContent?: string, isUndo?: boolean) => {
-    console.log('[JackFileExplorer] File created:', path, name)
     setRefreshKey(prev => prev + 1)
   }, [])
 
   // 处理文件夹创建
   const handleFolderCreated = useCallback((path: string, isUndo?: boolean) => {
-    console.log('[JackFileExplorer] Folder created:', path)
     setRefreshKey(prev => prev + 1)
   }, [])
 
   // 处理文件移动（拖放）
   const handleFileMoved = useCallback(() => {
-    console.log('[JackFileExplorer] File moved')
     setRefreshKey(prev => prev + 1)
   }, [])
 
   // 处理文件复制
   const handleFileCopied = useCallback((newPath: string, type: FileTreeItemType) => {
-    console.log('[JackFileExplorer] File copied:', newPath, type)
     setRefreshKey(prev => prev + 1)
   }, [])
 
@@ -390,7 +382,6 @@ export function JackFileExplorer({
     if (!api?.onFileChange) return
 
     const handleFileChange = (_event: any, data: { eventType: string; filename: string; dirPath: string }) => {
-      console.log('[JackFileExplorer] File changed:', data.eventType, data.filename)
       setTimeout(() => {
         setRefreshKey(prev => prev + 1)
       }, 300)
@@ -405,7 +396,6 @@ export function JackFileExplorer({
   // 监听文件操作完成事件
   useEffect(() => {
     const handleFileOperationCompleted = () => {
-      console.log('[JackFileExplorer] File operation completed, refreshing...')
       setRefreshKey(prev => prev + 1)
     }
 

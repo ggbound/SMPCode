@@ -78,7 +78,6 @@ export function useChatMode() {
       // Tool calling loop
       while (true) {
         iterationCount++
-        console.log(`[useChatMode] Iteration ${iterationCount}`)
 
         // 收集流式响应
         const streamChunks: StreamChunk[] = []
@@ -131,11 +130,9 @@ export function useChatMode() {
         const toolCalls = parseToolCalls(iterationContent)
 
         if (!toolCalls || toolCalls.length === 0) {
-          console.log('[useChatMode] No tool calls detected, conversation complete')
           break
         }
 
-        console.log('[useChatMode] Detected tool calls:', toolCalls.length)
 
         // Clean tool call blocks from display
         const cleanedIterationContent = cleanToolCallBlocks(iterationContent)
@@ -185,14 +182,10 @@ export function useChatMode() {
         let shouldRefreshFileExplorer = false
 
         if (toolCalls.length > 1) {
-          console.log(`[useChatMode] Multiple tools detected (${toolCalls.length}), executing only the first one`)
-          console.log(`[useChatMode] First tool: ${toolCalls[0].tool}`)
-          console.log(`[useChatMode] Deferred tools:`, toolCalls.slice(1).map(t => t.tool).join(', '))
         }
         
         // 只执行第一个工具
         const toolCall = toolCalls[0]
-        console.log(`[useChatMode] Executing tool:`, toolCall.tool)
 
         // 检查工具是否在允许列表中
         if (!ALLOWED_CHAT_TOOLS.includes(toolCall.tool)) {
@@ -258,7 +251,6 @@ export function useChatMode() {
         const session = localSessions.find(s => s.id === currentSession)
         // 跳过飞书会话，避免覆盖飞书消息
         if (session?.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
-          console.log('[useChatMode] Skipping save for Feishu session:', currentSession)
         } else {
           const updatedMessages = [...useStore.getState().messages]
           await saveConversation(projectPath, currentSession, updatedMessages, session?.title)

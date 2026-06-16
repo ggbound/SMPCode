@@ -119,10 +119,8 @@ export function useAgentMode() {
 
       while (true) {
         iterationCount++
-        console.log(`[useAgentMode] ========== Iteration ${iterationCount} ==========`)
 
         const compressedMessages = compressContext(conversationMessages)
-        console.log(`[useAgentMode] Messages for API: count=${compressedMessages.length}`)
 
         // 收集流式响应
         const streamChunks: StreamChunk[] = []
@@ -146,19 +144,15 @@ export function useAgentMode() {
           }
           return baseMsg
         })
-        console.log(`[useAgentMode] Sending to IPC: messagesCount=${messagesForAPI.length}`)
 
         const sendResult = await sendMessage(sessionId, content, messagesForAPI)
-        console.log(`[useAgentMode] IPC send result: success=${sendResult.success}`)
 
         if (!sendResult.success) {
           unsubscribe()
           throw new Error(sendResult.error || 'Failed to send message')
         }
 
-        console.log('[useAgentMode] Waiting for stream...')
         await streamPromise
-        console.log(`[useAgentMode] Stream complete: received ${streamChunks.length} chunks`)
 
         unsubscribe()
 
@@ -181,7 +175,6 @@ export function useAgentMode() {
             updateLastMessage(fullContent)
           } else if (chunk.type === 'tool_call' && chunk.toolCall) {
             toolCallChunks++
-            console.log(`[useAgentMode] Received tool_call from IPC: ${chunk.toolCall.name}`)
             try {
               // arguments 可能是对象或字符串
               const args = typeof chunk.toolCall.arguments === 'string' 
@@ -201,14 +194,12 @@ export function useAgentMode() {
                   timestamp: Date.now()
                 }
                 addToolCallToMessage(lastMessageIndex, toolCallForStore)
-                console.log(`[useAgentMode] Added tool call to message ${lastMessageIndex}: ${chunk.toolCall.name}`)
               }
             } catch (e) {
               console.error('[useAgentMode] Failed to parse tool call arguments:', e)
             }
           } else if (chunk.type === 'tool_result' && chunk.toolResult) {
             toolResultChunks++
-            console.log(`[useAgentMode] Received tool_result: success=${chunk.toolResult.success}`)
             const resultText = chunk.toolResult.success
               ? `\n\n**工具执行结果：**\n\`\`\`\n${chunk.toolResult.output.slice(0, 500)}${chunk.toolResult.output.length > 500 ? '\n...' : ''}\n\`\`\``
               : `\n\n**工具执行失败：** ${chunk.toolResult.error || 'Unknown error'}`
@@ -222,7 +213,6 @@ export function useAgentMode() {
           }
         }
 
-        console.log(`[useAgentMode] Chunk breakdown: text=${textChunks}, tool_calls=${toolCallChunks}, tool_results=${toolResultChunks}, errors=${errorChunks}`)
 
         if (abortControllerRef.current?.signal.aborted) {
           fullContent += '\n\n**已停止：** 用户中断了生成'
@@ -235,21 +225,15 @@ export function useAgentMode() {
           ? receivedToolCalls
           : (parseToolCalls(iterationContent) || [])
 
-        console.log(`[useAgentMode] Total tool calls: ${toolCalls.length}`)
 
         if (toolCalls.length === 0) {
-          console.log('[useAgentMode] No tool calls detected, conversation complete')
           break
         }
 
-        console.log('[useAgentMode] Detected tool calls:', toolCalls.map(t => t.tool).join(', '))
 
         // 性能优化：每次 iteration 只执行第一个工具，避免并发执行导致卡顿
         // AI 会根据第一个工具的结果决定下一步操作
         if (toolCalls.length > 1) {
-          console.log(`[useAgentMode] Multiple tools detected (${toolCalls.length}), executing only the first one`)
-          console.log(`[useAgentMode] First tool: ${toolCalls[0].tool}`)
-          console.log(`[useAgentMode] Deferred tools:`, toolCalls.slice(1).map(t => t.tool).join(', '))
         }
         
         let toolCall = toolCalls[0]  // 只取第一个工具
@@ -259,9 +243,6 @@ export function useAgentMode() {
           toolCall = { ...toolCall, tool: TOOL_NAME_MAP[toolCall.tool] }
         }
 
-        console.log(`[useAgentMode] Executing tool: ${toolCall.tool}`)
-        console.log(`[useAgentMode] Tool arguments:`, JSON.stringify(toolCall.arguments))
-        console.log(`[useAgentMode] Current CWD: ${currentCwd}`)
 
         try {
           // 更新工具状态为运行中
@@ -275,8 +256,6 @@ export function useAgentMode() {
           }
           
           const { success, result } = await executeToolCall(toolCall, currentCwd)
-          console.log(`[useAgentMode] Tool execution result: success=${success}, result length=${result.length}`)
-          console.log(`[useAgentMode] Tool result (first 200 chars):`, result.substring(0, 200))
 
           // 更新工具状态为完成或失败
           if (lastToolCall) {
@@ -332,7 +311,6 @@ export function useAgentMode() {
         const session = localSessions.find(s => s.id === currentSession)
         // 跳过飞书会话，避免覆盖飞书消息
         if (session?.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
-          console.log('[useAgentMode] Skipping save for Feishu session:', currentSession)
         } else {
           const updatedMessages = [...useStore.getState().messages]
           await saveConversation(projectPath, currentSession, updatedMessages, session?.title)

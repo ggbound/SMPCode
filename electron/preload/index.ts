@@ -249,9 +249,16 @@ const api = {
     // 创建会话
     createSession: (mode: 'chat' | 'agent', cwd: string, initialPrompt?: string) =>
       ipcRenderer.invoke('cli-chat:create-session', { mode, cwd, initialPrompt }),
-    // 发送消息（流式）
-    sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string }>, model?: string) =>
-      ipcRenderer.invoke('cli-chat:send-message', { sessionId, message, messages, model }),
+    // 发送消息（流式）- 支持多模态（文本+图片）
+    sendMessage: (sessionId: string, message: string, messages?: Array<{ 
+      role: string; 
+      content: string | Array<{type: string; text?: string; image_url?: {url: string}}> 
+    }>, model?: string) => {
+      // ✅ 修复：序列化消息以确保大数据正确传输
+      const serializedMessages = messages ? JSON.parse(JSON.stringify(messages)) : undefined
+      console.log('[Preload] Sending messages:', serializedMessages?.length, 'messages')
+      return ipcRenderer.invoke('cli-chat:send-message', { sessionId, message, messages: serializedMessages, model })
+    },
     // 停止会话
     stopSession: (sessionId: string) =>
       ipcRenderer.invoke('cli-chat:stop-session', { sessionId }),

@@ -100,7 +100,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     if (!window.api) return
 
     const removeStartedListener = window.api.onProcessStarted((_, data) => {
-      console.log('[Terminal] Process started:', data.processId, data.command, 'terminalId:', data.terminalId, 'taskType:', data.taskType)
       setRunningProcesses(prev => {
         // Avoid duplicate entries
         if (prev.find(p => p.id === data.processId)) {
@@ -123,7 +122,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
         // Check if terminal already exists
         const existingSession = sessionsRef.current.find(s => s.id === terminalId)
         if (!existingSession) {
-          console.log('[Terminal] Auto-creating terminal for process:', terminalId)
           // Extract command type from terminalId (e.g., "server:npm-dev" from "terminal-server:npm-dev")
           const commandType = terminalId.replace('terminal-', '')
           createTerminalForProcess(terminalId, commandType, data.cwd, data.taskType)
@@ -189,16 +187,12 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
 
     // Listen for terminal create requests from main process
     const removeCreateListener = window.api.onTerminalCreateRequest(async (_, data) => {
-      console.log('[Terminal] Received terminal create request:', data)
       // Check if terminal already exists - 性能优化：使用Map查找
       const existingSession = sessionsMapRef.current.get(data.id)
       if (!existingSession) {
-        console.log('[Terminal] Creating terminal for process:', data.id)
         // 等待终端创建完成
         await createTerminalForProcess(data.id, data.title || 'Process', data.cwd || '')
-        console.log('[Terminal] Terminal creation completed for:', data.id)
       } else {
-        console.log('[Terminal] Terminal already exists:', data.id)
       }
     })
 
@@ -214,13 +208,11 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Create a terminal specifically for a process (with fixed ID) - 支持AI意图
   const createTerminalForProcess = useCallback(async (terminalId: string, commandType: string, cwd: string, taskType?: string) => {
     if (isCreating) {
-      console.log('[Terminal] Already creating, waiting...')
       // Wait a bit and retry
       setTimeout(() => createTerminalForProcess(terminalId, commandType, cwd), 100)
       return
     }
     
-    console.log('[Terminal] Creating process terminal:', terminalId, 'for', commandType, 'task:', taskType)
     setIsCreating(true)
     setHasError(null)
 
@@ -237,7 +229,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
         cwd: cwd 
       }
       const result = await window.api.createTerminal(options)
-      console.log('[Terminal] Process terminal created:', result)
       
       // Use the terminalId as the session ID for process routing
       const session: TerminalSession = {
@@ -262,13 +253,11 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Create a new terminal session
   const createTerminal = useCallback(async (cwd?: string) => {
     if (isCreating) {
-      console.log('[Terminal] Already creating, skipping...')
       return
     }
     
     // Use provided cwd or fall back to projectPath
     const targetCwd = cwd || projectPath
-    console.log('[Terminal] Creating new terminal...', targetCwd ? `with cwd: ${targetCwd}` : 'with default cwd')
     setIsCreating(true)
     setHasError(null)
 
@@ -280,7 +269,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       // Pass targetCwd as cwd if available
       const options = targetCwd ? { cwd: targetCwd } : undefined
       const result = await window.api.createTerminal(options)
-      console.log('[Terminal] Terminal created:', result)
       
       const session: TerminalSession = {
         id: result.id,
@@ -306,7 +294,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
         const container = containerRefs.current.get(session.id)
         if (!container) return
         
-        console.log('[Terminal] Initializing xterm for session:', session.id)
         
         try {
           const xterm = new XTerm({
@@ -375,7 +362,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           xterm.onData((data) => {
             // Check for Ctrl+C (\x03) - interrupt running process
             if (data === '\x03' || data === '\u0003') {
-              console.log('[Terminal] Ctrl+C detected, checking for running processes')
               // Use a closure to capture current runningProcesses value
               // We need to get the latest state from the DOM or use a ref
               // For now, query the process panel if visible or use IPC to check
@@ -388,7 +374,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
                   if (processesForThisTerminal.length > 0) {
                     // Stop the most recent process
                     const processToStop = processesForThisTerminal[processesForThisTerminal.length - 1]
-                    console.log('[Terminal] Stopping process:', processToStop.id, processToStop.command)
                     if (window.api?.stopProcess) {
                       window.api.stopProcess(processToStop.id)
                     }
@@ -416,7 +401,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           // Flush buffered data to the newly initialized xterm
           const bufferedData = terminalDataBufferRef.current.get(session.id)
           if (bufferedData && bufferedData.length > 0) {
-            console.log('[Terminal] Flushing', bufferedData.length, 'buffered data chunks to xterm')
             bufferedData.forEach(chunk => xterm.write(chunk))
             terminalDataBufferRef.current.delete(session.id)
           }
@@ -429,7 +413,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
           // Focus the terminal
           xterm.focus()
           
-          console.log('[Terminal] xterm initialized for session:', session.id)
         } catch (error) {
           console.error('[Terminal] Failed to initialize xterm:', error)
         }
@@ -442,7 +425,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
 
   // Handle terminal data from main process
   useEffect(() => {
-    console.log('[Terminal] Setting up terminal data listener')
     if (!window.api?.onTerminalData) {
       console.warn('[Terminal] window.api.onTerminalData is not available')
       return
@@ -456,7 +438,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
         session.xterm.write(data)
       } else {
         // xterm未初始化，缓冲数据
-        console.log('[Terminal] Buffering data for session without xterm:', id)
         if (!terminalDataBufferRef.current.has(id)) {
           terminalDataBufferRef.current.set(id, [])
         }
@@ -465,26 +446,22 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     })
 
     return () => {
-      console.log('[Terminal] Removing terminal data listener')
       removeListener()
     }
   }, [])
 
   // Handle terminal exit
   useEffect(() => {
-    console.log('[Terminal] Setting up terminal exit listener')
     if (!window.api?.onTerminalExit) {
       console.warn('[Terminal] window.api.onTerminalExit is not available')
       return
     }
     
     const removeListener = window.api.onTerminalExit((_, { id }) => {
-      console.log('[Terminal] Terminal exited:', id)
       
       // 从sessions中移除
       setSessions(prev => {
         const updated = prev.filter(s => s.id !== id)
-        console.log('[Terminal] Sessions after exit:', updated.length)
         return updated
       })
       
@@ -501,7 +478,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
     })
 
     return () => {
-      console.log('[Terminal] Removing terminal exit listener')
       removeListener()
     }
   }, [activeSessionId])
@@ -536,7 +512,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // Create initial terminal - only once when component becomes visible
   useEffect(() => {
     if (isVisible && !initializedRef.current) {
-      console.log('[Terminal] Component visible, creating initial terminal')
       initializedRef.current = true
       if (sessions.length === 0 && !isCreating) {
         createTerminal()
@@ -547,7 +522,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   // When projectPath changes, close existing terminals and create new one with new path
   useEffect(() => {
     if (isVisible && projectPath && initializedRef.current) {
-      console.log('[Terminal] Project path changed to:', projectPath)
       // Close all existing terminals
       if (window.api?.killTerminal) {
         const api = window.api
@@ -570,12 +544,10 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
   }, [projectPath, isVisible])
 
   const closeTerminal = async (id: string) => {
-    console.log('[Terminal] Closing terminal:', id)
     
     // 先更新UI状态（立即反馈给用户）
     setSessions(prev => {
       const updated = prev.filter(s => s.id !== id)
-      console.log('[Terminal] Sessions after close:', updated.length)
       return updated
     })
     
@@ -602,7 +574,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
         )
         
         await Promise.race([killPromise, timeoutPromise])
-        console.log('[Terminal] Terminal killed successfully:', id)
       }
     } catch (error) {
       console.error('[Terminal] Failed to kill terminal:', error)
@@ -634,7 +605,6 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
       }
       const result = await window.api.startProcessInTerminal(command, targetCwd, targetTerminalId, aiPrompt)
       if (result.success) {
-        console.log(`[Terminal] Started process ${result.processId} for command: ${command}`)
         // Command will be written by onProcessStarted listener, no need to write here
       } else {
         console.error('[Terminal] Failed to start process:', result.error)

@@ -284,7 +284,6 @@ export function initTerminalService(mainWindow: BrowserWindow): void {
       ptyProcess.onExit(({ exitCode }) => {
         // ✅ 性能优化：退出码 1 通常是正常终止（SIGTERM），降低日志级别
         if (exitCode === 1 || exitCode === null) {
-          log.debug(`[Terminal] Terminal ${id} exited with code ${exitCode} (normal cleanup)`)
         } else {
           log.info(`[Terminal] Terminal ${id} exited with code ${exitCode}`)
         }

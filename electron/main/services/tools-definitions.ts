@@ -633,29 +633,23 @@ const executeBashTool: ToolExecutor = {
         }
       }
 
-      log.debug(`Executing bash command: ${command} in ${cwd} (base: ${baseCwd})`)
 
       // Check if command should run in terminal
       const shouldRunInTerminal = processBridge.shouldRunInTerminal(command)
-      log.debug(`[execute_bash] shouldRunInTerminal=${shouldRunInTerminal} for command: ${command}`)
       
       // 检测是否包含后台运行符 &
       const isBackgroundCommand = /&\s*$/.test(command.trim()) || /&\s*\n/.test(command)
       
       // 检测是否是长运行的开发服务器类命令（不应该等待进程结束）
       const isDevServerCommand = /npm\s+run\s+(dev|serve|start)|vite|next\s+dev|nuxt\s+dev|vue-cli-service\s+serve|php\s+artisan\s+serve/i.test(command)
-      log.debug(`[execute_bash] isBackgroundCommand=${isBackgroundCommand}, isDevServerCommand=${isDevServerCommand}`)
       
       // ✅ 核心修复：所有命令都在终端中执行，保证环境一致性
       // 无论是否是后台命令，都在终端中执行，避免环境不一致问题
       if (shouldRunInTerminal) {
-        log.debug(`[execute_bash] Running in terminal via processBridge.startProcess`)
         const result = await processBridge.startProcess(command, cwd)
-        log.debug(`[execute_bash] processBridge.startProcess result:`, JSON.stringify(result))
         if (result.success) {
           // 对于开发服务器类命令，等待足够时间让进程启动并输出结果
           if (isDevServerCommand) {
-            log.debug(`[execute_bash] Dev server command started, waiting for startup output: ${result.processId}`)
                   
             // ✅ 增加等待时间到10秒，让进程有足够时间启动和输出
             // PHP/NPM项目启动通常需要5-8秒
@@ -672,7 +666,6 @@ const executeBashTool: ToolExecutor = {
             const processStatus = await processBridge.checkProcessStatus(result.processId)
             const isStillRunning = processStatus.isRunning
                   
-            log.debug(`[execute_bash] Dev server status after ${waitTime}ms: running=${isStillRunning}, output lines=${initialOutput?.length || 0}`)
                   
             // ✅ 如果进程已经退出，说明启动失败，返回错误
             if (!isStillRunning) {
@@ -686,7 +679,6 @@ const executeBashTool: ToolExecutor = {
             }
                   
             // ✅ 进程还在运行，说明启动成功，返回实际输出
-            log.debug(`[execute_bash] Dev server running successfully, returning actual output`)
             return createSuccessResult(
               `Development server is running in terminal.\n\nStartup output:\n${outputText}\n\n✅ Server is running and ready.`, 
               { processId: result.processId, terminal: true, devServer: true, running: true }
@@ -699,13 +691,10 @@ const executeBashTool: ToolExecutor = {
           
           if (/ps |top |which |whereis |ls |cat |grep |find |head |tail |wc |echo |pwd |whoami/i.test(command)) {
             timeoutMs = 5000  // 检查类命令只需要5秒
-            log.debug(`[execute_bash] Short command detected, timeout: ${timeoutMs}ms`)
           } else if (/npm run build|vite build|webpack|tsc |python.*compile|javac/i.test(command)) {
             timeoutMs = 60000  // 编译类命令需要60秒
-            log.debug(`[execute_bash] Build command detected, timeout: ${timeoutMs}ms`)
           }
           
-          log.debug(`[execute_bash] Waiting for process ${result.processId} to complete (timeout: ${timeoutMs}ms)...`)
           const waitResult = await processBridge.waitForProcess(result.processId, timeoutMs)
       
           if (waitResult.success) {

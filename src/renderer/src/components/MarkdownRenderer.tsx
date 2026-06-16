@@ -234,7 +234,6 @@ const CodeBlockWrapper = memo(function CodeBlockWrapper({
 }) {
   // 检测是否为工具调用 JSON - 如果是，渲染为空（防止闪出）
   if (isToolCallJSON(code)) {
-    console.log('[MarkdownRenderer] Filtering out tool call JSON')
     return <div style={{ display: 'none' }} /> // 使用 display:none 而不是 null，防止闪出
   }
   

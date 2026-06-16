@@ -4,10 +4,11 @@
  */
 
 import { useCallback, useRef, useEffect, useState } from 'react'
-import { useKiloStore, KiloMessage, KiloSession, KiloToolCall, TextBlock, ToolCallBlock } from '../store/kiloStore'
+import { useKiloStore, KiloMessage, KiloSession, KiloToolCall, TextBlock, ToolCallBlock, ImageContent } from '../store/kiloStore'
 import { AgentMode, AGENT_MODE_CONFIGS } from '../types/agent'
 import { v4 as uuidv4 } from 'uuid'
 import { executeTool } from '../services/tool-client'
+import { buildMultimodalContent } from '../App'
 
 // 流式响应块类型
 type StreamBlock = 
@@ -25,10 +26,26 @@ interface UseKiloConversationOptions {
   projectPath?: string
 }
 
+// CLI Chat IPC 消息类型（与后端 LLMMessage 完全兼容）
+interface CliChatMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}>
+  name?: string
+  tool_call_id?: string
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: string
+    }
+  }>
+}
+
 // CLI Chat IPC API 类型
 interface CliChatApi {
   createSession: (mode: 'chat' | 'agent', cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-  sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string; name?: string }>, model?: string) => Promise<{ success: boolean; error?: string }>
+  sendMessage: (sessionId: string, message: string, messages?: CliChatMessage[], model?: string) => Promise<{ success: boolean; error?: string }>
   stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
 }
@@ -87,19 +104,37 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       ? `\n\n可用工具:\n${config.allowedTools.map(t => `- ${t}`).join('\n')}`
       : ''
     
-    return `${basePrompt}${contextPrompt}${toolPrompt}`
+    // 图片处理提示
+    const imagePrompt = `\n\n【图片处理说明】
+用户可能会上传图片（截图、照片等）。当用户上传图片时，图片内容已经包含在对话中，你不需要去文件系统中查找图片文件。
+直接分析用户上传的图片内容并回答问题即可。`;
+    
+    return `${basePrompt}${contextPrompt}${toolPrompt}${imagePrompt}`
   }, [projectPath])
   
   // 发送消息
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || store.isGenerating) return
+  const sendMessage = useCallback(async (content: string, images?: ImageContent[]) => {
+    console.log('[useKiloConversation] sendMessage called:', { 
+      content: content?.substring(0, 50), 
+      hasImages: !!images?.length,
+      imageCount: images?.length || 0,
+      isGenerating: store.isGenerating
+    })
+    
+    if ((!content.trim() && !images?.length) || store.isGenerating) {
+      console.log('[useKiloConversation] sendMessage early return:', {
+        noContent: !content.trim() && !images?.length,
+        isGenerating: store.isGenerating
+      })
+      return
+    }
     
     setError(null)
     
     // 如果当前没有会话，创建一个新会话（在发送第一条消息时）
     if (!store.currentSession && projectPath) {
       const sessionId = uuidv4()
-      const sessionTitle = content.trim().slice(0, 50) // 使用用户输入的前50个字符作为标题
+      const sessionTitle = content.trim().slice(0, 50) || '图片对话' // 使用用户输入的前50个字符作为标题
       
       const session: KiloSession = {
         id: sessionId,
@@ -115,14 +150,40 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       console.log('[useKiloConversation] Created new session on first message:', sessionId)
     }
     
-    // 创建用户消息
+    // 构建统一的内容格式（与后端 LLMMessage 完全兼容）
+    // ✅ 使用 buildMultimodalContent 统一处理，确保图片 URL 格式正确
+    const messageContent = buildMultimodalContent(content, images)
+    
+    // 创建用户消息（使用统一的 content 格式）
     const userMessage: KiloMessage = {
       id: uuidv4(),
       role: 'user',
-      content: content.trim(),
+      content: messageContent,
       timestamp: Date.now(),
-      mode: store.currentMode
+      mode: store.currentMode,
+      images: images  // 保留 images 字段用于前端展示
     }
+    
+    console.log('[useKiloConversation] ========== CREATING USER MESSAGE ==========')
+    console.log('[useKiloConversation] messageContent type:', typeof messageContent)
+    console.log('[useKiloConversation] messageContent is Array:', Array.isArray(messageContent))
+    if (Array.isArray(messageContent)) {
+      console.log('[useKiloConversation] messageContent length:', messageContent.length)
+      messageContent.forEach((part, i) => {
+        console.log(`[useKiloConversation]   Part ${i}: type=${part.type}`)
+        if (part.type === 'image_url') {
+          console.log(`[useKiloConversation]     - has url: ${!!part.image_url?.url}`)
+          console.log(`[useKiloConversation]     - url length: ${part.image_url?.url?.length || 0}`)
+        } else {
+          console.log(`[useKiloConversation]     - text length: ${(part as {type: 'text', text: string}).text?.length || 0}`)
+        }
+      })
+    }
+    console.log('[useKiloConversation] images field:', { 
+      hasImages: !!images?.length, 
+      imageCount: images?.length || 0 
+    })
+    console.log('[useKiloConversation] ========== END CREATE MESSAGE ==========')
     
     store.addMessage(userMessage)
     store.setInput('')
@@ -153,57 +214,140 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     store.addMessage(assistantMessage)
     store.startStreaming(assistantMessageId)
     
-    // 准备请求 - 构建符合 OpenAI API 格式的消息历史
-    const messages: Array<{ role: string; content: string; name?: string; tool_call_id?: string }> = []
+    // 准备请求 - 构建符合 OpenAI API 格式的消息历史（与后端 LLMMessage 完全兼容）
+    const messages: CliChatMessage[] = []
     
     // 添加系统提示词
     const systemPrompt = generateSystemPrompt(store.currentMode)
     messages.push({ role: 'system', content: systemPrompt })
     
     // 转换历史消息为 API 格式
-    const historyMessages = store.messages.filter(m => m.id !== assistantMessageId)
+    // ✅ 修复：限制消息历史长度，避免发送过多旧消息（特别是带图片的消息）
+    const MAX_HISTORY_MESSAGES = 10  // 最多保留10条历史消息
+    const allHistoryMessages = store.messages.filter(m => m.id !== assistantMessageId && m.id !== userMessage.id)
+    // 只保留最近的消息（不包括当前用户消息，我们将单独添加）
+    const historyMessages = allHistoryMessages.slice(-MAX_HISTORY_MESSAGES)
+    
+    if (allHistoryMessages.length > MAX_HISTORY_MESSAGES) {
+      console.log(`[useKiloConversation] Truncated history messages from ${allHistoryMessages.length} to ${MAX_HISTORY_MESSAGES}`)
+    }
+    
+    // DEBUG: 检查历史消息中用户消息的内容格式
+    console.log('[useKiloConversation] History messages count (excluding current):', historyMessages.length)
+    
+    // ✅ 关键修复：先添加历史消息（旧消息，剥离图片），最后再添加当前用户消息
+    // 这样保证 messages 数组按时间顺序排列，且当前用户消息是最后一条
+    // 后端的重复检测会重置会话并重新添加"最后一条用户消息"，必须是包含图片的多模态消息
+    
+    // 先添加历史消息（旧消息，剥离图片）
     for (const msg of historyMessages) {
       if (msg.role === 'user') {
-        // 用户消息
-        messages.push({ role: 'user', content: msg.content })
+        // 用户消息 - 对于旧消息，只保留文本内容，不保留图片
+        let messageContent = msg.content
+        
+        // ✅ 修复：旧的多模态消息，只提取文本部分，避免AI看到旧图片
+        if (Array.isArray(msg.content)) {
+          const textParts = msg.content.filter(c => c.type === 'text').map(c => (c as {type: 'text', text: string}).text)
+          messageContent = textParts.join('\n') || '[图片消息]'
+          console.log(`[useKiloConversation] Stripped images from old user message ${msg.id}, keeping only text`)
+        } else if (typeof msg.content === 'string' && msg.images && msg.images.length > 0) {
+          // 旧消息有 images 字段但 content 是纯文本，只保留文本
+          messageContent = msg.content
+          console.log(`[useKiloConversation] Old message with images field, using text only:`, msg.id)
+        }
+        
+        messages.push({ 
+          role: 'user', 
+          content: messageContent
+        })
       } else if (msg.role === 'assistant') {
         // 助手消息 - 检查是否包含工具调用
-        // 清理 content 中可能包含的工具调用格式
-        let cleanContent = msg.content || ''
-        // 移除可能的工具调用 JSON 格式（如 file_read: "{"path": ...}"）
-        cleanContent = cleanContent.replace(/\w+:\s*"\{[^}]*\}"/g, '')
-        // 移除 Markdown 代码块中的工具调用 JSON
-        cleanContent = cleanContent.replace(/```json\s*\n?\{[\s\S]*?"tool"[\s\S]*?\}\s*\n?```/g, '')
-        // 移除列表格式的工具调用描述（如 - file_read (...)）
-        cleanContent = cleanContent.replace(/^\s*-\s+\w+\s*\([^)]*\)\s*$/gm, '')
-        // 移除"我将使用以下工具"等提示文本
-        cleanContent = cleanContent.replace(/我将使用以下工具[：:]\s*\n?/g, '')
-        // 清理多余的空行
-        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').trim()
-        
-        if (msg.toolCalls && msg.toolCalls.length > 0) {
-          // 只发送清理后的内容，不包含工具调用描述
-          messages.push({ 
-            role: 'assistant', 
-            content: cleanContent || '我将分析并处理您的请求。'
-          })
-          
-          // 添加工具结果作为 tool 角色消息
-          for (const toolCall of msg.toolCalls) {
-            if (toolCall.status === 'completed' || toolCall.status === 'failed') {
-              messages.push({
-                role: 'tool',
-                content: String(toolCall.result || toolCall.error || ''),
-                tool_call_id: toolCall.id
-              })
-            }
-          }
+        // 处理 content 格式：可能是 string 或 MessageContentPart[]
+        let cleanContent = ''
+        if (typeof msg.content === 'string') {
+          cleanContent = msg.content
         } else {
-          // 普通助手消息
-          messages.push({ role: 'assistant', content: cleanContent })
+          // 如果是数组格式，提取文本内容
+          cleanContent = msg.content
+            .filter(p => p.type === 'text')
+            .map(p => (p as {type: 'text'; text: string}).text)
+            .join('')
         }
+        
+        // 清理 content 中可能包含的工具调用格式
+        cleanContent = cleanContent
+          .replace(/\w+:\s*"\{[^}]*\}"/g, '')  // 移除工具调用 JSON 格式
+          .replace(/```json\s*\n?\{[\s\S]*?"tool"[\s\S]*?\}\s*\n?```/g, '')  // 移除代码块中的工具调用
+          .replace(/^\s*-\s+\w+\s*\([^)]*\)\s*$/gm, '')  // 移除列表格式的工具调用
+          .replace(/我将使用以下工具[：:]\s*\n?/g, '')  // 移除提示文本
+          .replace(/\n{3,}/g, '\n\n').trim()  // 清理空行
+        
+        // 构建助手消息
+        const assistantMsg: CliChatMessage = {
+          role: 'assistant',
+          content: cleanContent || '我将分析并处理您的请求。'
+        }
+        
+        // 如果有后端格式的工具调用，添加到消息中
+        if (msg.tool_calls && msg.tool_calls.length > 0) {
+          assistantMsg.tool_calls = msg.tool_calls
+        }
+        
+        messages.push(assistantMsg)
+        
+        // 添加工具结果作为 tool 角色消息
+        // 优先使用后端格式的工具调用
+        const toolCallList = msg.tool_calls || msg.toolCalls || []
+        for (const toolCall of toolCallList) {
+          // 处理两种格式的工具调用
+          const toolCallId = 'id' in toolCall ? toolCall.id : (toolCall as any).id
+          const toolResult = 'function' in toolCall 
+            ? (toolCall as any).result 
+            : (toolCall as KiloToolCall).result
+          const toolError = 'function' in toolCall 
+            ? undefined 
+            : (toolCall as KiloToolCall).error
+          
+          if ((toolCall as any).status === 'completed' || (toolCall as any).status === 'failed') {
+            messages.push({
+              role: 'tool',
+              content: String(toolResult || toolError || ''),
+              tool_call_id: toolCallId
+            })
+          }
+        }
+      } else if (msg.role === 'tool') {
+        // 直接传递工具消息
+        messages.push({
+          role: 'tool',
+          content: msg.content,
+          tool_call_id: msg.tool_call_id,
+          name: msg.name
+        })
       }
     }
+    
+    // ✅ 关键修复：最后添加当前用户消息（使用传入的参数，确保是最新的）
+    // 这样保证当前的多模态消息是 messages 数组中的最后一条用户消息
+    // 后端重复检测重置会话时，会重新添加这条消息，保留图片数据
+    let currentMessageContent: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}>
+    if (images && images.length > 0) {
+      // 多模态消息
+      currentMessageContent = buildMultimodalContent(content, images)
+      console.log('[useKiloConversation] Built current user message with images:', { 
+        imageCount: images.length,
+        contentType: 'multimodal'
+      })
+    } else {
+      // 纯文本消息
+      currentMessageContent = content.trim()
+      console.log('[useKiloConversation] Built current user message (text only)')
+    }
+    
+    messages.push({
+      role: 'user',
+      content: currentMessageContent
+    })
     
     // 创建 AbortController
     abortControllerRef.current = new AbortController()
@@ -414,18 +558,24 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
               if (projectPath && window.api?.saveConversation && targetSessionId) {
                 const session = currentStore.sessions.find(s => s.id === targetSessionId)
                 if (session) {
+                  // 保存完整消息格式，包括 images 和所有字段
                   const messagesToSave = currentStore.messages.map(m => ({
                     id: m.id,
                     role: m.role,
-                    content: m.content,
+                    content: m.content,  // 统一格式：string | MessageContentPart[]
                     timestamp: m.timestamp,
                     mode: m.mode,
                     blocks: m.blocks,
                     toolCalls: m.toolCalls,
                     reasoning: m.reasoning,
-                    usage: m.usage
+                    usage: m.usage,
+                    images: m.images,  // 确保图片内容被保存
+                    tool_call_id: m.tool_call_id,
+                    tool_calls: m.tool_calls,
+                    name: m.name
                   }))
                   console.log('[useKiloConversation] Direct saving conversation:', session.id, 'Messages:', messagesToSave.length)
+                  console.log('[useKiloConversation] Messages with images:', messagesToSave.filter(m => m.images && m.images.length > 0).length)
                   window.api.saveConversation(projectPath, session.id, messagesToSave, session.title)
                     .then(() => {
                       console.log('[useKiloConversation] Direct save successful')
@@ -455,6 +605,73 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       const userContent = content.trim()
       const currentModel = modelRef.current
       console.log('[useKiloConversation] Sending with model:', currentModel)
+      
+      // DEBUG: 详细检查要发送的消息（包含所有消息，不仅仅是用户消息）
+      console.log('[useKiloConversation] ========== MESSAGES TO SEND ==========')
+      messages.forEach((m, i) => {
+        console.log(`[useKiloConversation] Message ${i}: role=${m.role}`)
+        console.log(`[useKiloConversation]   content type: ${typeof m.content}`)
+        if (typeof m.content === 'string') {
+          console.log(`[useKiloConversation]   content (string): ${m.content.substring(0, 100)}...`)
+        } else {
+          console.log(`[useKiloConversation]   content (array) length: ${m.content.length}`)
+          m.content.forEach((part, j) => {
+            if (part.type === 'image_url') {
+              console.log(`[useKiloConversation]     Part ${j}: type=${part.type}, hasUrl=${!!part.image_url?.url}, urlLength=${part.image_url?.url?.length || 0}`)
+            } else {
+              console.log(`[useKiloConversation]     Part ${j}: type=${part.type}, textLength=${part.text?.length || 0}`)
+            }
+          })
+        }
+      })
+      console.log('[useKiloConversation] ========== END MESSAGES ==========')
+      
+      // DEBUG: 检查 store 中的最新用户消息
+      const lastUserMsg = store.messages.filter(m => m.role === 'user').pop()
+      console.log('[useKiloConversation] Store last user message:', {
+        contentIsArray: Array.isArray(lastUserMsg?.content),
+        contentLength: Array.isArray(lastUserMsg?.content) ? lastUserMsg?.content.length : (lastUserMsg?.content as string)?.length,
+        hasImagesField: !!lastUserMsg?.images?.length,
+        imagesCount: lastUserMsg?.images?.length || 0,
+        contentPreview: typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.substring(0, 50) : 'Array content'
+      })
+      
+      console.log('[useKiloConversation] Final messages to send:', messages.map(m => {
+        if (typeof m.content === 'string') {
+          return { role: m.role, type: 'text', length: m.content.length }
+        } else {
+          return { 
+            role: m.role, 
+            type: 'multimodal', 
+            parts: m.content.map(c => {
+              if (c.type === 'image_url') {
+                return {
+                  type: c.type,
+                  hasUrl: !!c.image_url?.url,
+                  urlLength: c.image_url?.url?.length || 0,
+                  urlPreview: c.image_url?.url?.substring(0, 50) + '...'
+                }
+              }
+              return {
+                type: c.type,
+                textLength: c.text?.length || 0,
+                textPreview: c.text?.substring(0, 50) + '...'
+              }
+            })
+          }
+        }
+      }))
+      // DEBUG: 检查发送给后端的消息
+      console.log('[useKiloConversation] ======= SENDING TO BACKEND =======')
+      console.log('[useKiloConversation] messages count:', messages.length)
+      const lastMsg = messages[messages.length - 1]
+      console.log('[useKiloConversation] Last message:', {
+        role: lastMsg?.role,
+        contentIsArray: Array.isArray(lastMsg?.content),
+        contentLength: Array.isArray(lastMsg?.content) ? lastMsg?.content.length : (lastMsg?.content as string)?.length,
+        parts: Array.isArray(lastMsg?.content) ? lastMsg.content.map(c => ({ type: c.type, hasUrl: c.type === 'image_url' && !!c.image_url?.url })) : 'N/A'
+      })
+      
       const sendResult = await ipcApi.cliChat.sendMessage(sessionId, userContent, messages, currentModel)
       if (!sendResult.success) {
         throw new Error(sendResult.error || 'Failed to send message')
@@ -543,13 +760,17 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       const messagesToSave = store.messages.map(m => ({
         id: m.id,
         role: m.role,
-        content: m.content,
+        content: m.content,  // 统一格式：string | MessageContentPart[]
         timestamp: m.timestamp,
         mode: m.mode,
         blocks: m.blocks,
         toolCalls: m.toolCalls,
         reasoning: m.reasoning,
-        usage: m.usage
+        usage: m.usage,
+        images: m.images,  // 确保图片内容被保存
+        tool_call_id: m.tool_call_id,
+        tool_calls: m.tool_calls,
+        name: m.name
       }))
       
       // 保存到文件（主进程会自动更新 updatedAt）

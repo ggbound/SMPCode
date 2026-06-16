@@ -50,27 +50,59 @@ export interface ThinkingBlock extends BaseContentBlock {
 // 联合内容块类型
 export type ContentBlock = TextBlock | ToolCallBlock | ToolResultBlock | ThinkingBlock
 
-// Kilo Code 风格消息
+// 图片内容
+export interface ImageContent {
+  type: 'image'
+  data: string // base64 编码的图片数据
+  mimeType: string // 图片类型，如 image/png, image/jpeg
+  name?: string // 文件名
+}
+
+// 消息内容部分 - 统一格式（与后端 LLMMessage 完全兼容）
+export type MessageContentPart = 
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+// 工具调用格式（与后端兼容）
+export interface ToolCall {
+  id: string
+  type: 'function'
+  function: {
+    name: string
+    arguments: string
+  }
+}
+
+// Kilo Code 风格消息（与后端 LLMMessage 完全兼容）
 export interface KiloMessage {
   id: string
-  role: 'user' | 'assistant' | 'system'
-  content: string
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  // 统一内容格式：字符串或多模态数组（与后端 LLMMessage 兼容）
+  content: string | MessageContentPart[]
   timestamp: number
   isStreaming?: boolean
   mode?: AgentMode
-  // 内容块数组（支持内联工具调用）
+  // 内容块数组（支持内联工具调用显示）
   blocks?: ContentBlock[]
-  // 工具调用（向后兼容）
+  // 工具调用（前端内部使用）
   toolCalls?: KiloToolCall[]
   // 思考过程（可折叠）
   reasoning?: string
   // 是否折叠思考过程
   isReasoningCollapsed?: boolean
-  // Token 使用情况
+  // Token 使用情况（前端格式）
   usage?: {
     inputTokens: number
     outputTokens: number
   }
+  // 图片内容（前端内部使用，用于消息展示）
+  images?: ImageContent[]
+  // 工具调用 ID（后端格式，用于工具结果关联）
+  tool_call_id?: string
+  // 工具调用数组（后端格式，与 OpenAI API 兼容）
+  tool_calls?: ToolCall[]
+  // 工具名称（后端格式）
+  name?: string
 }
 
 // Kilo Code 风格工具调用
@@ -187,9 +219,11 @@ export const useKiloStore = create<KiloState>((set, get) => ({
   
   clearAllSessions: () => set({ sessions: [], currentSession: null }),
   
-  addMessage: (message) => set((state) => ({
-    messages: [...state.messages, message]
-  })),
+  addMessage: (message) => {
+    set((state) => ({
+      messages: [...state.messages, message]
+    }))
+  },
   
   updateMessage: (id, updates) => set((state) => ({
     messages: state.messages.map(m => 

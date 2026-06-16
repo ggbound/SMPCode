@@ -15,8 +15,10 @@ import {
   X,
   Edit3,
   Check,
-  X as XIcon
+  X as XIcon,
+  Image as ImageIcon
 } from 'lucide-react'
+import { ImageContent } from '../store/kiloStore'
 import { ModeSelector } from '../components/ModeSelector'
 import { ModelSelector } from '../components/ModelSelector'
 import { KiloMessageInline } from '../components/KiloMessageInline'
@@ -30,7 +32,7 @@ interface Provider {
   id: string
   name: string
   enabled: boolean
-  models: { id: string; name: string }[]
+  models: { id: string; name: string; supportsVision?: boolean }[]
 }
 
 interface KiloPageProps {
@@ -45,6 +47,9 @@ interface KiloPageProps {
 export default function KiloPage({ apiKey, model, providers, projectPath, onModelChange, onOpenUrl }: KiloPageProps) {
   const [showSidebar, setShowSidebar] = useState(false)
   const [input, setInput] = useState('')
+  const [attachedImages, setAttachedImages] = useState<ImageContent[]>([])
+  const [previewImage, setPreviewImage] = useState<ImageContent | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
   // 会话重命名状态
@@ -54,6 +59,18 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const store = useKiloStore()
   const mainStore = useMainStore()
   const conversation = useKiloConversation({ apiKey, model, projectPath })
+  
+  // 判断当前模型是否支持视觉
+  const supportsVision = useCallback(() => {
+    for (const provider of providers) {
+      if (!provider.enabled) continue
+      const foundModel = provider.models.find(m => m.id === model)
+      if (foundModel) {
+        return foundModel.supportsVision === true
+      }
+    }
+    return false
+  }, [providers, model])
   
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   
@@ -159,7 +176,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                   toolCalls: msg.toolCalls,
                   reasoning: msg.reasoning,
                   isStreaming: false,
-                  usage: msg.usage
+                  usage: msg.usage,
+                  images: msg.images  // ✅ 添加图片字段
                 })
               })
             }
@@ -261,7 +279,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                           timestamp: msg.timestamp || Date.now(),
                           mode: 'ask',
                           isStreaming: false,
-                          usage: msg.usage
+                          usage: msg.usage,
+                          images: msg.images
                         })
                       })
                       console.log('[KiloPage] Feishu session messages refreshed:', result.messages.length)
@@ -362,7 +381,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             blocks: m.blocks,
             toolCalls: m.toolCalls,
             reasoning: m.reasoning,
-            usage: m.usage  // ✅ 修复：添加 usage 字段
+            usage: m.usage,
+            images: m.images  // ✅ 添加图片字段
           }))
           console.log('[KiloPage] Saving messages with usage:', messagesToSave.map(m => ({ id: m.id, usage: m.usage })))
           await window.api.saveConversation(projectPath, currentSessionId, messagesToSave, currentSession.title)
@@ -399,7 +419,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                 timestamp: msg.timestamp || Date.now(),
                 mode: 'ask', // 飞书对话使用 ask 模式（只读）
                 isStreaming: false,
-                usage: msg.usage
+                usage: msg.usage,
+                images: msg.images
               })
             })
           } else {
@@ -435,19 +456,30 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
               })
             }
             
+            // 构建完整的消息对象（与后端 LLMMessage 兼容）
             store.addMessage({
               id: msg.id || uuidv4(),
               role: msg.role,
-              content: msg.content,
+              content: msg.content,  // 统一格式：string | MessageContentPart[]
               timestamp: msg.timestamp || Date.now(),
               mode: msg.mode || 'code',
               blocks: msg.blocks,
               toolCalls: cleanedToolCalls,
               reasoning: msg.reasoning,
               isStreaming: false,
-              usage: msg.usage
+              usage: msg.usage,
+              images: msg.images,  // 图片内容
+              tool_call_id: msg.tool_call_id,  // 后端格式工具调用ID
+              tool_calls: msg.tool_calls,  // 后端格式工具调用数组
+              name: msg.name  // 工具名称
             })
           })
+          console.log('[KiloPage] Loaded messages with content format:', result.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role,
+            contentIsArray: Array.isArray(m.content),
+            hasImages: !!m.images?.length
+          })))
         } else {
           store.clearMessages()
         }
@@ -488,7 +520,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             blocks: m.blocks,
             toolCalls: m.toolCalls,
             reasoning: m.reasoning,
-            usage: m.usage  // ✅ 修复：添加 usage 字段
+            usage: m.usage,
+            images: m.images
           }))
           await window.api.saveConversation(projectPath, editingSessionId, messages, editingTitle.trim())
         }
@@ -520,12 +553,87 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
     store.clearMessages()
   }, [store])
   
+  // 处理图片文件选择
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    Array.from(files).forEach(file => {
+      if (!file.type.startsWith('image/')) return
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string
+        if (base64) {
+          const image: ImageContent = {
+            type: 'image',
+            data: base64,
+            mimeType: file.type,
+            name: file.name
+          }
+          console.log('[KiloPage] Adding image to attachedImages:', { name: file.name, dataLength: base64.length })
+          setAttachedImages(prev => {
+            const newImages = [...prev, image]
+            console.log('[KiloPage] attachedImages after update:', { length: newImages.length })
+            return newImages
+          })
+        }
+      }
+      reader.readAsDataURL(file)
+    })
+
+    // 重置 input
+    e.target.value = ''
+  }, [])
+
+  // 处理粘贴事件（支持截图粘贴）
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    // 如果模型不支持视觉，不处理图片粘贴
+    if (!supportsVision()) return
+    
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    Array.from(items).forEach(item => {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) {
+          const reader = new FileReader()
+          reader.onload = (event) => {
+            const base64 = event.target?.result as string
+            if (base64) {
+              const image: ImageContent = {
+                type: 'image',
+                data: base64,
+                mimeType: file.type,
+                name: `pasted-image-${Date.now()}.png`
+              }
+              setAttachedImages(prev => [...prev, image])
+            }
+          }
+          reader.readAsDataURL(file)
+        }
+      }
+    })
+  }, [supportsVision])
+
+  // 删除已附加的图片
+  const removeAttachedImage = useCallback((index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index))
+  }, [])
+
   // 发送消息
   const handleSend = useCallback(() => {
-    if (!input.trim() || conversation.isGenerating) return
-    conversation.sendMessage(input.trim())
+    if ((!input.trim() && attachedImages.length === 0) || conversation.isGenerating) return
+    console.log('[KiloPage] handleSend called:', {
+      inputLength: input.trim().length,
+      attachedImagesLength: attachedImages.length,
+      attachedImages: attachedImages.map(img => ({ name: img.name, dataLength: img.data?.length || 0 }))
+    })
+    conversation.sendMessage(input.trim(), attachedImages)
     setInput('')
-  }, [input, conversation])
+    setAttachedImages([])
+  }, [input, attachedImages, conversation])
   
   // 处理键盘事件
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -895,6 +1003,29 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
         <div className="kilo-input-area">
           {/* 输入框容器 */}
           <div className="kilo-input-box">
+            {/* 图片预览区域 */}
+            {attachedImages.length > 0 && (
+              <div className="kilo-image-preview-container">
+                {attachedImages.map((image, index) => (
+                  <div key={index} className="kilo-image-preview-item" onClick={() => setPreviewImage(image)}>
+                    <img 
+                      src={image.data} 
+                      alt={image.name || 'attached image'}
+                      className="kilo-image-preview-thumb"
+                      title="点击查看大图"
+                    />
+                    <button 
+                      className="kilo-image-remove-btn"
+                      onClick={(e) => { e.stopPropagation(); removeAttachedImage(index); }}
+                      title="删除图片"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             {/* 文本输入区域 */}
             <div className="kilo-input-wrapper">
               <textarea
@@ -902,6 +1033,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={`${AGENT_MODE_CONFIGS[store.currentMode].description}...`}
                 rows={3}
                 disabled={conversation.isGenerating}
@@ -920,6 +1052,27 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                   currentModel={model}
                   onModelChange={onModelChange || (() => {})}
                 />
+                {/* 图片上传按钮 - 仅在支持视觉的模型显示 */}
+                {supportsVision() && (
+                  <>
+                    <button 
+                      className="kilo-image-upload-btn"
+                      onClick={() => fileInputRef.current?.click()}
+                      title="上传图片"
+                      disabled={conversation.isGenerating}
+                    >
+                      <ImageIcon size={18} />
+                    </button>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleImageSelect}
+                      style={{ display: 'none' }}
+                    />
+                  </>
+                )}
               </div>
               
               <div className="kilo-toolbar-right">
@@ -933,9 +1086,9 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                   </button>
                 ) : (
                   <button 
-                    className={`kilo-send-btn ${!input.trim() ? 'disabled' : ''}`}
+                    className={`kilo-send-btn ${(!input.trim() && attachedImages.length === 0) ? 'disabled' : ''}`}
                     onClick={handleSend}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() && attachedImages.length === 0}
                     title="发送"
                   >
                     <Send size={18} />
@@ -946,6 +1099,26 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
           </div>
         </div>
       </main>
+      
+      {/* 图片预览弹窗 */}
+      {previewImage && (
+        <div className="kilo-image-preview-modal" onClick={() => setPreviewImage(null)}>
+          <div className="kilo-image-preview-content" onClick={(e) => e.stopPropagation()}>
+            <img 
+              src={previewImage.data} 
+              alt={previewImage.name || 'preview'}
+              className="kilo-image-preview-large"
+            />
+            <button 
+              className="kilo-image-preview-close"
+              onClick={() => setPreviewImage(null)}
+              title="关闭"
+            >
+              <X size={24} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -105,23 +105,15 @@ export const useToolStore = create<ToolStoreState>()(
     },
 
     handleStatusEvent: (event: ToolStatusEvent) => {
-      console.log('[ToolStore] ========== handleStatusEvent ==========')
-      console.log('[ToolStore] Event type:', event.type)
-      console.log('[ToolStore] Event callId:', event.callId)
-      console.log('[ToolStore] Event toolName:', event.toolName)
       
       const { addCall, updateCallStatus } = get()
 
       switch (event.type) {
         case 'started': {
-          console.log('[ToolStore] Handling started event...')
           // 检查是否已存在该调用
           const state = get()
-          console.log('[ToolStore] Current calls count:', state.calls.size)
-          console.log('[ToolStore] Call already exists:', state.calls.has(event.callId))
           
           if (!state.calls.has(event.callId)) {
-            console.log('[ToolStore] Adding new call to store...')
             addCall({
               id: event.callId,
               name: event.toolName,
@@ -129,43 +121,33 @@ export const useToolStore = create<ToolStoreState>()(
               status: 'executing',
               startTime: event.timestamp
             })
-            console.log('[ToolStore] Call added successfully')
           } else {
-            console.log('[ToolStore] Call already exists, skipping add')
           }
           break
         }
 
         case 'completed': {
-          console.log('[ToolStore] Handling completed event...')
-          console.log('[ToolStore] Result output length:', event.result?.output?.length || 0)
           updateCallStatus(
             event.callId,
             'completed',
             event.result?.output,
             undefined
           )
-          console.log('[ToolStore] Call marked as completed')
           break
         }
 
         case 'failed': {
-          console.log('[ToolStore] Handling failed event...')
-          console.log('[ToolStore] Error:', event.error || event.result?.error)
           updateCallStatus(
             event.callId,
             'failed',
             undefined,
             event.error || event.result?.error
           )
-          console.log('[ToolStore] Call marked as failed')
           break
         }
 
         case 'cancelled': {
-          console.log('[ToolStore] Handling cancelled event...')
           updateCallStatus(event.callId, 'cancelled')
-          console.log('[ToolStore] Call marked as cancelled')
           break
         }
         
@@ -174,9 +156,6 @@ export const useToolStore = create<ToolStoreState>()(
       }
       
       const state = get()
-      console.log('[ToolStore] Final calls count:', state.calls.size)
-      console.log('[ToolStore] Active calls count:', state.activeCalls().length)
-      console.log('[ToolStore] ========== handleStatusEvent END ==========')
     },
 
     clearHistory: () => {
@@ -197,9 +176,7 @@ export const useToolStore = create<ToolStoreState>()(
       const state = get()
       if (state.isInitialized) return
 
-      console.log('[ToolStore] Initializing...')
       set({ isInitialized: true })
-      console.log('[ToolStore] Initialized successfully')
     }
   }))
 )

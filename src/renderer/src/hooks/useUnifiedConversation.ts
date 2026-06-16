@@ -118,7 +118,6 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
   const setExecutionState = useCallback((state: ExecutionState) => {
     executionStateRef.current = state
     onExecutionStateChange?.(state)
-    console.log(`[useUnifiedConversation] Execution state: ${state}`)
   }, [onExecutionStateChange])
 
   /**
@@ -243,7 +242,12 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
         api?: {
           cliChat?: {
             createSession: (mode: 'chat' | 'agent', cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
-            sendMessage: (sessionId: string, message: string, messages?: Array<{ role: string; content: string; name?: string }>) => Promise<{ success: boolean; error?: string }>
+            // ✅ 修复：content 支持 string 或 多模态数组
+            sendMessage: (sessionId: string, message: string, messages?: Array<{ 
+              role: string; 
+              content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
+              name?: string 
+            }>) => Promise<{ success: boolean; error?: string }>
             onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
           }
         }
@@ -360,7 +364,6 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
       
       // 提取工具调用处理逻辑
       const handleToolCallChunk = (chunk: any) => {
-        console.log(`[useUnifiedConversation] Received tool_call: ${chunk.toolCall.name}`)
         setExecutionState('executing_tool')
         updateExecutionPhase('executing_tool')
 
@@ -382,12 +385,10 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
         }
         addMessageStep(toolStep)
 
-        console.log(`[useUnifiedConversation] Tool call step created for: ${chunk.toolCall.name}`)
       }
       
       // 提取工具结果处理逻辑
       const handleToolResultChunk = (chunk: any) => {
-        console.log(`[useUnifiedConversation] Received tool_result: success=${chunk.toolResult.success}`)
         setExecutionState('analyzing')
         updateExecutionPhase('analyzing')
 
@@ -435,7 +436,6 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
           fullContent += `\n\n**错误：** ${chunk.error || 'Unknown error'}`
           updateLastMessage(fullContent)
         } else if (chunk.type === 'done') {
-          console.log('[useUnifiedConversation] Conversation complete')
           setExecutionState('completed')
           updateExecutionPhase('completed')
 
@@ -502,8 +502,6 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
         return msg
       })
 
-      console.log(`[useUnifiedConversation] Sending ${messagesForAPI.length} messages to IPC`)
-      console.log(`[useUnifiedConversation] Backend will handle the full conversation flow including tool calls`)
 
       // 发送消息
       // 注意：messagesForAPI 已经包含了完整的对话历史（包括当前用户消息）
@@ -532,7 +530,6 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
         const session = localSessions.find(s => s.id === currentSession)
         // 跳过飞书会话，避免覆盖飞书消息
         if (session?.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
-          console.log('[useUnifiedConversation] Skipping save for Feishu session:', currentSession)
         } else {
           const updatedMessages = [...useStore.getState().messages]
           await saveConversation(projectPath, currentSession, updatedMessages, session?.title)

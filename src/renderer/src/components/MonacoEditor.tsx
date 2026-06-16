@@ -20,10 +20,7 @@ loader.config({
 // Initialize Vue language support before Monaco loads
 // This ensures the language is registered when the editor initializes
 loader.init().then((monacoInstance) => {
-  console.log('[MonacoEditor] Monaco initialized, available languages:', 
-    monacoInstance.languages.getLanguages().map((l: any) => l.id).join(', '))
   registerVueLanguage(monacoInstance)
-  console.log('[MonacoEditor] Vue language registered')
 })
 
 // Register Vue language support
@@ -207,13 +204,11 @@ function MonacoEditor({
 
   // Map language aliases (using unified language map)
   const getMonacoLanguage = useCallback((lang: string): string => {
-    console.log('[MonacoEditor] Input language:', lang)
     
     // First check if it's a file extension
     const langLower = lang.toLowerCase()
     const extMapping = EXTENSION_TO_LANGUAGE[langLower]
     if (extMapping) {
-      console.log('[MonacoEditor] Mapped from extension:', langLower, '->', extMapping)
       return extMapping
     }
     
@@ -227,12 +222,10 @@ function MonacoEditor({
     ]
     
     if (validLanguages.includes(langLower)) {
-      console.log('[MonacoEditor] Using language as-is:', langLower)
       return langLower
     }
     
     // Fallback to plaintext
-    console.log('[MonacoEditor] Unknown language, falling back to plaintext:', lang)
     return 'plaintext'
   }, [])
 

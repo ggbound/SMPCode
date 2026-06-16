@@ -86,3 +86,32 @@
   background: var(--menu-border, #454545);
   margin: 4px 0;
 }
+
+/* 打开文件夹按钮 - 与打开新终端按钮样式一致 */
+.jack-file-explorer .sft-open-folder-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #2d2d30 !important;
+  border: 1px solid #3c3c3c !important;
+  border-radius: 6px;
+  color: #cccccc !important;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: none !important;
+}
+
+.jack-file-explorer .sft-open-folder-btn:hover {
+  background: #3c3c3c !important;
+  border-color: #4a4a4a !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.jack-file-explorer .sft-open-folder-btn svg {
+  flex-shrink: 0;
+}

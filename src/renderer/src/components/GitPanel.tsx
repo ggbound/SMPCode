@@ -410,7 +410,6 @@ const CommitHistoryItem: React.FC<CommitHistoryItemProps> = ({ commit, isCurrent
         const api = (window as any).api
         if (api?.gitCommitDetails) {
           const details = await api.gitCommitDetails(repoPath, commit.hash)
-          console.log('[GitPanel] Commit details:', details)
           if (details?.files && details.files.length > 0) {
             const files: CommitFile[] = details.files.map((f: string) => ({
               path: f,
@@ -418,7 +417,6 @@ const CommitHistoryItem: React.FC<CommitHistoryItemProps> = ({ commit, isCurrent
             }))
             setCommitFiles(files)
           } else {
-            console.log('[GitPanel] No files found in commit:', commit.hash)
             setCommitFiles([])
           }
         }
@@ -617,13 +615,10 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
   }, [])
 
   const handleOpenChanges = useCallback(async () => {
-    console.log('[GitPanel] Opening changes for:', contextMenu.file?.path, 'repoPath:', repoPath, 'openFile:', !!openFile)
     if (contextMenu.file && repoPath && openFile) {
       const fullPath = `${repoPath}/${contextMenu.file.path}`
-      console.log('[GitPanel] Full path:', fullPath)
       try {
         const result = await window.api?.fsReadFile?.(fullPath)
-        console.log('[GitPanel] fsReadFile result:', result)
         if (result?.success && result.content !== undefined) {
           openFile(fullPath, result.content)
         } else {

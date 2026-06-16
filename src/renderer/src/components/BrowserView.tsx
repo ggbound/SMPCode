@@ -90,7 +90,6 @@ function BrowserView({ initialUrl = '', onClose, onUrlChange }: BrowserViewProps
       const failEvent = event as unknown as { errorCode: number; errorDescription: string; validatedURL: string }
       // ERR_ABORTED (-3) 是用户取消或页面跳转时的正常错误，不需要显示
       if (failEvent.errorCode === -3) {
-        console.log('[BrowserView] Load aborted (normal for navigation)')
         setIsLoading(false)
         return
       }

@@ -178,8 +178,16 @@ function getMainWindow(): BrowserWindow | null {
  */
 function checkAndHandleDuplicateConversation(
   session: CLISession, 
-  userMessage: string
+  userMessage: string | Array<{type: string; text?: string; image_url?: {url: string}}>,
+  isMultimodal: boolean = false
 ): { isDuplicate: boolean; resetSession?: boolean } {
+  // ✅ 修复：对于多模态消息（包含图片），跳过重复检测
+  // 因为图片内容是唯一的，不会真正重复
+  if (isMultimodal) {
+    log.debug('[Duplicate Detection] Skipping duplicate check for multimodal message (contains images)')
+    return { isDuplicate: false }
+  }
+  
   // 标准化用户输入（去除空格、标点，转为小写）
   const normalize = (text: string) => {
     return text.toLowerCase()
@@ -188,7 +196,11 @@ function checkAndHandleDuplicateConversation(
       .trim()
   }
   
-  const normalizedInput = normalize(userMessage)
+  // 提取纯文本内容
+  const userMessageText = typeof userMessage === 'string' ? userMessage : 
+    userMessage.filter(p => p.type === 'text').map(p => p.text).join('')
+  
+  const normalizedInput = normalize(userMessageText)
   
   // 如果输入太短（少于5个字符），不检测
   if (normalizedInput.length < 5) {
@@ -198,7 +210,8 @@ function checkAndHandleDuplicateConversation(
   // 获取历史用户消息
   const userMessages = session.messages
     .filter(m => m.role === 'user')
-    .map(m => typeof m.content === 'string' ? m.content : '')
+    .map(m => typeof m.content === 'string' ? m.content : 
+      (m.content as Array<{type: string; text?: string}>).filter(p => p.type === 'text').map(p => p.text).join(''))
   
   // 检查是否重复（排除最后一条，因为是当前输入）
   for (let i = 0; i < userMessages.length - 1; i++) {
@@ -206,14 +219,14 @@ function checkAndHandleDuplicateConversation(
     
     // 完全匹配
     if (historicalMsg === normalizedInput) {
-      log.warn(`[Duplicate Detection] Exact duplicate detected: "${userMessage.substring(0, 50)}"`)
+      log.warn(`[Duplicate Detection] Exact duplicate detected: "${userMessageText.substring(0, 50)}"`)
       return { isDuplicate: true, resetSession: true }
     }
     
     // 相似度匹配（包含关系）
     if (historicalMsg.includes(normalizedInput) || normalizedInput.includes(historicalMsg)) {
       if (historicalMsg.length > 5 && normalizedInput.length > 5) {
-        log.warn(`[Duplicate Detection] Similar message detected: "${userMessage.substring(0, 50)}"`)
+        log.warn(`[Duplicate Detection] Similar message detected: "${userMessageText.substring(0, 50)}"`)
         return { isDuplicate: true, resetSession: true }
       }
     }
@@ -431,91 +444,54 @@ Provide helpful, accurate, and concise responses to the user's questions.`
 
   // Agent Mode - 根据是否使用代码生成模式选择不同提示词
   if (useCodeGeneration) {
-    // 代码生成模式 - 简化提示词，只保留核心要求
+    // 代码生成模式 - 用于不支持 function calling 的模型
+    // ✅ 修复：区分图片分析任务和代码任务
     return `You are Claude Code, an AI coding assistant.
 
 ${systemInfo}
 
-TASK: Generate Python code to complete the user's request.
+【任务类型判断】
+1. 如果用户上传了图片并要求分析内容 → 直接描述图片内容，不要生成代码
+2. 如果用户要求进行文件操作（创建/删除/修改/搜索文件）→ 生成 Python 代码
+3. 如果用户要求执行命令或查询信息 → 生成 Python 代码
 
-STRICT REQUIREMENTS:
-1. Output ONLY Python code wrapped in triple backticks
-2. Format must be exactly: \`\`\`python ...code... \`\`\`
-3. ABSOLUTELY NO text outside code blocks
-4. NEVER output "File written:" or "File deleted:" - these will be rejected
-5. ALWAYS search for files first using Path('.').rglob()
+【图片分析任务】
+当用户上传图片时：
+- 直接描述图片中的内容
+- 回答用户关于图片的问题
+- 不要生成任何代码
+- 用自然的文字回复
 
-SEARCH RULES - CRITICAL:
-- Use Path('.').rglob('**/*filename*') for fuzzy search (searches all subdirectories)
+【代码生成任务】
+当需要进行文件操作时：
+- 输出 ONLY Python 代码 wrapped in triple backticks
+- Format must be exactly: \`\`\`python ...code... \`\`\`
+- ABSOLUTELY NO text outside code blocks
+- NEVER output "File written:" or "File deleted:"
+
+SEARCH RULES:
+- Use Path('.').rglob('**/*filename*') for fuzzy search
 - Use Path('.').rglob('filename') for exact match
-- rglob('**/*') searches ALL files recursively
-- DO NOT use shell commands like 'find' or 'ls'
 - ALWAYS check if file exists before operating
 
-FORBIDDEN PATTERNS (NEVER USE):
+FORBIDDEN PATTERNS:
 - "File written: ..."
 - "File deleted: ..."
 - "工具执行结果：..."
 - Shell commands: os.system(), subprocess, etc.
-- Any text before \`\`\`python or after \`\`\`
 
-CORRECT EXAMPLE - User: "delete test.txt"
-\`\`\`python
+【回复示例 - 图片分析】
+用户: [上传了一张代码截图] 帮我看下这个图片里面的内容
+你: 这张图片显示的是一个 LoginController.php 文件的内容...
+
+【回复示例 - 代码生成】
+用户: 删除 test.txt
+你: \`\`\`python
 import os
 from pathlib import Path
-
-# Step 1: Search for the file in ALL subdirectories
 found = list(Path('.').rglob('**/test.txt'))
-print(f"Searching for test.txt...")
-
-if found:
-    print(f"Found {len(found)} file(s):")
-    for f in found:
-        print(f"  - {f}")
-    
-    # Step 2: Delete all found files
-    for f in found:
-        try:
-            os.remove(f)
-            print(f"Deleted: {f}")
-        except Exception as e:
-            print(f"Error deleting {f}: {e}")
-else:
-    print("File not found: test.txt")
-\`\`\`
-
-CORRECT EXAMPLE - User: "find files with 'test' in name"
-\`\`\`python
-from pathlib import Path
-
-# Fuzzy search - finds all files containing 'test' in name
-found = list(Path('.').rglob('**/*test*'))
-print(f"Found {len(found)} file(s) matching '*test*':")
-for f in found:
-    print(f"  - {f}")
-\`\`\`
-
-CORRECT EXAMPLE - User: "create test.txt with content"
-\`\`\`python
-from pathlib import Path
-
-# Step 1: Check if file already exists anywhere
-found = list(Path('.').rglob('**/test.txt'))
-if found:
-    path = found[0]
-    print(f"File exists at: {path}")
-else:
-    # Create in current directory
-    path = "test.txt"
-    print(f"Will create new file at: {path}")
-
-# Step 2: Write content
-Path(path).write_text("content", encoding='utf-8')
-print(f"Written: {path}")
-\`\`\`
-
-YOUR RESPONSE MUST START WITH \`\`\`python AND END WITH \`\`\`
-ANY TEXT OUTSIDE THESE MARKERS WILL CAUSE ERRORS`
+...
+\`\`\``
   }
 
   // Function Calling Mode - 支持 function calling 的模型
@@ -858,11 +834,19 @@ const MAX_ITERATIONS = 99999
 /**
  * 发送消息并获取流式响应
  */
+// 消息类型定义 - 支持多模态（与 LLMMessage 兼容）
+interface ChatMessage {
+  role: string
+  content: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}>
+  name?: string
+  tool_call_id?: string
+}
+
 export async function sendCLIMessageStream(
   sessionId: string,
   message: string,
   onChunk: (chunk: StreamChunk) => void,
-  messages?: Array<{ role: string; content: string; name?: string }>,
+  messages?: ChatMessage[],
   iterationCount: number = 0,
   modelParam?: string
 ): Promise<void> {
@@ -970,6 +954,43 @@ export async function sendCLIMessageStream(
       // 注意：不要完全覆盖，而是追加新消息，保留后端添加的 tool 结果
       log.debug(`[CLI-Chat] Merging provided messages: count=${messages.length}, session.messages: ${session.messages.length}`)
       
+      // 调试：检查是否有多模态消息
+      const multimodalMessages = messages.filter(m => typeof m.content !== 'string')
+      if (multimodalMessages.length > 0) {
+        log.info(`[CLI-Chat] Received ${multimodalMessages.length} multimodal messages`)
+        multimodalMessages.forEach((m, i) => {
+          const content = m.content as Array<{type: string; text?: string; image_url?: {url: string}}>
+          const hasImageUrl = content.some(c => c.type === 'image_url' && c.image_url?.url)
+          const imageCount = content.filter(c => c.type === 'image_url').length
+          log.info(`[CLI-Chat] Multimodal message ${i}:`, { 
+            role: m.role, 
+            parts: content.map(c => c.type),
+            hasImageUrl,
+            imageCount,
+            contentLength: content.length
+          })
+          
+          // 详细输出图片URL信息
+          content.forEach((part, j) => {
+            if (part.type === 'image_url' && part.image_url?.url) {
+              log.info(`[CLI-Chat]   Image part ${j}: url starts with "${part.image_url.url.substring(0, 50)}..."`)
+            }
+          })
+        })
+      } else {
+        log.info(`[CLI-Chat] All ${messages.length} messages are plain text`)
+      }
+      
+      // DEBUG: 检查最后一条用户消息
+      const lastUserMsg = messages.filter(m => m.role === 'user').pop()
+      if (lastUserMsg) {
+        log.info(`[CLI-Chat] Last user message from frontend:`, {
+          contentIsArray: typeof lastUserMsg.content !== 'string',
+          contentLength: typeof lastUserMsg.content === 'string' ? lastUserMsg.content.length : (lastUserMsg.content as Array<any>).length,
+          parts: typeof lastUserMsg.content !== 'string' ? (lastUserMsg.content as Array<any>).map(c => c.type) : 'N/A'
+        })
+      }
+      
       // 找到 session.messages 中最后一条助手消息的位置
       const lastAssistantIndex = session.messages.findIndex(m => m.role === 'assistant')
       
@@ -991,7 +1012,10 @@ export async function sendCLIMessageStream(
           if (m.name) msg.name = m.name
           if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
           session.messages.push(msg)
-          log.debug(`[CLI-Chat] Added message: role=${m.role}, content=${m.content.substring(0, 50)}...`)
+          const contentPreview = typeof m.content === 'string' 
+            ? m.content.substring(0, 50) 
+            : '[多模态内容]'
+          log.debug(`[CLI-Chat] Added message: role=${m.role}, content=${contentPreview}...`)
         }
       }
       
@@ -1018,18 +1042,10 @@ export async function sendCLIMessageStream(
     const wasProvidedMessages = messages && messages.length > 0
     
     if (wasProvidedMessages && lastMessage?.role === 'user') {
-      // 前端提供了完整消息历史，且最后一条是用户消息
-      // 检查是否与 message 参数相同
-      if (lastMessage.content === message) {
-        log.debug('[CLI-Chat] Using provided messages, skipping duplicate')
-      } else {
-        // 最后一条用户消息与当前 message 不同，添加新的用户消息
-        log.debug('[CLI-Chat] Adding new user message to provided history')
-        session.messages.push({
-          role: 'user',
-          content: message
-        })
-      }
+      // ✅ 修复：前端提供了完整消息历史，且最后一条是用户消息
+      // 由于前端已经在 messages 数组中包含了正确的多模态消息，
+      // 不需要再添加 message 参数（避免重复或覆盖多模态内容）
+      log.debug('[CLI-Chat] Using provided messages from frontend, skipping duplicate message parameter')
     } else if (!wasProvidedMessages && message.trim()) {
       // 没有提供完整消息历史，且 message 不为空，添加 message 作为用户消息
       session.messages.push({
@@ -1048,15 +1064,26 @@ export async function sendCLIMessageStream(
     
     // ✅ 修复：检测重复对话
     if (iterationCount === 0 && message.trim()) {
-      const duplicateCheck = checkAndHandleDuplicateConversation(session, message)
+      // 检查最后一条用户消息是否为多模态
+      const lastUserMsg = session.messages.filter(m => m.role === 'user').pop()
+      const isMultimodal = lastUserMsg ? typeof lastUserMsg.content !== 'string' : false
+      
+      const duplicateCheck = checkAndHandleDuplicateConversation(session, message, isMultimodal)
       if (duplicateCheck.isDuplicate && duplicateCheck.resetSession) {
         // 重置会话
         resetSession(session)
-        // 重新添加当前用户消息
-        session.messages.push({
-          role: 'user',
-          content: message
-        })
+        // ✅ 修复：重新添加当前用户消息时保留多模态内容
+        if (lastUserMsg) {
+          session.messages.push({
+            role: 'user',
+            content: lastUserMsg.content  // 使用原始的多模态内容
+          })
+        } else {
+          session.messages.push({
+            role: 'user',
+            content: message
+          })
+        }
         // 只在日志中记录，不显示给用户
         log.info('[CLI-Chat] Duplicate conversation detected and reset')
       }
@@ -1173,6 +1200,12 @@ export async function sendCLIMessageStream(
     for (let i = session.messages.length - 1; i >= 0; i--) {
       const m = session.messages[i]
       const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+      
+      // DEBUG: 检查用户消息是否为多模态
+      if (m.role === 'user' && typeof m.content !== 'string') {
+        log.info(`[CLI-Chat] User message ${i} is multimodal, parts: ${(m.content as Array<any>).map(c => c.type).join(',')}`)
+      }
+      
       // 对于 assistant 消息，检查是否重复
       if (m.role === 'assistant') {
         const normalizedContent = content.replace(/\s+/g, ' ').trim().substring(0, 200)
@@ -1214,6 +1247,23 @@ export async function sendCLIMessageStream(
 
     // ✅ 修复：同时传递 tools 给 API，支持 function calling 和 XML 格式
     // 这样 AI 可以选择使用 function calling 或 XML 格式
+    
+    // DEBUG: 打印传递给 LLM 的完整消息
+    log.info('[CLI-Chat] === MESSAGES TO LLM ===')
+    session.messages.forEach((m, i) => {
+      if (typeof m.content === 'string') {
+        log.info(`[CLI-Chat] Message ${i}: role=${m.role}, type=text, content=${m.content.substring(0, 50)}...`)
+      } else {
+        log.info(`[CLI-Chat] Message ${i}: role=${m.role}, type=multimodal, parts=${m.content.map(c => c.type).join(',')}`)
+        m.content.forEach((c, j) => {
+          if (c.type === 'image_url') {
+            log.info(`[CLI-Chat]   Part ${j}: image_url, url_length=${c.image_url?.url?.length || 0}`)
+          }
+        })
+      }
+    })
+    log.info('[CLI-Chat] === END MESSAGES ===')
+    
     for await (const chunk of streamChatMessage({
       apiKey,
       model,

@@ -93,9 +93,7 @@ function FileMatchItem({ fileMatch, isExpanded, projectPath, selectedLine, setSe
                 match={match}
                 isSelected={isSelected}
                 onClick={() => {
-              console.log('[Search] FileMatchItem onClick handler called')
               setSelectedLine({ filePath: match.filePath, line: match.line })
-              console.log('[Search] Calling onFileClick with:', match.filePath, match.line)
               onFileClick?.(match.filePath, match.line)
             }}
               />
@@ -136,16 +134,7 @@ function MatchLineItem({ match, isSelected, onClick }: MatchLineItemProps) {
   }
   
   const handleClick = (e: React.MouseEvent) => {
-    console.log('[Search] ===== MatchLineItem clicked =====')
-    console.log('[Search] Event target:', e.target)
-    console.log('[Search] Event currentTarget:', e.currentTarget)
-    console.log('[Search] Match data:', {
-      filePath: match.filePath,
-      line: match.line,
-      match: match.match
-    })
     e.stopPropagation()
-    console.log('[Search] Calling onClick callback')
     onClick?.()
   }
   

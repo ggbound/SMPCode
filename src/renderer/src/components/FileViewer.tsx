@@ -47,13 +47,9 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     const handleExternalChange = (e: CustomEvent<{ path: string; content: string }>) => {
       if (!tab || tab.path !== e.detail.path) return
 
-      console.log('[FileViewer] Received external change event for:', tab.path)
-      console.log('[FileViewer] New content length:', e.detail.content.length)
-      console.log('[FileViewer] Current edited content length:', editedContent.length)
 
       // Only update if content is actually different
       if (e.detail.content !== editedContent) {
-        console.log('[FileViewer] Updating content from external change event')
         setEditedContent(e.detail.content)
         lastSavedContentRef.current = e.detail.content
         setSaveStatus('saved')
@@ -86,15 +82,11 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     // 2. Tab is NOT dirty (dirty means user has unsaved changes)
     // 3. OR the content is significantly different (indicating external change, not user edit)
     if (tab.content !== editedContent && !tab.isDirty) {
-      console.log('[FileViewer] External content change detected (tab not dirty)')
-      console.log('[FileViewer] Tab content length:', tab.content.length)
-      console.log('[FileViewer] Current edited content length:', editedContent.length)
       
       // Update edited content to match external content
       setEditedContent(tab.content)
       lastSavedContentRef.current = tab.content
       setSaveStatus('saved')
-      console.log('[FileViewer] Content updated from external source')
     }
   }, [tab?.content, tab?.lastModified, tab?.id, tab?.isDirty])
 

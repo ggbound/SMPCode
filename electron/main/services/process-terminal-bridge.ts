@@ -128,7 +128,6 @@ class ProcessTerminalBridge extends EventEmitter {
       if (process.isRunning) {
         try {
           process.isRunning = false
-          log.debug(`[ProcessBridge] Stopping process ${id} during dispose`)
         } catch (error) {
           log.error(`[ProcessBridge] Failed to stop process ${id}:`, error)
         }
@@ -297,9 +296,6 @@ class ProcessTerminalBridge extends EventEmitter {
       const cleanedCommand = this.cleanCommand(command)
         
       if (originalCommand !== cleanedCommand) {
-        log.debug(`[ProcessBridge] Command cleaned:`)
-        log.debug(`  Original: ${originalCommand}`)
-        log.debug(`  Cleaned:  ${cleanedCommand}`)
       }
         
       const commandTypeKey = this.getCommandTypeKey(cleanedCommand, cwd)
@@ -317,7 +313,6 @@ class ProcessTerminalBridge extends EventEmitter {
             return { processId: existingProcessId, success: true, reused: true }
           } else {
             // 进程已停止，清理记录
-            log.debug(`[ProcessBridge] Cleaning up stopped process: ${existingProcessId}`)
             this.cleanupProcessRecord(existingProcessId)
           }
         } else {
@@ -350,7 +345,6 @@ class ProcessTerminalBridge extends EventEmitter {
             writeToTerminal(targetTerminalId, '\n')
             await new Promise(resolve => setTimeout(resolve, 200))
             
-            log.debug(`[ProcessBridge] Terminal ${targetTerminalId} is ready for new command`)
           } catch (error) {
             log.warn(`[ProcessBridge] Failed to stop old process in terminal ${targetTerminalId}:`, error)
           }
@@ -364,17 +358,14 @@ class ProcessTerminalBridge extends EventEmitter {
           })
           targetTerminalId = expectedTerminalId
           // ✅ 修复：增加轮询等待时间，确保终端创建成功
-          log.debug(`[ProcessBridge] Waiting for terminal ${expectedTerminalId} to be created...`)
           let attempts = 0
           const maxAttempts = 50 // 增加到5秒（50 * 100ms）
           while (attempts < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, 100))
             const terminals = getTerminals()
             if (terminals.has(expectedTerminalId)) {
-              log.debug(`[ProcessBridge] Terminal ${expectedTerminalId} created after ${attempts * 100}ms`)
               // 等待xterm完全初始化
               await new Promise(resolve => setTimeout(resolve, 300))
-              log.debug(`[ProcessBridge] Terminal ${expectedTerminalId} is fully initialized`)
               break
             }
             attempts++
@@ -399,7 +390,6 @@ class ProcessTerminalBridge extends EventEmitter {
         if (doubleCheckProcess) {
           const isRunning = await this.isProcessActuallyRunning(doubleCheckProcessId)
           if (isRunning) {
-            log.debug(`[ProcessBridge] Found running process during double-check: ${doubleCheckProcessId}`)
             return { processId: doubleCheckProcessId, success: true, reused: true }
           }
         }
@@ -444,15 +434,12 @@ class ProcessTerminalBridge extends EventEmitter {
         .replace(/\s*&\s*$/, '')
         .trim()
 
-      log.debug(`[ProcessBridge] About to write to terminal: ${targetTerminalId}`)
-      log.debug(`[ProcessBridge] Command to execute: ${foregroundCommand}`)
       
       // 确保终端有干净的提示符 - 性能优化：减少等待时间
       writeToTerminal(targetTerminalId, '\n')
       await new Promise(resolve => setTimeout(resolve, 50))  // 从200ms减少到50ms
             
       // 发送命令
-      log.debug(`[ProcessBridge] Executing command in terminal: ${foregroundCommand}`)
       writeToTerminal(targetTerminalId, `${foregroundCommand}\n`)
 
       // 通知前端
@@ -509,7 +496,6 @@ class ProcessTerminalBridge extends EventEmitter {
           await new Promise(resolve => setTimeout(resolve, 1000))
         } else {
           // ✅ 修复：清理时终端可能已被销毁，降低日志级别
-          log.debug(`[ProcessBridge] Terminal ${terminalId} not found during stop (already destroyed)`)
         }
       }
 
@@ -902,7 +888,6 @@ class ProcessTerminalBridge extends EventEmitter {
           return
         }
 
-        log.debug(`[ProcessBridge] Async stopping processes in terminal: ${terminalId}`)
 
         // ✅ 修复：减少Ctrl+C次数，但增加等待时间确保进程完全退出
         for (let i = 0; i < 2; i++) {
@@ -914,7 +899,6 @@ class ProcessTerminalBridge extends EventEmitter {
         writeToTerminal(terminalId, '\n')
         await new Promise(resolve => setTimeout(resolve, 500))  // 增加到500ms确保终端可用
         
-        log.debug(`[ProcessBridge] Async finished stopping processes in terminal: ${terminalId}`)
       } catch (error) {
         log.error(`[ProcessBridge] Async stop process error:`, error)
       }
@@ -1035,7 +1019,6 @@ class ProcessTerminalBridge extends EventEmitter {
     for (const [id, process] of this.processes) {
       const processAge = now - new Date(process.startTime).getTime()
       if (!process.isRunning && processAge > MAX_PROCESS_AGE) {
-        log.debug(`[ProcessBridge] Cleaning up expired process: ${id} (age: ${Math.round(processAge / 1000 / 60)}min)`)
         this.cleanupProcessRecord(id)
         cleanedCount.processes++
       }

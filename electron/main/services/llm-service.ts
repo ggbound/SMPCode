@@ -336,13 +336,17 @@ async function* streamOpenAIMessage(
     max_tokens: 16384,  // Increased for large file operations
     stream: true
   }
+  
+  // DEBUG: 打印完整的请求参数
+  log.info('[LLM Stream] === FULL REQUEST BODY ===')
+  log.info(JSON.stringify(requestBody, null, 2))
+  log.info('[LLM Stream] === END REQUEST BODY ===')
     
   // CRITICAL: For kimi-k2.5, ALWAYS use temperature=0.3 (aggressive fix for loop issue)
   // temperature=0.7 still caused loops in some cases, 0.3 is more conservative
   if (model.toLowerCase().includes('kimi-k2.5') || model.toLowerCase().includes('kimi-k2')) {
     requestBody.temperature = 0.3
     requestBody.top_p = 0.9  // Add top_p constraint for more focused output
-    log.debug('[LLM Stream] Set temperature=0.3 and top_p=0.9 for kimi-k2.5 (aggressive loop prevention)')
   }
   
   // CRITICAL: Pass tools to enable OpenAI standard tool calling (like VSCode/Claude Code)
@@ -350,7 +354,6 @@ async function* streamOpenAIMessage(
     requestBody.tools = tools
     requestBody.tool_choice = 'auto'
       
-    log.debug(`[LLM Stream] Sending ${tools.length} tools to API`)
   }
 
   const url = getApiUrl(apiUrl, false)
@@ -403,7 +406,6 @@ async function* streamOpenAIMessage(
             
             // ✅ 修复：捕获 usage 数据（OpenAI 在最后一个 chunk 中返回）
             if (parsed.usage) {
-              log.debug('[LLM] Stream: Usage data received:', parsed.usage)
               yield {
                 type: 'usage',
                 usage: {
@@ -425,7 +427,6 @@ async function* streamOpenAIMessage(
             
             // Debug log if tool_calls present
             if (delta.tool_calls && delta.tool_calls.length > 0) {
-              log.debug('[LLM] Stream: Tool calls detected in chunk:', delta.tool_calls)
             }
           } catch (e) {
             // Ignore parse errors
@@ -436,7 +437,6 @@ async function* streamOpenAIMessage(
   } catch (error) {
     // ✅ 修复：忽略 AbortError，这是正常的取消操作
     if (error instanceof Error && error.name === 'AbortError') {
-      log.debug('[LLM] Stream aborted by user (normal cleanup)')
       return
     }
     const errorMsg = error instanceof Error ? error.message : String(error)
@@ -468,7 +468,6 @@ async function* streamAnthropicMessage(
   // CRITICAL: Pass tools to enable Anthropic standard tool calling
   if (tools && tools.length > 0) {
     requestBody.tools = tools
-    log.debug(`[LLM] Stream (Anthropic): Sending ${tools.length} tools to API`)
   }
 
   const url = getApiUrl(apiUrl, true)
@@ -525,7 +524,6 @@ async function* streamAnthropicMessage(
   } catch (error) {
     // ✅ 修复：忽略 AbortError，这是正常的取消操作
     if (error instanceof Error && error.name === 'AbortError') {
-      log.debug('[LLM] Anthropic stream aborted by user (normal cleanup)')
       return
     }
     const errorMsg = error instanceof Error ? error.message : String(error)
