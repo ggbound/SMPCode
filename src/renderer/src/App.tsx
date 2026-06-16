@@ -1875,6 +1875,8 @@ function App() {
   useEffect(() => {
     const handleOpenDiff = (event: CustomEvent<{ filePath: string; commitHash?: string; repoPath: string }>) => {
       const { filePath, commitHash, repoPath } = event.detail
+      console.log('[App] Received git:openDiff event:', { filePath, commitHash, repoPath })
+      
       const fileName = filePath.split('/').pop() || filePath
       
       // Check if diff tab already exists for this file+commit
@@ -1883,6 +1885,7 @@ function App() {
       )
       
       if (existingTab) {
+        console.log('[App] Diff tab already exists:', existingTab.id)
         setActiveTabId(existingTab.id)
         return
       }
@@ -1900,6 +1903,7 @@ function App() {
         diffCommitHash: commitHash
       }
       
+      console.log('[App] Creating new diff tab:', newTab)
       setTabs(prev => [...prev, newTab])
       setActiveTabId(newTab.id)
     }

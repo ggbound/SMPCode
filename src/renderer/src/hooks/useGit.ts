@@ -211,10 +211,20 @@ export function useGit(options: UseGitOptions): UseGitReturn {
 
         // 获取分支
         const branchesResult: any = await getGitBranches(repoPath)
-        const branchList: GitBranch[] = Object.entries(branchesResult.branches || {}).map(([name, info]: [string, any]) => ({
-          name,
-          current: info.current
-        }))
+        let branchList: GitBranch[] = []
+        if (Array.isArray(branchesResult)) {
+          // 如果是数组格式
+          branchList = branchesResult.map((name: string) => ({
+            name,
+            current: name === branch
+          }))
+        } else if (branchesResult?.branches) {
+          // 如果是对象格式
+          branchList = Object.entries(branchesResult.branches).map(([name, info]: [string, any]) => ({
+            name,
+            current: info.current
+          }))
+        }
         setBranches(branchList)
 
         // 获取提交历史

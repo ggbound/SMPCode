@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { X, FileCode, GitCommit, ChevronLeft, ChevronRight } from 'lucide-react'
 import '../styles/vscode-sidebar.css'
+import '../styles/diff-viewer.css'
 
 interface DiffViewerProps {
   filePath: string
@@ -113,30 +114,27 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, re
   // 加载 diff 内容
   useEffect(() => {
     const loadDiff = async () => {
+      console.log('[DiffViewer] Loading diff for:', filePath, 'commit:', commitHash)
       setIsLoading(true)
       setError(null)
       
       try {
         const api = (window as any).api
         const relativePath = filePath.replace(repoPath + '/', '')
+        console.log('[DiffViewer] Relative path:', relativePath)
         
         if (commitHash) {
-          // 获取提交详情（包含文件列表）
-          const commitDetails = await api?.gitCommitDetails?.(repoPath, commitHash)
-          if (commitDetails?.files) {
-            // 构建文件列表显示
-            const filesList = commitDetails.files.map((f: string) => ({
-              path: f,
-              status: 'modified' as const
-            }))
-            setCommitFiles(filesList)
-          }
-          
           // 获取提交中的文件 diff（该提交与父提交的对比）
+          console.log('[DiffViewer] Calling gitCommitDiff...')
           const diffResult = await api?.gitCommitDiff?.(repoPath, relativePath, commitHash)
+          console.log('[DiffViewer] gitCommitDiff result:', diffResult?.substring(0, 200))
           if (diffResult) {
             setDiffContent(diffResult)
-            setParsedDiff(parseDiff(diffResult))
+            const parsed = parseDiff(diffResult)
+            console.log('[DiffViewer] Parsed diff lines:', parsed.length)
+            setParsedDiff(parsed)
+          } else {
+            console.log('[DiffViewer] No diff result')
           }
         } else {
           // 获取工作区 diff
@@ -147,7 +145,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, re
           }
         }
       } catch (err) {
-        console.error('Failed to load diff:', err)
+        console.error('[DiffViewer] Failed to load diff:', err)
         setError('加载差异失败')
       } finally {
         setIsLoading(false)

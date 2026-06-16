@@ -1,6 +1,6 @@
 /**
- * GitPanel - Git 版本控制面板
- * 完全按照 VSCode Dark+ 主题设计
+ * GitPanel - VSCode 风格的 Git 面板
+ * 提供完整的 Git 操作功能，包括分支管理、文件操作、右键菜单等
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
@@ -26,12 +26,10 @@ import {
   Layers,
   MoreHorizontal,
   Circle,
-  GitGraph,
   User,
   Clock,
   FileCode,
   FileJson,
-  FileType,
   FileText,
   Image as ImageIcon,
   Settings,
@@ -39,209 +37,350 @@ import {
   Globe,
   Layout,
   Hash,
-  ChevronLeft
+  ChevronLeft,
+  LayoutGrid,
+  List,
+  MoreVertical,
+  ExternalLink,
+  Trash2,
+  X,
 } from 'lucide-react'
 import { useGit, GitFile } from '../hooks/useGit'
 import '../styles/vscode-sidebar.css'
+import '../styles/git-panel.css'
+
+// ==================== 类型定义 ====================
+
+type ViewMode = 'changes' | 'history'
+type FileStatus = 'staged' | 'modified' | 'untracked' | 'conflicted' | 'clean'
 
 interface GitPanelProps {
   repoPath: string | null
   openFile?: (path: string, content: string) => void
 }
 
-interface FileItemProps {
-  file: {
-    path: string
-    status: 'staged' | 'modified' | 'untracked' | 'conflicted' | 'clean'
-    staged: boolean
+interface FileItemData {
+  path: string
+  status: FileStatus
+  staged: boolean
+}
+
+interface ContextMenuItem {
+  label: string
+  icon?: React.ReactNode
+  shortcut?: string
+  onClick: () => void
+  disabled?: boolean
+  danger?: boolean
+}
+
+interface ContextMenuSection {
+  items: ContextMenuItem[]
+}
+
+// ==================== 工具函数 ====================
+
+// 获取文件扩展名
+const getFileExt = (fileName: string): string => {
+  return fileName.split('.').pop()?.toLowerCase() || ''
+}
+
+// 获取文件图标
+const getFileIcon = (fileName: string) => {
+  const ext = getFileExt(fileName)
+  const iconMap: Record<string, { icon: React.ReactNode; color: string }> = {
+    ts: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>TS</span>, color: '#3178c6' },
+    tsx: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>TSX</span>, color: '#3178c6' },
+    js: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>JS</span>, color: '#f1e05a' },
+    jsx: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>JSX</span>, color: '#f1e05a' },
+    json: { icon: <FileJson size={14} />, color: '#f1e05a' },
+    css: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>#</span>, color: '#563d7c' },
+    scss: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>SCSS</span>, color: '#563d7c' },
+    html: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>HTML</span>, color: '#e34c26' },
+    md: { icon: <FileText size={14} />, color: '#083fa1' },
+    vue: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>VUE</span>, color: '#41b883' },
+    py: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>PY</span>, color: '#3572A5' },
+    java: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>JAVA</span>, color: '#b07219' },
+    go: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>GO</span>, color: '#00ADD8' },
+    rs: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>RS</span>, color: '#dea584' },
+    php: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>PHP</span>, color: '#4F5D95' },
+    rb: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>RB</span>, color: '#701516' },
+    sql: { icon: <Database size={14} />, color: '#e38c00' },
+    yml: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>YML</span>, color: '#cb171e' },
+    yaml: { icon: <span style={{ fontSize: 10, fontWeight: 600 }}>YML</span>, color: '#cb171e' },
   }
+  return iconMap[ext] || { icon: <FileCode size={14} />, color: '#6e7681' }
+}
+
+// 获取状态图标
+const getStatusIcon = (status: FileStatus) => {
+  switch (status) {
+    case 'staged':
+      return <Check size={12} style={{ color: '#238636' }} />
+    case 'modified':
+      return <span style={{ color: '#1f6feb', fontSize: 12, fontWeight: 600 }}>M</span>
+    case 'untracked':
+      return <span style={{ color: '#8b949e', fontSize: 12, fontWeight: 600 }}>U</span>
+    case 'conflicted':
+      return <span style={{ color: '#da3633', fontSize: 12, fontWeight: 600 }}>C</span>
+    default:
+      return null
+  }
+}
+
+// ==================== 子组件 ====================
+
+// 右键菜单组件
+const ContextMenu: React.FC<{
+  visible: boolean
+  x: number
+  y: number
+  sections: ContextMenuSection[]
+  onClose: () => void
+}> = ({ visible, x, y, sections, onClose }) => {
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose()
+      }
+    }
+    if (visible) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [visible, onClose])
+
+  if (!visible) return null
+
+  // 确保菜单不超出视口
+  const adjustedX = Math.min(x, window.innerWidth - 250)
+  const adjustedY = Math.min(y, window.innerHeight - 300)
+
+  return (
+    <div
+      ref={menuRef}
+      className="git-context-menu"
+      style={{
+        position: 'fixed',
+        left: adjustedX,
+        top: adjustedY,
+        zIndex: 1000,
+        minWidth: '200px',
+        background: '#252526',
+        border: '1px solid #3c3c3c',
+        borderRadius: '6px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+        padding: '4px 0',
+      }}
+    >
+      {sections.map((section, sectionIndex) => (
+        <React.Fragment key={sectionIndex}>
+          {sectionIndex > 0 && (
+            <div style={{ borderTop: '1px solid #3c3c3c', margin: '4px 0' }} />
+          )}
+          {section.items.map((item, itemIndex) => (
+            <button
+              key={itemIndex}
+              className="git-context-menu-item"
+              onClick={() => {
+                item.onClick()
+                onClose()
+              }}
+              disabled={item.disabled}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                width: '100%',
+                padding: '6px 12px',
+                border: 'none',
+                background: 'transparent',
+                color: item.danger ? '#f85149' : '#cccccc',
+                fontSize: '13px',
+                textAlign: 'left',
+                cursor: item.disabled ? 'not-allowed' : 'pointer',
+                opacity: item.disabled ? 0.5 : 1,
+                transition: 'background-color 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (!item.disabled) {
+                  e.currentTarget.style.backgroundColor = '#094771'
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'transparent'
+              }}
+            >
+              <span style={{ width: 20, marginRight: 8, display: 'flex', alignItems: 'center' }}>
+                {item.icon}
+              </span>
+              <span style={{ flex: 1 }}>{item.label}</span>
+              {item.shortcut && (
+                <span style={{ color: '#6e7681', fontSize: 11, marginLeft: 16 }}>
+                  {item.shortcut}
+                </span>
+              )}
+            </button>
+          ))}
+        </React.Fragment>
+      ))}
+    </div>
+  )
+}
+
+// 文件项组件
+interface FileItemProps {
+  file: FileItemData
   selected: boolean
   onSelect: (selected: boolean) => void
   onStage: () => void
   onUnstage: () => void
   onDiscard: () => void
+  onOpenFile: () => void
+  onOpenDiff: () => void
 }
 
-// 文件类型图标组件
-const FileTypeIcon: React.FC<{ fileName: string }> = ({ fileName }) => {
-  // 防止空值错误
-  if (!fileName) {
-    return (
-      <div className="vscode-file-type-icon">
-        <FileCode size={16} style={{ color: '#6e7681' }} />
-      </div>
-    )
-  }
-  
-  const ext = fileName.split('.').pop()?.toLowerCase() || ''
-  const name = fileName.toLowerCase()
-  
-  // 根据扩展名返回对应的图标
-  const getIcon = () => {
-    switch (ext) {
-      case 'ts':
-      case 'tsx':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#3178c6' }}>TS</span>
-      case 'js':
-      case 'jsx':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#f1e05a' }}>JS</span>
-      case 'json':
-        return <FileJson size={16} style={{ color: '#f1e05a' }} />
-      case 'css':
-      case 'scss':
-      case 'less':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#563d7c' }}>#</span>
-      case 'html':
-      case 'htm':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#e34c26' }}>HTML</span>
-      case 'md':
-      case 'markdown':
-        return <FileText size={16} style={{ color: '#083fa1' }} />
-      case 'py':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#3572A5' }}>PY</span>
-      case 'java':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#b07219' }}>JAVA</span>
-      case 'go':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#00ADD8' }}>GO</span>
-      case 'rs':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#dea584' }}>RS</span>
-      case 'php':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#4F5D95' }}>PHP</span>
-      case 'rb':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#701516' }}>RB</span>
-      case 'c':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#555555' }}>C</span>
-      case 'cpp':
-      case 'cc':
-      case 'cxx':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#f34b7d' }}>C++</span>
-      case 'swift':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#ffac45' }}>SWIFT</span>
-      case 'kt':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#A97BFF' }}>KT</span>
-      case 'vue':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#41b883' }}>VUE</span>
-      case 'sql':
-        return <Database size={16} style={{ color: '#e38c00' }} />
-      case 'sh':
-      case 'bash':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#89e051' }}>$</span>
-      case 'yml':
-      case 'yaml':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#cb171e' }}>YML</span>
-      case 'xml':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#0060ac' }}>XML</span>
-      case 'dockerfile':
-        return <span className="vscode-file-icon-symbol" style={{ color: '#2496ed' }}>DOCKER</span>
-      case 'gitignore':
-        return <GitBranch size={16} style={{ color: '#f14e32' }} />
-      case 'png':
-      case 'jpg':
-      case 'jpeg':
-      case 'gif':
-      case 'svg':
-      case 'webp':
-        return <ImageIcon size={16} style={{ color: '#a855f7' }} />
-      default:
-        return <FileCode size={16} style={{ color: '#6e7681' }} />
-    }
-  }
-  
-  return (
-    <div className="vscode-file-type-icon">
-      {getIcon()}
-    </div>
-  )
-}
+const FileItem: React.FC<FileItemProps> = ({
+  file,
+  selected,
+  onSelect,
+  onStage,
+  onUnstage,
+  onDiscard,
+  onOpenFile,
+  onOpenDiff,
+}) => {
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number }>({
+    visible: false,
+    x: 0,
+    y: 0,
+  })
 
-// 文件状态图标 - VSCode 风格
-const FileStatusIcon: React.FC<{ status: string; fileName: string }> = ({ status, fileName }) => {
-  const getStatusBadge = () => {
-    switch (status) {
-      case 'staged':
-        return <span className="vscode-file-status-badge staged">A</span>
-      case 'modified':
-        return <span className="vscode-file-status-badge modified">M</span>
-      case 'untracked':
-        return <span className="vscode-file-status-badge untracked">U</span>
-      case 'conflicted':
-        return <span className="vscode-file-status-badge conflicted">C</span>
-      default:
-        return null
-    }
-  }
-  
-  return (
-    <div className="vscode-file-icon-wrapper">
-      <FileTypeIcon fileName={fileName} />
-      {getStatusBadge()}
-    </div>
-  )
-}
-
-// 文件项组件 - VSCode 风格
-const FileItem: React.FC<FileItemProps & { onContextMenu?: (e: React.MouseEvent, file: GitFile) => void }> = ({ file, selected, onSelect, onStage, onUnstage, onDiscard, onContextMenu }) => {
   const fileName = file.path.split('/').pop() || file.path
-  const dirPath = file.path.split('/').slice(0, -1).join('/')
+  const dirPath = file.path.includes('/') ? file.path.substring(0, file.path.lastIndexOf('/')) : ''
+  const fileIcon = getFileIcon(fileName)
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    onContextMenu?.(e, file)
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY })
   }
 
+  const menuSections: ContextMenuSection[] = [
+    {
+      items: [
+        { label: '打开更改', icon: <FileCode size={14} />, onClick: onOpenDiff },
+        { label: '打开文件 (HEAD)', icon: <ExternalLink size={14} />, onClick: onOpenFile },
+      ],
+    },
+    {
+      items: [
+        ...(file.status !== 'staged'
+          ? [{ label: '暂存更改', icon: <Plus size={14} />, onClick: onStage }]
+          : [{ label: '取消暂存', icon: <Minus size={14} />, onClick: onUnstage }]),
+      ],
+    },
+    {
+      items: [
+        ...(file.status !== 'staged' && file.status !== 'untracked'
+          ? [{ label: '放弃更改', icon: <RotateCcw size={14} />, onClick: onDiscard, danger: true }]
+          : []),
+        { label: '添加到 .gitignore', icon: <GitBranch size={14} />, onClick: () => {} },
+      ],
+    },
+  ].filter(section => section.items.length > 0)
+
   return (
-    <div
-      className={`vscode-list-item ${selected ? 'selected' : ''}`}
-      onClick={() => onSelect(!selected)}
-      onContextMenu={handleContextMenu}
-    >
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={(e) => onSelect(e.target.checked)}
-        className="vscode-checkbox"
-        onClick={(e) => e.stopPropagation()}
-      />
-      <FileStatusIcon status={file.status} fileName={fileName} />
-      <span className="vscode-list-item-label">{fileName}</span>
-      {dirPath && (
-        <span className="vscode-list-item-sublabel">{dirPath}</span>
-      )}
-      <div className="vscode-list-item-actions">
-        {file.status !== 'staged' && (
+    <>
+      <div
+        className={`git-file-item ${selected ? 'selected' : ''}`}
+        onClick={() => onSelect(!selected)}
+        onContextMenu={handleContextMenu}
+      >
+        {/* 复选框 */}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(e) => onSelect(e.target.checked)}
+          className="git-file-checkbox"
+          onClick={(e) => e.stopPropagation()}
+        />
+        
+        {/* 状态图标 */}
+        <span className="git-file-status">
+          {getStatusIcon(file.status)}
+        </span>
+        
+        {/* 文件图标 */}
+        <span className="git-file-icon" style={{ color: fileIcon.color }}>
+          {fileIcon.icon}
+        </span>
+        
+        {/* 文件名和路径 */}
+        <div className="git-file-label">
+          <span className="git-file-name">{fileName}</span>
+          {dirPath && (
+            <span className="git-file-path">{dirPath}</span>
+          )}
+        </div>
+        
+        {/* 操作按钮 - 悬停时显示 */}
+        <div className="git-file-actions">
+          {/* 打开文件按钮 */}
           <button
-            onClick={(e) => { e.stopPropagation(); onStage() }}
-            className="vscode-list-item-action-btn"
-            title="暂存更改"
+            onClick={(e) => { e.stopPropagation(); onOpenFile() }}
+            className="git-file-action-btn"
+            title="打开文件"
           >
-            <Plus size={14} />
+            <FileCode size={14} />
           </button>
-        )}
-        {file.status === 'staged' && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onUnstage() }}
-            className="vscode-list-item-action-btn"
-            title="取消暂存"
-          >
-            <Minus size={14} />
-          </button>
-        )}
-        {file.status !== 'staged' && file.status !== 'untracked' && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDiscard() }}
-            className="vscode-list-item-action-btn"
-            title="放弃更改"
-          >
-            <RotateCcw size={14} />
-          </button>
-        )}
+          
+          {/* 暂存/取消暂存按钮 */}
+          {file.status !== 'staged' ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onStage() }}
+              className="git-file-action-btn"
+              title="暂存更改"
+            >
+              <Plus size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); onUnstage() }}
+              className="git-file-action-btn"
+              title="取消暂存"
+            >
+              <Minus size={14} />
+            </button>
+          )}
+          
+          {/* 放弃更改按钮 - 只在修改的文件显示（非暂存、非未跟踪） */}
+          {file.status === 'modified' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onDiscard() }}
+              className="git-file-action-btn"
+              title="放弃更改"
+              style={{ color: '#f85149' }}
+            >
+              <RotateCcw size={14} />
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+      
+      <ContextMenu
+        visible={contextMenu.visible}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        sections={menuSections}
+        onClose={() => setContextMenu({ visible: false, x: 0, y: 0 })}
+      />
+    </>
   )
 }
 
-// 可折叠区域组件 - VSCode 风格
+// 可折叠区域组件
 interface SectionProps {
   title: string
   count: number
@@ -253,614 +392,502 @@ interface SectionProps {
 
 const Section: React.FC<SectionProps> = ({ title, count, children, expanded, onToggle, actions }) => {
   return (
-    <div className="vscode-section">
-      <div className="vscode-section-header" onClick={onToggle}>
-        <div className="vscode-section-header-left">
-          <ChevronRight 
-            size={16} 
-            className={`vscode-section-icon ${expanded ? 'expanded' : ''}`} 
-          />
-          <span className="vscode-section-title">{title}</span>
-          <span className="vscode-section-count">({count})</span>
-        </div>
-        {actions && expanded && (
-          <div className="vscode-section-actions">{actions}</div>
+    <div style={{ marginBottom: 8 }}>
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '6px 12px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <span style={{ marginRight: 6, transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+          <ChevronRight size={14} style={{ color: '#8b949e' }} />
+        </span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#cccccc', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {title}
+        </span>
+        <span style={{ marginLeft: 6, fontSize: 11, color: '#6e7681' }}>
+          ({count})
+        </span>
+        {expanded && actions && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            {actions}
+          </div>
         )}
       </div>
-      {expanded && <div className="vscode-section-content">{children}</div>}
+      {expanded && (
+        <div style={{ paddingLeft: 12 }}>
+          {children}
+        </div>
+      )}
     </div>
   )
 }
 
-// 右键菜单状态
-interface ContextMenuState {
+// 分支下拉菜单组件
+const BranchDropdown: React.FC<{
+  branches: { name: string; current: boolean }[]
+  currentBranch: string
+  onCheckout: (branchName: string) => void
+  onCreateBranch: () => void
   visible: boolean
-  x: number
-  y: number
-  file?: GitFile
-}
-
-// 右键菜单组件
-const ContextMenu: React.FC<{
-  state: ContextMenuState
   onClose: () => void
-  onOpenChanges: () => void
-  onOpenFile: () => void
-  onOpenFileHead: () => void
-  onDiscardChanges: () => void
-  onStageChanges: () => void
-  onUnstageChanges: () => void
-  onAddToGitignore: () => void
-  onRevealInExplorer: () => void
-}> = ({ state, onClose, onOpenChanges, onOpenFile, onOpenFileHead, onDiscardChanges, onStageChanges, onUnstageChanges, onAddToGitignore, onRevealInExplorer }) => {
+}> = ({ branches, currentBranch, onCheckout, onCreateBranch, visible, onClose }) => {
   const menuRef = useRef<HTMLDivElement>(null)
-  
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose()
       }
     }
-    
-    if (state.visible) {
+    if (visible) {
       document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
     }
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [state.visible, onClose])
-  
-  if (!state.visible || !state.file) return null
-  
-  const isStaged = state.file.status === 'staged'
-  const isModified = state.file.status === 'modified'
-  const isUntracked = state.file.status === 'untracked'
-  
+  }, [visible, onClose])
+
+  if (!visible) return null
+
+  const localBranches = branches.filter(b => !b.name.startsWith('remotes/'))
+  const remoteBranches = branches.filter(b => b.name.startsWith('remotes/'))
+
   return (
-    <div 
+    <div
       ref={menuRef}
-      className="vscode-context-menu"
-      style={{ left: state.x, top: state.y }}
+      style={{
+        position: 'absolute',
+        top: '100%',
+        right: 0,
+        marginTop: 4,
+        minWidth: 220,
+        background: '#252526',
+        border: '1px solid #3c3c3c',
+        borderRadius: '6px',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)',
+        zIndex: 100,
+        padding: '4px 0',
+      }}
     >
-      <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onOpenChanges(); }}>
-        <FileCode size={14} />
-        <span>打开更改</span>
+      {/* 本地分支 */}
+      <div style={{ padding: '6px 12px', fontSize: 11, color: '#6e7681', fontWeight: 600 }}>
+        本地分支
       </div>
-      <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onOpenFile(); }}>
-        <File size={14} />
-        <span>打开文件</span>
-      </div>
-      <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onOpenFileHead(); }}>
-        <GitCommit size={14} />
-        <span>打开文件 (HEAD)</span>
-      </div>
-      
-      <div className="vscode-context-menu-separator" />
-      
-      {!isStaged && (isModified || isUntracked) && (
-        <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onStageChanges(); }}>
-          <Plus size={14} />
-          <span>暂存更改</span>
-        </div>
-      )}
-      {isStaged && (
-        <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onUnstageChanges(); }}>
-          <Minus size={14} />
-          <span>取消暂存</span>
-        </div>
-      )}
-      
-      {!isStaged && isModified && (
-        <div className="vscode-context-menu-item vscode-context-menu-item-danger" onClick={(e) => { e.stopPropagation(); onDiscardChanges(); }}>
-          <RotateCcw size={14} />
-          <span>放弃更改</span>
-        </div>
-      )}
-      
-      {isUntracked && (
-        <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onAddToGitignore(); }}>
-          <GitBranch size={14} />
-          <span>添加到 .gitignore</span>
-        </div>
-      )}
-      
-      <div className="vscode-context-menu-separator" />
-      
-      <div className="vscode-context-menu-item" onClick={(e) => { e.stopPropagation(); onRevealInExplorer(); }}>
-        <FolderGit size={14} />
-        <span>在资源管理器视图中显示</span>
-      </div>
-    </div>
-  )
-}
+      {localBranches.map(branch => (
+        <button
+          key={branch.name}
+          onClick={() => {
+            if (!branch.current) onCheckout(branch.name)
+            onClose()
+          }}
+          disabled={branch.current}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            padding: '6px 12px',
+            border: 'none',
+            background: branch.current ? '#094771' : 'transparent',
+            color: branch.current ? '#ffffff' : '#cccccc',
+            fontSize: 13,
+            textAlign: 'left',
+            cursor: branch.current ? 'default' : 'pointer',
+          }}
+          onMouseEnter={(e) => {
+            if (!branch.current) e.currentTarget.style.backgroundColor = '#2a2d2e'
+          }}
+          onMouseLeave={(e) => {
+            if (!branch.current) e.currentTarget.style.backgroundColor = 'transparent'
+          }}
+        >
+          <GitBranch size={14} style={{ marginRight: 8, color: branch.current ? '#238636' : '#8b949e' }} />
+          <span>{branch.name}</span>
+          {branch.current && <Check size={12} style={{ marginLeft: 'auto', color: '#238636' }} />}
+        </button>
+      ))}
 
-// 提交历史项组件
-interface CommitHistoryItemProps {
-  commit: {
-    hash: string
-    message: string
-    author: string
-    date: string
-  }
-  isCurrent: boolean
-  branches: string[]
-  repoPath: string | null
-  onFileClick: (filePath: string, commitHash: string) => void
-}
-
-interface CommitFile {
-  path: string
-  status: 'added' | 'modified' | 'deleted' | 'renamed'
-}
-
-const CommitHistoryItem: React.FC<CommitHistoryItemProps> = ({ commit, isCurrent, branches, repoPath, onFileClick }) => {
-  const [showActions, setShowActions] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(false)
-  const [commitFiles, setCommitFiles] = useState<CommitFile[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  
-  const handleClick = async () => {
-    setIsExpanded(!isExpanded)
-    
-    // Load commit details when expanding
-    if (!isExpanded && repoPath && commitFiles.length === 0) {
-      setIsLoading(true)
-      try {
-        const api = (window as any).api
-        if (api?.gitCommitDetails) {
-          const details = await api.gitCommitDetails(repoPath, commit.hash)
-          if (details?.files && details.files.length > 0) {
-            const files: CommitFile[] = details.files.map((f: string) => ({
-              path: f,
-              status: 'modified' // Default status, could be enhanced
-            }))
-            setCommitFiles(files)
-          } else {
-            setCommitFiles([])
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load commit details:', err)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-  }
-  
-  const getFileIcon = (fileName: string) => {
-    const ext = fileName.split('.').pop()?.toLowerCase() || ''
-    switch (ext) {
-      case 'ts':
-      case 'tsx':
-        return <span className="vscode-commit-file-icon" style={{ color: '#3178c6' }}>TS</span>
-      case 'js':
-      case 'jsx':
-        return <span className="vscode-commit-file-icon" style={{ color: '#f1e05a' }}>JS</span>
-      case 'json':
-        return <FileJson size={14} style={{ color: '#f1e05a' }} />
-      case 'css':
-      case 'scss':
-      case 'less':
-        return <span className="vscode-commit-file-icon" style={{ color: '#563d7c' }}>#</span>
-      case 'html':
-      case 'htm':
-        return <span className="vscode-commit-file-icon" style={{ color: '#e34c26' }}>HTML</span>
-      case 'md':
-      case 'markdown':
-        return <FileText size={14} style={{ color: '#083fa1' }} />
-      case 'py':
-        return <span className="vscode-commit-file-icon" style={{ color: '#3572A5' }}>PY</span>
-      default:
-        return <FileCode size={14} style={{ color: '#6e7681' }} />
-    }
-  }
-  
-  return (
-    <div className="vscode-commit-item-wrapper">
-      <div 
-        className={`vscode-commit-item ${isCurrent ? 'current' : ''} ${isExpanded ? 'expanded' : ''}`}
-        onMouseEnter={() => setShowActions(true)}
-        onMouseLeave={() => setShowActions(false)}
-        onClick={handleClick}
-      >
-        {/* 展开/折叠箭头 */}
-        <div className="vscode-commit-expand-arrow">
-          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </div>
-        
-        {/* 图形化分支线 */}
-        <div className="vscode-commit-graph">
-          <div className="vscode-commit-dot" />
-          <div className="vscode-commit-line" />
-        </div>
-        
-        {/* 提交内容 */}
-        <div className="vscode-commit-content">
-          <div className="vscode-commit-message">{commit.message}</div>
-          <div className="vscode-commit-meta">
-            <span className="vscode-commit-author">
-              <User size={12} />
-              {commit.author}
-            </span>
-            <span className="vscode-commit-time">
-              <Clock size={12} />
-              {commit.date}
-            </span>
+      {/* 远程分支 */}
+      {remoteBranches.length > 0 && (
+        <>
+          <div style={{ borderTop: '1px solid #3c3c3c', margin: '4px 0' }} />
+          <div style={{ padding: '6px 12px', fontSize: 11, color: '#6e7681', fontWeight: 600 }}>
+            远程分支
           </div>
-          
-          {/* 分支标签 */}
-          {branches.length > 0 && (
-            <div className="vscode-commit-branches">
-              {branches.map(branch => (
-                <span key={branch} className="vscode-branch-tag">
-                  <GitBranch size={10} />
-                  {branch}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        
-        {/* 悬停操作 */}
-        {showActions && (
-          <div className="vscode-commit-actions">
-            <button 
-              className="vscode-commit-action-btn" 
-              title="查看更改"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleClick()
+          {remoteBranches.map(branch => (
+            <button
+              key={branch.name}
+              onClick={() => {
+                onCheckout(branch.name)
+                onClose()
               }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                width: '100%',
+                padding: '6px 12px',
+                border: 'none',
+                background: 'transparent',
+                color: '#cccccc',
+                fontSize: 13,
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2a2d2e'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              <FileCode size={14} />
+              <Cloud size={14} style={{ marginRight: 8, color: '#8b949e' }} />
+              <span>{branch.name.replace('remotes/', '')}</span>
             </button>
-            <button className="vscode-commit-action-btn" title="检出此提交">
-              <GitCommit size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-      
-      {/* 展开的文件列表 */}
-      {isExpanded && (
-        <div className="vscode-commit-files">
-          {isLoading ? (
-            <div className="vscode-commit-files-loading">加载中...</div>
-          ) : commitFiles.length > 0 ? (
-            commitFiles.map((file, index) => (
-              <div 
-                key={index}
-                className="vscode-commit-file-item"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onFileClick(file.path, commit.hash)
-                }}
-              >
-                {getFileIcon(file.path)}
-                <span className="vscode-commit-file-path">{file.path}</span>
-              </div>
-            ))
-          ) : (
-            <div className="vscode-commit-files-empty">无文件更改</div>
-          )}
-        </div>
+          ))}
+        </>
       )}
+
+      {/* 创建新分支 */}
+      <div style={{ borderTop: '1px solid #3c3c3c', margin: '4px 0' }} />
+      <button
+        onClick={() => {
+          onCreateBranch()
+          onClose()
+        }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          width: '100%',
+          padding: '6px 12px',
+          border: 'none',
+          background: 'transparent',
+          color: '#58a6ff',
+          fontSize: 13,
+          textAlign: 'left',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2a2d2e'}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+      >
+        <Plus size={14} style={{ marginRight: 8 }} />
+        <span>创建新分支...</span>
+      </button>
     </div>
   )
 }
+
+// ==================== 主组件 ====================
 
 export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
+  const [viewMode, setViewMode] = useState<ViewMode>('changes')
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['changes', 'staged']))
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set())
+  const [showBranchMenu, setShowBranchMenu] = useState(false)
   const [showNewBranchDialog, setShowNewBranchDialog] = useState(false)
   const [newBranchName, setNewBranchName] = useState('')
-  const [checkoutNewBranch, setCheckoutNewBranch] = useState(true)
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['changes', 'staged', 'history']))
-  const [showCommitHistory, setShowCommitHistory] = useState(true)
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({ visible: false, x: 0, y: 0 })
+  const [commitMessage, setCommitMessage] = useState('')
 
+  const branchMenuRef = useRef<HTMLDivElement>(null)
+
+  // 使用 Git hook
   const {
     isRepo,
     branch,
-    ahead,
-    behind,
+    branches,
     files,
     commits,
-    selectedFiles,
-    commitMessage,
     isLoading,
-    error,
+    ahead,
+    behind,
     refresh,
-    selectFile,
-    setCommitMessage,
     stageFiles,
     unstageFiles,
-    commit,
     discardChanges,
+    commit,
+    checkoutBranch,
     createBranch,
-    push,
-    pull
-  } = useGit({ repoPath, autoRefresh: true, refreshInterval: 5000 })
+    getCommitDetails,
+  } = useGit({ repoPath })
 
-  const groupedFiles = useMemo(() => ({
-    staged: files.filter(f => f.status === 'staged'),
-    modified: files.filter(f => f.status === 'modified'),
-    untracked: files.filter(f => f.status === 'untracked'),
-    conflicted: files.filter(f => f.status === 'conflicted')
-  }), [files])
+  // 文件分组
+  const groupedFiles = useMemo(() => {
+    const staged: FileItemData[] = []
+    const modified: FileItemData[] = []
+    const untracked: FileItemData[] = []
 
-  const handleCommit = useCallback(async () => {
-    if (!commitMessage.trim()) return
-    await commit()
-  }, [commit, commitMessage])
-
-  const handleCreateBranch = useCallback(async () => {
-    if (!newBranchName.trim()) return
-    await createBranch(newBranchName, checkoutNewBranch)
-    setNewBranchName('')
-    setShowNewBranchDialog(false)
-  }, [createBranch, newBranchName, checkoutNewBranch])
-
-  // 右键菜单处理
-  const handleContextMenu = useCallback((e: React.MouseEvent, file: GitFile) => {
-    setContextMenu({
-      visible: true,
-      x: e.clientX,
-      y: e.clientY,
-      file
+    files.forEach((file: { path: string; status: string; staged: boolean }) => {
+      const fileData: FileItemData = {
+        path: file.path,
+        status: file.status as FileStatus,
+        staged: file.staged,
+      }
+      if (file.staged) {
+        staged.push(fileData)
+      } else if (file.status === 'untracked') {
+        untracked.push(fileData)
+      } else {
+        modified.push(fileData)
+      }
     })
-  }, [])
 
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(prev => ({ ...prev, visible: false }))
-  }, [])
+    return { staged, modified, untracked }
+  }, [files])
 
-  const handleOpenChanges = useCallback(async () => {
-    if (contextMenu.file && repoPath && openFile) {
-      const fullPath = `${repoPath}/${contextMenu.file.path}`
-      try {
-        const result = await window.api?.fsReadFile?.(fullPath)
-        if (result?.success && result.content !== undefined) {
-          openFile(fullPath, result.content)
-        } else {
-          console.error('[GitPanel] Failed to read file:', result?.error)
-        }
-      } catch (error) {
-        console.error('[GitPanel] Failed to open file:', error)
-      }
-    } else {
-      console.warn('[GitPanel] Cannot open changes - missing:', { file: !!contextMenu.file, repoPath: !!repoPath, openFile: !!openFile })
-    }
-    closeContextMenu()
-  }, [contextMenu.file, repoPath, openFile, closeContextMenu])
-
-  const handleOpenFile = useCallback(async () => {
-    if (contextMenu.file && repoPath && openFile) {
-      const fullPath = `${repoPath}/${contextMenu.file.path}`
-      try {
-        const result = await window.api?.fsReadFile?.(fullPath)
-        if (result?.success && result.content !== undefined) {
-          openFile(fullPath, result.content)
-        }
-      } catch (error) {
-        console.error('Failed to open file:', error)
-      }
-    }
-    closeContextMenu()
-  }, [contextMenu.file, repoPath, openFile, closeContextMenu])
-
-  const handleOpenFileHead = useCallback(async () => {
-    if (contextMenu.file && repoPath && openFile) {
-      // 打开 HEAD 版本的文件
-      const fullPath = `${repoPath}/${contextMenu.file.path}`
-      try {
-        const result = await window.api?.fsReadFile?.(fullPath)
-        if (result?.success && result.content !== undefined) {
-          openFile(fullPath, result.content)
-        }
-      } catch (error) {
-        console.error('Failed to open file at HEAD:', error)
-      }
-    }
-    closeContextMenu()
-  }, [contextMenu.file, repoPath, openFile, closeContextMenu])
-
-  const handleContextMenuStage = useCallback(() => {
-    if (contextMenu.file) {
-      stageFiles([contextMenu.file.path])
-    }
-    closeContextMenu()
-  }, [contextMenu.file, stageFiles, closeContextMenu])
-
-  const handleContextMenuUnstage = useCallback(() => {
-    if (contextMenu.file) {
-      unstageFiles([contextMenu.file.path])
-    }
-    closeContextMenu()
-  }, [contextMenu.file, unstageFiles, closeContextMenu])
-
-  const handleContextMenuDiscard = useCallback(() => {
-    if (contextMenu.file) {
-      if (confirm(`确定要放弃 ${contextMenu.file.path} 的更改吗？`)) {
-        discardChanges([contextMenu.file.path])
-      }
-    }
-    closeContextMenu()
-  }, [contextMenu.file, discardChanges, closeContextMenu])
-
-  const handleAddToGitignore = useCallback(async () => {
-    if (contextMenu.file && repoPath) {
-      try {
-        const gitignorePath = `${repoPath}/.gitignore`
-        const entry = contextMenu.file.path
-        
-        // 读取现有 .gitignore 内容
-        let content = ''
-        try {
-          const result = await window.api?.fsReadFile?.(gitignorePath)
-          if (result?.success && result.content !== undefined) {
-            content = result.content
-            if (!content.endsWith('\n')) content += '\n'
-          }
-        } catch {
-          // .gitignore 不存在，创建新文件
-        }
-        
-        // 添加新条目
-        content += `${entry}\n`
-        
-        // 写入文件
-        const writeResult = await window.api?.fsWriteFile?.(gitignorePath, content)
-        if (writeResult?.success) {
-          // 刷新 Git 状态
-          refresh()
-        }
-      } catch (error) {
-        console.error('Failed to add to gitignore:', error)
-      }
-    }
-    closeContextMenu()
-  }, [contextMenu.file, repoPath, refresh, closeContextMenu])
-
-  const handleRevealInExplorer = useCallback(() => {
-    if (contextMenu.file && repoPath) {
-      // 在资源管理器中显示 - 通过触发文件选择事件
-      const fullPath = `${repoPath}/${contextMenu.file.path}`
-      // 发送自定义事件通知 JackFileExplorer 选中该文件
-      window.dispatchEvent(new CustomEvent('git:revealInExplorer', { 
-        detail: { path: fullPath } 
-      }))
-    }
-    closeContextMenu()
-  }, [contextMenu.file, repoPath, closeContextMenu])
-
-  const toggleSection = (section: string) => {
+  // 切换区域展开状态
+  const toggleSection = useCallback((section: string) => {
     setExpandedSections(prev => {
       const newSet = new Set(prev)
-      if (newSet.has(section)) newSet.delete(section)
-      else newSet.add(section)
+      if (newSet.has(section)) {
+        newSet.delete(section)
+      } else {
+        newSet.add(section)
+      }
       return newSet
     })
+  }, [])
+
+  // 选择文件
+  const selectFile = useCallback((path: string, selected: boolean) => {
+    setSelectedFiles(prev => {
+      const newSet = new Set(prev)
+      if (selected) {
+        newSet.add(path)
+      } else {
+        newSet.delete(path)
+      }
+      return newSet
+    })
+  }, [])
+
+  // 提交更改
+  const handleCommit = async () => {
+    if (!commitMessage.trim()) return
+    await commit(commitMessage)
+    setCommitMessage('')
   }
 
-  // 非 Git 仓库状态
+  // 创建新分支
+  const handleCreateBranch = async () => {
+    if (!newBranchName.trim()) return
+    await createBranch(newBranchName)
+    setNewBranchName('')
+    setShowNewBranchDialog(false)
+  }
+
+  // 打开文件
+  const handleOpenFile = (filePath: string) => {
+    if (openFile) {
+      // 这里应该读取文件内容
+      openFile(filePath, '')
+    }
+  }
+
+  // 打开提交中的文件差异
+  const handleOpenCommitFile = (commitHash: string, filePath: string) => {
+    if (!repoPath) return
+    
+    console.log('[GitPanel] Opening diff for:', filePath, 'commit:', commitHash)
+    
+    // 触发自定义事件打开 diff 视图
+    const event = new CustomEvent('git:openDiff', {
+      detail: {
+        filePath,
+        commitHash,
+        repoPath
+      }
+    })
+    window.dispatchEvent(event)
+    console.log('[GitPanel] Dispatched git:openDiff event')
+  }
+
+  // 打开差异视图
+  const handleOpenDiff = (filePath: string) => {
+    // 这里应该打开差异视图
+    console.log('Open diff:', filePath)
+  }
+
+  // 提交历史展开状态
+  const [expandedCommit, setExpandedCommit] = useState<string | null>(null)
+  const [commitFiles, setCommitFiles] = useState<Record<string, string[]>>({})
+
+  // 切换提交展开状态
+  const toggleCommitExpand = useCallback(async (commitHash: string) => {
+    if (expandedCommit === commitHash) {
+      // 如果已展开，则关闭
+      setExpandedCommit(null)
+    } else {
+      // 展开新的提交，关闭其他
+      setExpandedCommit(commitHash)
+      
+      // 如果还没有获取文件列表，则获取
+      if (!commitFiles[commitHash] && repoPath) {
+        try {
+          const details = await getCommitDetails(commitHash)
+          if (details && details.files) {
+            setCommitFiles(prev => ({
+              ...prev,
+              [commitHash]: details.files
+            }))
+          }
+        } catch (error) {
+          console.error('Failed to get commit details:', error)
+        }
+      }
+    }
+  }, [expandedCommit, commitFiles, repoPath, getCommitDetails])
+
+  // 如果没有 Git 仓库
   if (!isRepo) {
     return (
-      <div className="vscode-sidebar-panel git-panel">
-        {/* 标题栏 */}
-        <div className="vscode-panel-header">
-          <div className="vscode-panel-header-left">
-            <span className="vscode-panel-title">源代码管理</span>
-          </div>
-          <div className="vscode-panel-actions">
-            <button onClick={refresh} className="vscode-panel-action-btn" title="刷新">
-              <RefreshCw size={16} className={isLoading ? 'vscode-spin' : ''} />
-            </button>
-            <button className="vscode-panel-action-btn" title="更多操作">
-              <Ellipsis size={16} />
-            </button>
-          </div>
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        padding: 40,
+        color: '#8b949e',
+        background: '#0D1117',
+      }}>
+        <FolderGit size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+        <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
+          未找到 Git 仓库
         </div>
-        {/* 空状态 */}
-        <div className="vscode-empty-state">
-          <FolderGit className="vscode-empty-icon" />
-          <p className="vscode-empty-title">当前文件夹没有 Git 仓库</p>
-          {repoPath && (
-            <button onClick={refresh} className="vscode-btn">
-              <RefreshCw size={14} />
-              刷新
-            </button>
-          )}
+        <div style={{ fontSize: 13 }}>
+          请打开一个包含 Git 仓库的项目
         </div>
       </div>
     )
   }
 
   return (
-    <div className="vscode-sidebar-panel git-panel">
-      {/* 标题栏 */}
-      <div className="vscode-panel-header">
-        <div className="vscode-panel-header-left">
-          <span className="vscode-panel-title">源代码管理</span>
-        </div>
-        <div className="vscode-panel-actions">
-          <button onClick={refresh} disabled={isLoading} className="vscode-panel-action-btn" title="刷新">
-            <RefreshCw size={16} className={isLoading ? 'vscode-spin' : ''} />
-          </button>
-          <button className="vscode-panel-action-btn" title="更多操作">
-            <Ellipsis size={16} />
-          </button>
-        </div>
-      </div>
-
-      {/* 内容区域 */}
-      <div className="vscode-panel-content">
-        {error && (
-          <div style={{ margin: '8px', padding: '8px', backgroundColor: '#5a1d1d', borderRadius: '4px', color: '#f48771' }}>
-            {error}
-          </div>
-        )}
-
-        {/* 仓库信息 */}
-        <div className="vscode-repo-info">
-          <button className="vscode-branch-selector">
-            <GitBranch className="vscode-branch-icon" size={16} />
-            <span className="vscode-branch-name">{branch}</span>
-            <ChevronDown size={12} className="vscode-branch-chevron" />
-          </button>
-          <div className="vscode-sync-status">
-            {behind > 0 && (
-              <button onClick={() => pull()} className="vscode-sync-btn" title="拉取更改">
-                <CloudDownload size={14} />
-                <span>{behind}</span>
-              </button>
-            )}
-            {ahead > 0 && (
-              <button onClick={() => push()} className="vscode-sync-btn" title="推送更改">
-                <CloudUpload size={14} />
-                <span>{ahead}</span>
-              </button>
-            )}
-            {(ahead === 0 && behind === 0) && <Cloud size={16} style={{ color: '#858585' }} />}
-          </div>
-        </div>
-
-        {/* 提交消息输入框 */}
-        <div className="vscode-commit-box">
-          <div className="vscode-commit-input-wrapper">
-            <input
-              type="text"
-              value={commitMessage}
-              onChange={(e) => setCommitMessage(e.target.value)}
-              placeholder={`消息 (⌘Enter 在"${branch}"提交)`}
-              className="vscode-input"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && e.metaKey && commitMessage.trim() && groupedFiles.staged.length > 0) {
-                  handleCommit()
-                }
-              }}
-            />
-            <div className="vscode-commit-toolbar">
-              <button className="vscode-commit-toolbar-btn" title="操作">
-                <Ellipsis size={14} />
-              </button>
-            </div>
-          </div>
-          {groupedFiles.staged.length > 0 && (
-            <div className="vscode-commit-actions">
-              <button
-                onClick={handleCommit}
-                disabled={!commitMessage.trim()}
-                className="vscode-btn vscode-btn-primary"
-              >
-                <Check size={14} />
-                提交
-              </button>
-            </div>
+    <div style={{ height: '100%', overflow: 'auto', background: '#0D1117' }}>
+      {/* 头部 */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '8px 12px',
+        borderBottom: '1px solid #30363d',
+        background: '#161b22',
+      }}>
+        {/* 分支信息 */}
+        <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: 8 }}>
+          <GitBranch size={14} style={{ color: '#8b949e' }} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#e6edf3' }}>
+            {branch || 'main'}
+          </span>
+          {ahead > 0 && (
+            <span style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              padding: '2px 6px',
+              background: '#238636',
+              borderRadius: 10,
+              fontSize: 11,
+              color: '#fff',
+            }}>
+              <CloudUpload size={10} />
+              {ahead}
+            </span>
+          )}
+          {behind > 0 && (
+            <span style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              padding: '2px 6px',
+              background: '#d29922',
+              borderRadius: 10,
+              fontSize: 11,
+              color: '#fff',
+            }}>
+              <CloudDownload size={10} />
+              {behind}
+            </span>
           )}
         </div>
 
-        {/* 更改列表 */}
-        <div className="vscode-changes-list">
+        {/* 操作按钮 */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button
+            onClick={refresh}
+            disabled={isLoading}
+            style={{
+              padding: 4,
+              border: 'none',
+              background: 'transparent',
+              color: '#8b949e',
+              cursor: 'pointer',
+              borderRadius: 4,
+            }}
+            title="刷新"
+          >
+            <RefreshCw size={14} className={isLoading ? 'spinning' : ''} />
+          </button>
+          
+          {/* 分支菜单 */}
+          <div ref={branchMenuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowBranchMenu(!showBranchMenu)}
+              style={{
+                padding: 4,
+                border: 'none',
+                background: 'transparent',
+                color: '#8b949e',
+                cursor: 'pointer',
+                borderRadius: 4,
+              }}
+              title="分支操作"
+            >
+              <MoreVertical size={14} />
+            </button>
+            <BranchDropdown
+              branches={branches}
+              currentBranch={branch || ''}
+              onCheckout={checkoutBranch}
+              onCreateBranch={() => setShowNewBranchDialog(true)}
+              visible={showBranchMenu}
+              onClose={() => setShowBranchMenu(false)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* 视图切换 */}
+      <div style={{
+        display: 'flex',
+        padding: '4px 8px',
+        gap: 4,
+        borderBottom: '1px solid #30363d',
+      }}>
+        {[
+          { key: 'changes', label: '更改', icon: <File size={14} /> },
+          { key: 'history', label: '历史', icon: <History size={14} /> },
+        ].map(({ key, label, icon }) => (
+          <button
+            key={key}
+            onClick={() => setViewMode(key as ViewMode)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              border: 'none',
+              background: viewMode === key ? '#1f6feb' : 'transparent',
+              color: viewMode === key ? '#fff' : '#8b949e',
+              fontSize: 12,
+              cursor: 'pointer',
+              borderRadius: 4,
+            }}
+          >
+            {icon}
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 更改视图 */}
+      {viewMode === 'changes' && (
+        <div style={{ padding: '8px 0' }}>
           {/* 暂存的更改 */}
           {groupedFiles.staged.length > 0 && (
             <Section
@@ -870,11 +897,24 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
               onToggle={() => toggleSection('staged')}
               actions={
                 <button
-                  onClick={(e) => { e.stopPropagation(); unstageFiles(groupedFiles.staged.map(f => f.path)) }}
-                  className="vscode-section-action-btn"
-                  title="全部取消暂存"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    unstageFiles(groupedFiles.staged.map(f => f.path))
+                  }}
+                  style={{
+                    padding: '2px 6px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#8b949e',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
                 >
-                  <Minus size={14} />
+                  <Minus size={12} />
+                  全部取消暂存
                 </button>
               }
             >
@@ -887,188 +927,376 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
                   onStage={() => {}}
                   onUnstage={() => unstageFiles([file.path])}
                   onDiscard={() => {}}
-                  onContextMenu={handleContextMenu}
+                  onOpenFile={() => handleOpenFile(file.path)}
+                  onOpenDiff={() => handleOpenDiff(file.path)}
                 />
               ))}
             </Section>
           )}
 
           {/* 更改 */}
-          {groupedFiles.modified.length > 0 && (
-            <Section
-              title="更改"
-              count={groupedFiles.modified.length}
-              expanded={expandedSections.has('changes')}
-              onToggle={() => toggleSection('changes')}
-              actions={
-                <button
-                  onClick={(e) => { e.stopPropagation(); stageFiles(groupedFiles.modified.map(f => f.path)) }}
-                  className="vscode-section-action-btn"
-                  title="全部暂存"
-                >
-                  <Plus size={14} />
-                </button>
-              }
-            >
-              {groupedFiles.modified.map(file => (
-                <FileItem
-                  key={file.path}
-                  file={file}
-                  selected={selectedFiles.has(file.path)}
-                  onSelect={(selected) => selectFile(file.path, selected)}
-                  onStage={() => stageFiles([file.path])}
-                  onUnstage={() => {}}
-                  onDiscard={() => {
-                    if (confirm(`确定要放弃 ${file.path} 的更改吗？`)) {
-                      discardChanges([file.path])
-                    }
-                  }}
-                  onContextMenu={handleContextMenu}
-                />
-              ))}
-            </Section>
-          )}
+          <Section
+            title="更改"
+            count={groupedFiles.modified.length + groupedFiles.untracked.length}
+            expanded={expandedSections.has('changes')}
+            onToggle={() => toggleSection('changes')}
+            actions={
+              <>
+                {groupedFiles.modified.length > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      stageFiles(groupedFiles.modified.map(f => f.path))
+                    }}
+                    style={{
+                      padding: '2px 6px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#8b949e',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
+                  >
+                    <Plus size={12} />
+                    全部暂存
+                  </button>
+                )}
+              </>
+            }
+          >
+            {groupedFiles.modified.map(file => (
+              <FileItem
+                key={file.path}
+                file={file}
+                selected={selectedFiles.has(file.path)}
+                onSelect={(selected) => selectFile(file.path, selected)}
+                onStage={() => stageFiles([file.path])}
+                onUnstage={() => {}}
+                onDiscard={() => discardChanges([file.path])}
+                onOpenFile={() => handleOpenFile(file.path)}
+                onOpenDiff={() => handleOpenDiff(file.path)}
+              />
+            ))}
+            {groupedFiles.untracked.map(file => (
+              <FileItem
+                key={file.path}
+                file={file}
+                selected={selectedFiles.has(file.path)}
+                onSelect={(selected) => selectFile(file.path, selected)}
+                onStage={() => stageFiles([file.path])}
+                onUnstage={() => {}}
+                onDiscard={() => {}}
+                onOpenFile={() => handleOpenFile(file.path)}
+                onOpenDiff={() => handleOpenDiff(file.path)}
+              />
+            ))}
+          </Section>
 
-          {/* 未跟踪的文件 */}
-          {groupedFiles.untracked.length > 0 && (
-            <Section
-              title="未跟踪的文件"
-              count={groupedFiles.untracked.length}
-              expanded={expandedSections.has('untracked')}
-              onToggle={() => toggleSection('untracked')}
-              actions={
-                <button
-                  onClick={(e) => { e.stopPropagation(); stageFiles(groupedFiles.untracked.map(f => f.path)) }}
-                  className="vscode-section-action-btn"
-                  title="全部暂存"
-                >
-                  <Plus size={14} />
-                </button>
-              }
+          {/* 提交信息输入 */}
+          <div style={{ padding: '12px' }}>
+            <textarea
+              value={commitMessage}
+              onChange={(e) => setCommitMessage(e.target.value)}
+              placeholder="输入提交信息..."
+              style={{
+                width: '100%',
+                minHeight: 60,
+                padding: 8,
+                border: '1px solid #30363d',
+                borderRadius: 4,
+                background: '#0D1117',
+                color: '#e6edf3',
+                fontSize: 13,
+                resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
+            />
+            <button
+              onClick={handleCommit}
+              disabled={!commitMessage.trim() || groupedFiles.staged.length === 0}
+              style={{
+                width: '100%',
+                marginTop: 8,
+                padding: '6px 12px',
+                border: 'none',
+                borderRadius: 4,
+                background: commitMessage.trim() && groupedFiles.staged.length > 0 ? '#238636' : '#30363d',
+                color: '#fff',
+                fontSize: 13,
+                cursor: commitMessage.trim() && groupedFiles.staged.length > 0 ? 'pointer' : 'not-allowed',
+              }}
             >
-              {groupedFiles.untracked.map(file => (
-                <FileItem
-                  key={file.path}
-                  file={file}
-                  selected={selectedFiles.has(file.path)}
-                  onSelect={(selected) => selectFile(file.path, selected)}
-                  onStage={() => stageFiles([file.path])}
-                  onUnstage={() => {}}
-                  onDiscard={() => {}}
-                  onContextMenu={handleContextMenu}
-                />
-              ))}
-            </Section>
-          )}
+              <Check size={14} style={{ marginRight: 6 }} />
+              提交
+            </button>
+          </div>
+        </div>
+      )}
 
-          {/* 冲突的文件 */}
-          {groupedFiles.conflicted.length > 0 && (
-            <Section
-              title="冲突的文件"
-              count={groupedFiles.conflicted.length}
-              expanded={expandedSections.has('conflicted')}
-              onToggle={() => toggleSection('conflicted')}
-            >
-              {groupedFiles.conflicted.map(file => (
-                <FileItem
-                  key={file.path}
-                  file={file}
-                  selected={selectedFiles.has(file.path)}
-                  onSelect={(selected) => selectFile(file.path, selected)}
-                  onStage={() => stageFiles([file.path])}
-                  onUnstage={() => unstageFiles([file.path])}
-                  onDiscard={() => {}}
-                  onContextMenu={handleContextMenu}
-                />
-              ))}
-            </Section>
-          )}
-
-          {/* 空状态 */}
-          {files.length === 0 && (
-            <div className="vscode-clean-state">
-              <Check size={32} className="vscode-clean-icon" />
-              <p className="vscode-clean-text">所有更改已暂存</p>
-              <p className="vscode-clean-subtitle">工作区干净</p>
+      {/* 历史视图 */}
+      {viewMode === 'history' && (
+        <div style={{ padding: '8px 0', overflow: 'auto' }}>
+          {commits.length === 0 ? (
+            <div style={{ 
+              padding: 40, 
+              textAlign: 'center', 
+              color: '#8b949e',
+              fontSize: 13 
+            }}>
+              <History size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+              <div>暂无提交历史</div>
             </div>
+          ) : (
+            commits.map((commit, index) => {
+              const isExpanded = expandedCommit === commit.hash
+              const files = commitFiles[commit.hash] || []
+              
+              return (
+                <div
+                  key={commit.hash}
+                  style={{
+                    borderBottom: index < commits.length - 1 ? '1px solid #21262d' : 'none',
+                  }}
+                >
+                  {/* 提交项头部 */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      transition: 'background-color 0.15s',
+                      backgroundColor: isExpanded ? '#161b22' : 'transparent',
+                    }}
+                    onClick={() => toggleCommitExpand(commit.hash)}
+                    onMouseEnter={(e) => {
+                      if (!isExpanded) e.currentTarget.style.backgroundColor = '#161b22'
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isExpanded) e.currentTarget.style.backgroundColor = 'transparent'
+                    }}
+                  >
+                    {/* 展开箭头 */}
+                    <div style={{
+                      width: 16,
+                      height: 16,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 8,
+                      transition: 'transform 0.2s',
+                      transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                    }}>
+                      <ChevronRight size={14} style={{ color: '#8b949e' }} />
+                    </div>
+
+                    {/* 提交图标 */}
+                    <div style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: index === 0 ? '#238636' : '#8957e5',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 10,
+                      flexShrink: 0,
+                    }}>
+                      <GitCommit size={12} style={{ color: '#fff' }} />
+                    </div>
+
+                    {/* 提交信息 */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      {/* 提交消息 */}
+                      <div style={{
+                        fontSize: 13,
+                        color: '#e6edf3',
+                        marginBottom: 2,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {commit.message}
+                      </div>
+
+                      {/* 作者和时间 */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontSize: 11,
+                        color: '#8b949e',
+                      }}>
+                        <span>{commit.author}</span>
+                        <span>•</span>
+                        <span>
+                          {new Date(commit.date).toLocaleString('zh-CN', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Commit Hash */}
+                    <div style={{
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: '#58a6ff',
+                      padding: '2px 6px',
+                      background: '#0d1117',
+                      borderRadius: 4,
+                      marginLeft: 8,
+                      flexShrink: 0,
+                    }}>
+                      {commit.hash.substring(0, 7)}
+                    </div>
+                  </div>
+
+                  {/* 展开的文件列表 */}
+                  {isExpanded && (
+                    <div style={{
+                      padding: '0 12px 8px 44px',
+                      background: '#0d1117',
+                    }}>
+                      {files.length === 0 ? (
+                        <div style={{
+                          padding: '8px 0',
+                          fontSize: 12,
+                          color: '#6e7681',
+                        }}>
+                          加载文件列表...
+                        </div>
+                      ) : (
+                        files.map((filePath: string) => (
+                          <div
+                            key={filePath}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              padding: '4px 8px',
+                              cursor: 'pointer',
+                              borderRadius: 3,
+                              transition: 'background-color 0.1s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor = '#21262d'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = 'transparent'
+                            }}
+                            onClick={() => handleOpenCommitFile(commit.hash, filePath)}
+                          >
+                            {/* 文件图标 */}
+                            <span style={{
+                              marginRight: 6,
+                              display: 'flex',
+                              alignItems: 'center',
+                              color: '#8b949e',
+                            }}>
+                              <FileCode size={12} />
+                            </span>
+                            
+                            {/* 文件名 */}
+                            <span style={{
+                              fontSize: 12,
+                              color: '#cccccc',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {filePath}
+                            </span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })
           )}
         </div>
-
-        {/* 提交历史区域 - 独立区域，在更改列表外部 */}
-        {showCommitHistory && commits.length > 0 && (
-          <div className="vscode-commit-history-section">
-            <Section
-              title="提交历史"
-              count={commits.length}
-              expanded={expandedSections.has('history')}
-              onToggle={() => toggleSection('history')}
-            >
-              <div className="vscode-commit-history-list">
-                {commits.map((commit, index) => (
-                  <CommitHistoryItem
-                    key={commit.hash}
-                    commit={commit}
-                    isCurrent={index === 0}
-                    branches={index === 0 ? [branch] : []}
-                    repoPath={repoPath}
-                    onFileClick={(filePath, commitHash) => {
-                      // Open diff view for the file at this commit
-                      if (openFile && repoPath) {
-                        const fullPath = `${repoPath}/${filePath}`
-                        // Dispatch event to open diff view
-                        window.dispatchEvent(new CustomEvent('git:openDiff', {
-                          detail: { filePath: fullPath, commitHash, repoPath }
-                        }))
-                      }
-                    }}
-                  />
-                ))}
-              </div>
-            </Section>
-          </div>
-        )}
-      </div>
-
-      {/* 右键菜单 */}
-      <ContextMenu
-        state={contextMenu}
-        onClose={closeContextMenu}
-        onOpenChanges={handleOpenChanges}
-        onOpenFile={handleOpenFile}
-        onOpenFileHead={handleOpenFileHead}
-        onDiscardChanges={handleContextMenuDiscard}
-        onStageChanges={handleContextMenuStage}
-        onUnstageChanges={handleContextMenuUnstage}
-        onAddToGitignore={handleAddToGitignore}
-        onRevealInExplorer={handleRevealInExplorer}
-      />
+      )}
 
       {/* 新建分支对话框 */}
       {showNewBranchDialog && (
         <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
         }}>
           <div style={{
-            backgroundColor: '#252526', border: '1px solid #3c3c3c', borderRadius: '6px',
-            padding: '16px', width: '320px'
+            width: 400,
+            padding: 20,
+            background: '#161b22',
+            borderRadius: 8,
+            border: '1px solid #30363d',
           }}>
-            <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#cccccc', margin: '0 0 16px' }}>新建分支</h3>
+            <div style={{ fontSize: 16, fontWeight: 600, color: '#e6edf3', marginBottom: 16 }}>
+              创建新分支
+            </div>
             <input
               type="text"
               value={newBranchName}
               onChange={(e) => setNewBranchName(e.target.value)}
               placeholder="分支名称"
-              className="vscode-input"
-              style={{ marginBottom: '12px' }}
+              style={{
+                width: '100%',
+                padding: 8,
+                border: '1px solid #30363d',
+                borderRadius: 4,
+                background: '#0D1117',
+                color: '#e6edf3',
+                fontSize: 13,
+                marginBottom: 16,
+              }}
             />
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <input type="checkbox" checked={checkoutNewBranch} onChange={(e) => setCheckoutNewBranch(e.target.checked)} />
-              <span style={{ fontSize: '13px', color: '#cccccc' }}>切换到新分支</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-              <button onClick={() => setShowNewBranchDialog(false)} className="vscode-btn vscode-btn-secondary">取消</button>
-              <button onClick={handleCreateBranch} disabled={!newBranchName.trim()} className="vscode-btn">创建</button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => {
+                  setShowNewBranchDialog(false)
+                  setNewBranchName('')
+                }}
+                style={{
+                  padding: '6px 12px',
+                  border: '1px solid #30363d',
+                  borderRadius: 4,
+                  background: 'transparent',
+                  color: '#8b949e',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateBranch}
+                disabled={!newBranchName.trim()}
+                style={{
+                  padding: '6px 12px',
+                  border: 'none',
+                  borderRadius: 4,
+                  background: newBranchName.trim() ? '#238636' : '#30363d',
+                  color: '#fff',
+                  fontSize: 13,
+                  cursor: newBranchName.trim() ? 'pointer' : 'not-allowed',
+                }}
+              >
+                创建
+              </button>
             </div>
           </div>
         </div>

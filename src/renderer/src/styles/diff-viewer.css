@@ -1,0 +1,166 @@
+/**
+ * DiffViewer 样式 - 独立的 CSS 文件
+ * 用于文件差异对比视图
+ */
+
+/* ============================================
+   DiffViewer 主容器
+   ============================================ */
+.vscode-diff-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0d1117;
+  overflow: hidden;
+}
+
+/* ============================================
+   DiffViewer 头部
+   ============================================ */
+.vscode-diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #161b22;
+  border-bottom: 1px solid #30363d;
+  min-height: 40px;
+}
+
+.vscode-diff-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vscode-diff-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #e6edf3;
+}
+
+.vscode-diff-subtitle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #8b949e;
+  font-family: monospace;
+}
+
+/* ============================================
+   DiffViewer 内容区域
+   ============================================ */
+.vscode-diff-content {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+  background: #0d1117;
+}
+
+.vscode-diff-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #8b949e;
+  font-size: 14px;
+}
+
+/* ============================================
+   DiffViewer 行列表
+   ============================================ */
+.vscode-diff-lines {
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ============================================
+   DiffViewer 单行
+   ============================================ */
+.vscode-diff-line {
+  display: flex;
+  min-height: 20px;
+}
+
+/* ============================================
+   DiffViewer 行号
+   ============================================ */
+.vscode-diff-line-number {
+  width: 50px;
+  padding: 0 8px;
+  text-align: right;
+  color: #6e7681;
+  background: #0d1117;
+  border-right: 1px solid #30363d;
+  user-select: none;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.vscode-diff-line-number.old {
+  background: rgba(248, 81, 73, 0.1);
+}
+
+.vscode-diff-line-number.new {
+  background: rgba(35, 134, 54, 0.1);
+}
+
+/* ============================================
+   DiffViewer 行内容
+   ============================================ */
+.vscode-diff-line-content {
+  flex: 1;
+  padding: 0 8px;
+  white-space: pre;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+/* ============================================
+   DiffViewer 行类型 - 添加
+   ============================================ */
+.vscode-diff-line.added {
+  background: rgba(35, 134, 54, 0.2);
+}
+
+.vscode-diff-line.added .vscode-diff-line-content {
+  color: #3fb950;
+}
+
+/* ============================================
+   DiffViewer 行类型 - 删除
+   ============================================ */
+.vscode-diff-line.removed {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+.vscode-diff-line.removed .vscode-diff-line-content {
+  color: #f85149;
+}
+
+/* ============================================
+   DiffViewer 行类型 - 上下文
+   ============================================ */
+.vscode-diff-line.context {
+  background: transparent;
+}
+
+.vscode-diff-line.context .vscode-diff-line-content {
+  color: #c9d1d9;
+}
+
+/* ============================================
+   DiffViewer 行类型 - 头部
+   ============================================ */
+.vscode-diff-line.header {
+  background: #161b22;
+  color: #8b949e;
+}
+
+.vscode-diff-line.header .vscode-diff-line-content {
+  color: #8b949e;
+  font-style: italic;
+}
