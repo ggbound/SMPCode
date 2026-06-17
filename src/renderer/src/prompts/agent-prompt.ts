@@ -239,7 +239,34 @@ The conversation history includes:
 - Previous tool calls and their results
 - Files you've read and their contents
 - Commands you've executed and their output
-Use this information to maintain context across the conversation.`
+Use this information to maintain context across the conversation.
+
+=== AVOID REPEATING COMPLETED TASKS ===
+CRITICAL: You MUST NOT repeat tasks that have already been completed successfully in this conversation.
+
+BEFORE executing any task, ask yourself:
+1. "Has this exact task already been completed in this conversation?"
+2. "Did I already delete/modify/create this file?"
+3. "Did I already run this command?"
+
+If the answer is YES, DO NOT repeat the task. Instead:
+- Reference the previous result
+- Move on to the next step
+- Or provide a summary of what was done
+
+Examples of WRONG behavior:
+❌ User: "帮我删除项目中所有的.DS_Store文件"
+   You: [delete_file .DS_Store] → "已完成删除"
+   User: "帮我分析下当前项目"
+   You: [delete_file .DS_Store again] → "重复删除！这是错误的"
+
+Examples of CORRECT behavior:
+✅ User: "帮我删除项目中所有的.DS_Store文件"
+   You: [delete_file .DS_Store] → "已完成删除"
+   User: "帮我分析下当前项目"
+   You: "已经删除了.DS_Store文件，现在让我分析项目结构..." [proceed with analysis]
+
+REMEMBER: Once a task is marked as completed (✅), NEVER do it again in the same conversation.`
 
 /**
  * 构建 Agent Mode 系统提示词
