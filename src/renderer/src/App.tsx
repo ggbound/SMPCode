@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useStore, type ProviderConfig, type Session, type Step, type ImageContent, type FeishuConfig, type SyncStatus } from './store'
 import { useKiloStore } from './store/kiloStore'
+import { v4 as uuidv4 } from 'uuid'
 import { initFeishuService, getFeishuService, updateFeishuConfig } from './services/feishuService'
 import KiloPage from './pages/KiloPage'
 import SettingsModal from './components/SettingsModal'
@@ -665,6 +666,13 @@ function App() {
     // 先清空当前会话和消息，防止旧消息被保存到新项目
     clearMessages()
     setLocalSessions([])
+    setSessions([]) // 清空 mainStore 的会话，避免显示其他项目的会话
+    
+    // 清空 kiloStore 的会话，避免显示其他项目的会话
+    const kiloStore = useKiloStore.getState()
+    kiloStore.clearAllSessions()
+    kiloStore.setCurrentSession(null)
+    kiloStore.clearMessages()
 
     // 清空当前打开的文件标签和选中状态
     setTabs([])
@@ -805,12 +813,21 @@ function App() {
 
     try {
       // TRAE风格：从本地存储加载会话列表
+      console.log('[handleProjectPathChange] Loading sessions for:', newPath)
       if (window.api?.listSessions) {
         const result = await window.api.listSessions(newPath)
+        console.log('[handleProjectPathChange] listSessions result:', result)
         if (result.success && result.sessions) {
-          const loadedSessions = result.sessions.map((s: { id: string; title: string; updatedAt: string; messageCount: number }) => ({
+          // 按创建时间排序（由近到远）
+          const sortedSessions = result.sessions.sort((a: any, b: any) => {
+            const timeA = new Date(a.createdAt || a.updatedAt).getTime()
+            const timeB = new Date(b.createdAt || b.updatedAt).getTime()
+            return timeB - timeA // 降序，最新的在前
+          })
+          
+          const loadedSessions = sortedSessions.map((s: { id: string; title: string; updatedAt: string; createdAt?: string; messageCount: number }) => ({
             id: s.id,
-            createdAt: s.updatedAt,
+            createdAt: s.createdAt || s.updatedAt,
             messageCount: s.messageCount,
             projectPath: newPath,
             title: s.title
@@ -818,31 +835,90 @@ function App() {
           setLocalSessions(loadedSessions)
           setSessions(loadedSessions)
           
+          // 同时同步会话到 kiloStore
+          const kiloStore = useKiloStore.getState()
+          kiloStore.clearAllSessions()
+          sortedSessions.forEach((s: any) => {
+            const createdAtTime = new Date(s.createdAt || s.updatedAt).getTime()
+            kiloStore.addSession({
+              id: s.id,
+              title: s.title,
+              createdAt: createdAtTime,
+              updatedAt: new Date(s.updatedAt).getTime(),
+              messageCount: s.messageCount,
+              mode: 'code' as any
+            })
+          })
+          
           // 如果有会话，加载最新的一个
           if (loadedSessions.length > 0) {
             const latestSession = loadedSessions[0]
+            console.log('[handleProjectPathChange] Selecting latest session:', latestSession.id)
             selectSession(latestSession.id)
             
+            // 同时设置 kiloStore 的当前会话
+            const kiloStore = useKiloStore.getState()
+            kiloStore.setCurrentSession(latestSession.id)
+            
             // 加载消息
-            const msgResult = await window.api.loadConversation(newPath, latestSession.id)
-            if (msgResult.success && msgResult.messages) {
-              setMessages(msgResult.messages)
+            try {
+              console.log('[handleProjectPathChange] Loading conversation for session:', latestSession.id)
+              const msgResult = await window.api.loadConversation(newPath, latestSession.id)
+              console.log('[handleProjectPathChange] loadConversation result:', msgResult)
+              if (msgResult.success && msgResult.messages) {
+                console.log('[handleProjectPathChange] Setting messages, count:', msgResult.messages.length)
+                setMessages(msgResult.messages)
+                
+                // 同时同步到 kiloStore，确保 KiloPage 能显示消息
+                kiloStore.clearMessages()
+                msgResult.messages.forEach((msg: any) => {
+                  kiloStore.addMessage({
+                    id: msg.id || uuidv4(),
+                    role: msg.role,
+                    content: msg.content,
+                    timestamp: msg.timestamp || Date.now(),
+                    mode: msg.mode || 'code',
+                    blocks: msg.blocks,
+                    toolCalls: msg.toolCalls,
+                    reasoning: msg.reasoning,
+                    isStreaming: false,
+                    usage: msg.usage,
+                    images: msg.images
+                  })
+                })
+              } else {
+                console.log('[handleProjectPathChange] No messages in conversation')
+                clearMessages()
+                kiloStore.clearMessages()
+              }
+            } catch (err) {
+              // 会话文件可能不存在，清空消息
+              console.log('[handleProjectPathChange] Failed to load conversation, clearing messages:', err)
+              clearMessages()
             }
           } else {
-            // 没有会话，创建新的
-            await createNewSession(newPath)
+            // 没有会话，不自动创建，等待用户主动创建
+            console.log('[handleProjectPathChange] No sessions found, waiting for user to create one')
+            selectSession('')
+            clearMessages()
           }
         } else {
-          // 加载失败，创建新的
-          await createNewSession(newPath)
+          // 加载失败，不自动创建
+          console.log('[handleProjectPathChange] Failed to load sessions, waiting for user to create one')
+          selectSession('')
+          clearMessages()
         }
       } else {
-        // API不可用，创建新的
-        await createNewSession(newPath)
+        // API不可用，不自动创建
+        console.log('[handleProjectPathChange] API not available, waiting for user to create one')
+        selectSession('')
+        clearMessages()
       }
     } catch (error) {
       console.error('[handleProjectPathChange] Error:', error)
-      await createNewSession(newPath)
+      // 出错时不自动创建会话
+      selectSession('')
+      clearMessages()
     }
   }, [setProjectPath, setCurrentProjectPath, setLocalSessions, setSessions, selectSession, setMessages])
   
@@ -931,39 +1007,8 @@ function App() {
     }
   }, [projectPath, localSessions, updateSessionTitle])
 
-  // Auto-save conversation when messages change
-  useEffect(() => {
-    const autoSave = async () => {
-      if (!projectPath || !currentSession || messages.length === 0) return
-      
-      // 验证当前会话是否属于当前项目（防止切换项目时保存旧消息到新项目）
-      const session = localSessions.find(s => s.id === currentSession)
-      if (!session) return
-      
-      // 跳过飞书会话，避免覆盖飞书消息
-      if (session.title === '飞书专用对话' || currentSession.startsWith('feishu-session-')) {
-        return
-      }
-      
-      // 如果会话有 projectPath 属性，验证是否匹配当前项目
-      if (session.projectPath && session.projectPath !== projectPath) {
-        return
-      }
-      
-      if (window.api?.saveConversation) {
-        await window.api.saveConversation(
-          projectPath, 
-          currentSession, 
-          messages, 
-          session.title || `会话 ${new Date().toLocaleString()}`
-        )
-      }
-    }
-    
-    // 延迟保存，避免频繁写入
-    const timer = setTimeout(autoSave, 2000)
-    return () => clearTimeout(timer)
-  }, [messages, projectPath, currentSession, localSessions])
+  // 注意：自动保存已移除，改为在 AI 回复完成后统一保存
+  // 保存逻辑现在在 useUnifiedConversation 的 sendMessage 中处理
 
   const handleNewSession = useCallback(async () => {
     // Create a new session via IPC
@@ -1873,9 +1918,9 @@ function App() {
 
   // Listen for git:openDiff event - open diff as a tab
   useEffect(() => {
-    const handleOpenDiff = (event: CustomEvent<{ filePath: string; commitHash?: string; repoPath: string }>) => {
-      const { filePath, commitHash, repoPath } = event.detail
-      console.log('[App] Received git:openDiff event:', { filePath, commitHash, repoPath })
+    const handleOpenDiff = (event: CustomEvent<{ filePath: string; commitHash?: string; repoPath: string; diffContent?: string }>) => {
+      const { filePath, commitHash, repoPath, diffContent } = event.detail
+      console.log('[App] Received git:openDiff event:', { filePath, commitHash, repoPath, diffContentLength: diffContent?.length })
       
       const fileName = filePath.split('/').pop() || filePath
       
@@ -1895,7 +1940,7 @@ function App() {
         id: generateTabId(),
         path: filePath,
         name: commitHash ? `${fileName} (${commitHash.substring(0, 7)})` : fileName,
-        content: '',
+        content: diffContent || '',
         isDirty: false,
         isPreview: false,
         language: 'diff',

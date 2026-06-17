@@ -13,6 +13,7 @@ interface DiffViewerProps {
   commitHash?: string
   repoPath: string
   onClose: () => void
+  diffContent?: string
 }
 
 interface DiffLine {
@@ -22,8 +23,8 @@ interface DiffLine {
   content: string
 }
 
-export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, repoPath, onClose }) => {
-  const [diffContent, setDiffContent] = useState<string>('')
+export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, repoPath, onClose, diffContent: initialDiffContent }) => {
+  const [diffContent, setDiffContent] = useState<string>(initialDiffContent || '')
   const [parsedDiff, setParsedDiff] = useState<DiffLine[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +120,17 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, re
       setError(null)
       
       try {
+        // 如果传入了初始 diffContent，直接使用
+        if (initialDiffContent) {
+          console.log('[DiffViewer] Using provided diffContent, length:', initialDiffContent.length)
+          setDiffContent(initialDiffContent)
+          const parsed = parseDiff(initialDiffContent)
+          console.log('[DiffViewer] Parsed diff lines:', parsed.length)
+          setParsedDiff(parsed)
+          setIsLoading(false)
+          return
+        }
+        
         const api = (window as any).api
         const relativePath = filePath.replace(repoPath + '/', '')
         console.log('[DiffViewer] Relative path:', relativePath)
@@ -155,7 +167,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ filePath, commitHash, re
     if (filePath && repoPath) {
       loadDiff()
     }
-  }, [filePath, commitHash, repoPath, parseDiff])
+  }, [filePath, commitHash, repoPath, parseDiff, initialDiffContent])
 
   // 渲染 diff 行
   const renderDiffLine = (line: DiffLine, index: number) => {

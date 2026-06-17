@@ -85,6 +85,8 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
         store.clearAllSessions()
         store.setCurrentSession(null)
         store.clearMessages()
+        // 同时清空 mainStore 的会话数据，避免显示其他项目的会话
+        mainStore.setSessions([])
         
         const result = await window.api.listSessions(projectPath)
         if (result.success && result.sessions) {

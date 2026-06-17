@@ -140,6 +140,8 @@ export interface UseGitReturn {
   abortCherryPick: () => Promise<boolean>
   continueCherryPick: () => Promise<boolean>
   getCommitDetails: (commitHash: string) => Promise<any>
+  // Gitignore operations
+  addToGitignore: (filePath: string) => Promise<boolean>
   // Submodule operations
   getSubmodulesList: () => Promise<GitSubmodule[]>
   addSubmodule: (url: string, path: string, branch?: string) => Promise<boolean>
@@ -828,6 +830,21 @@ export function useGit(options: UseGitOptions): UseGitReturn {
     }
   }, [repoPath])
 
+  // ==================== Gitignore Operations ====================
+
+  const addToGitignore = useCallback(async (filePath: string): Promise<boolean> => {
+    if (!repoPath) return false
+    try {
+      const api = (window as any).api
+      const result = await api.addToGitignore(repoPath, filePath)
+      if (result) await refresh()
+      return result
+    } catch (err) {
+      setError(String(err))
+      return false
+    }
+  }, [repoPath, refresh])
+
   // ==================== Submodule Operations ====================
 
   const getSubmodulesList = useCallback(async (): Promise<GitSubmodule[]> => {
@@ -975,6 +992,8 @@ export function useGit(options: UseGitOptions): UseGitReturn {
     abortCherryPick: abortCherryPickAction,
     continueCherryPick: continueCherryPickAction,
     getCommitDetails: getCommitDetailsAction,
+    // Gitignore operations
+    addToGitignore,
     // Submodule operations
     getSubmodulesList,
     addSubmodule: addSubmoduleAction,

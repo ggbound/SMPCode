@@ -154,6 +154,8 @@ const ContextMenu: React.FC<{
 
   if (!visible) return null
 
+  console.log('[ContextMenu] Rendering menu with sections:', sections.length)
+
   // 确保菜单不超出视口
   const adjustedX = Math.min(x, window.innerWidth - 250)
   const adjustedY = Math.min(y, window.innerHeight - 300)
@@ -239,6 +241,7 @@ interface FileItemProps {
   onDiscard: () => void
   onOpenFile: () => void
   onOpenDiff: () => void
+  onAddToGitignore?: () => void
 }
 
 const FileItem: React.FC<FileItemProps> = ({
@@ -250,6 +253,7 @@ const FileItem: React.FC<FileItemProps> = ({
   onDiscard,
   onOpenFile,
   onOpenDiff,
+  onAddToGitignore,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number }>({
     visible: false,
@@ -264,6 +268,7 @@ const FileItem: React.FC<FileItemProps> = ({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+    console.log('[FileItem] Context menu triggered for:', file.path)
     setContextMenu({ visible: true, x: e.clientX, y: e.clientY })
   }
 
@@ -286,7 +291,9 @@ const FileItem: React.FC<FileItemProps> = ({
         ...(file.status !== 'staged' && file.status !== 'untracked'
           ? [{ label: '放弃更改', icon: <RotateCcw size={14} />, onClick: onDiscard, danger: true }]
           : []),
-        { label: '添加到 .gitignore', icon: <GitBranch size={14} />, onClick: () => {} },
+        ...(onAddToGitignore
+          ? [{ label: '添加到 .gitignore', icon: <GitBranch size={14} />, onClick: onAddToGitignore }]
+          : []),
       ],
     },
   ].filter(section => section.items.length > 0)
@@ -330,6 +337,7 @@ const FileItem: React.FC<FileItemProps> = ({
           {/* 打开文件按钮 */}
           <button
             onClick={(e) => { e.stopPropagation(); onOpenFile() }}
+            onContextMenu={(e) => { e.stopPropagation() }}
             className="git-file-action-btn"
             title="打开文件"
           >
@@ -340,6 +348,7 @@ const FileItem: React.FC<FileItemProps> = ({
           {file.status !== 'staged' ? (
             <button
               onClick={(e) => { e.stopPropagation(); onStage() }}
+              onContextMenu={(e) => { e.stopPropagation() }}
               className="git-file-action-btn"
               title="暂存更改"
             >
@@ -348,6 +357,7 @@ const FileItem: React.FC<FileItemProps> = ({
           ) : (
             <button
               onClick={(e) => { e.stopPropagation(); onUnstage() }}
+              onContextMenu={(e) => { e.stopPropagation() }}
               className="git-file-action-btn"
               title="取消暂存"
             >
@@ -359,6 +369,7 @@ const FileItem: React.FC<FileItemProps> = ({
           {file.status === 'modified' && (
             <button
               onClick={(e) => { e.stopPropagation(); onDiscard() }}
+              onContextMenu={(e) => { e.stopPropagation() }}
               className="git-file-action-btn"
               title="放弃更改"
               style={{ color: '#f85149' }}
@@ -605,6 +616,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
     checkoutBranch,
     createBranch,
     getCommitDetails,
+    getDiff,
+    addToGitignore,
   } = useGit({ repoPath })
 
   // 文件分组
@@ -673,10 +686,18 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
   }
 
   // 打开文件
-  const handleOpenFile = (filePath: string) => {
-    if (openFile) {
-      // 这里应该读取文件内容
-      openFile(filePath, '')
+  const handleOpenFile = async (filePath: string) => {
+    if (!repoPath || !openFile) return
+    
+    try {
+      const api = (window as any).api
+      const fullPath = `${repoPath}/${filePath}`
+      const result = await api.fsReadFile(fullPath)
+      // fsReadFile 返回 { success: true, content: string }
+      const content = result?.success ? result.content : ''
+      openFile(filePath, content)
+    } catch (err) {
+      console.error('Failed to open file:', err)
     }
   }
 
@@ -698,10 +719,57 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
     console.log('[GitPanel] Dispatched git:openDiff event')
   }
 
-  // 打开差异视图
-  const handleOpenDiff = (filePath: string) => {
-    // 这里应该打开差异视图
-    console.log('Open diff:', filePath)
+  // 打开文件差异
+  const handleOpenDiff = async (filePath: string, isStaged = false, fileStatus?: string) => {
+    try {
+      let diffContent = ''
+      
+      // 对于未跟踪文件，读取完整文件内容作为 diff
+      if (fileStatus === 'untracked') {
+        const api = (window as any).api
+        const fullPath = `${repoPath}/${filePath}`
+        console.log('[handleOpenDiff] Reading untracked file:', fullPath)
+        const result = await api.fsReadFile(fullPath)
+        // fsReadFile 返回 { success: true, content: string }
+        const content = result?.success ? result.content : ''
+        console.log('[handleOpenDiff] File content length:', content.length)
+        if (content) {
+          const lines = content.split('\n')
+          // 构建一个模拟的 diff 格式
+          diffContent = `diff --git a/${filePath} b/${filePath}
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/${filePath}
+@@ -0,0 +1,${lines.length} @@
+${lines.map((line: string) => '+' + line).join('\n')}`
+          console.log('[handleOpenDiff] Generated diff length:', diffContent.length)
+        } else {
+          console.warn('[handleOpenDiff] Empty content for untracked file:', filePath)
+        }
+      } else {
+        // 对于版本控制中的文件，使用 git diff
+        console.log('[handleOpenDiff] Getting diff for tracked file:', filePath, 'status:', fileStatus)
+        diffContent = await getDiff(filePath, isStaged)
+        console.log('[handleOpenDiff] Git diff result length:', diffContent?.length || 0)
+      }
+      
+      if (diffContent && openFile) {
+        // 打开 diff 视图
+        const event = new CustomEvent('git:openDiff', {
+          detail: {
+            filePath,
+            diffContent,
+            isStaged
+          }
+        })
+        window.dispatchEvent(event)
+      } else if (!diffContent) {
+        console.warn('No diff content for file:', filePath)
+      }
+    } catch (err) {
+      console.error('Failed to open diff:', err)
+    }
   }
 
   // 提交历史展开状态
@@ -928,7 +996,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
                   onUnstage={() => unstageFiles([file.path])}
                   onDiscard={() => {}}
                   onOpenFile={() => handleOpenFile(file.path)}
-                  onOpenDiff={() => handleOpenDiff(file.path)}
+                  onOpenDiff={() => handleOpenDiff(file.path, false, file.status)}
+                  onAddToGitignore={() => addToGitignore(file.path)}
                 />
               ))}
             </Section>
@@ -977,7 +1046,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
                 onUnstage={() => {}}
                 onDiscard={() => discardChanges([file.path])}
                 onOpenFile={() => handleOpenFile(file.path)}
-                onOpenDiff={() => handleOpenDiff(file.path)}
+                onOpenDiff={() => handleOpenDiff(file.path, false, file.status)}
+                onAddToGitignore={() => addToGitignore(file.path)}
               />
             ))}
             {groupedFiles.untracked.map(file => (
@@ -990,7 +1060,8 @@ export const GitPanel: React.FC<GitPanelProps> = ({ repoPath, openFile }) => {
                 onUnstage={() => {}}
                 onDiscard={() => {}}
                 onOpenFile={() => handleOpenFile(file.path)}
-                onOpenDiff={() => handleOpenDiff(file.path)}
+                onOpenDiff={() => handleOpenDiff(file.path, false, file.status)}
+                onAddToGitignore={() => addToGitignore(file.path)}
               />
             ))}
           </Section>

@@ -195,6 +195,7 @@ const api = {
   gitRemoveSubmodule: (repoPath: string, path: string) => ipcRenderer.invoke('git:remove-submodule', { repoPath, path }),
   gitUpdateSubmodule: (repoPath: string, path?: string, init?: boolean) => ipcRenderer.invoke('git:update-submodule', { repoPath, path, init }),
   gitSyncSubmodule: (repoPath: string, path?: string) => ipcRenderer.invoke('git:sync-submodule', { repoPath, path }),
+  addToGitignore: (repoPath: string, filePath: string) => ipcRenderer.invoke('git:add-to-gitignore', { repoPath, filePath }),
 
   // File watching
   fsWatch: (dirPath: string) => ipcRenderer.invoke('fs:watch', dirPath),

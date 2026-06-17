@@ -81,7 +81,8 @@ import {
   addSubmodule,
   removeSubmodule,
   updateSubmodule,
-  syncSubmodule
+  syncSubmodule,
+  addToGitignore
 } from './services/git-service'
 import { 
   watchDirectory,
@@ -727,6 +728,10 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('git:sync-submodule', async (_event, { repoPath, path }: { repoPath: string; path?: string }) => {
     return await syncSubmodule(repoPath, path)
+  })
+
+  ipcMain.handle('git:add-to-gitignore', async (_event, { repoPath, filePath }: { repoPath: string; filePath: string }) => {
+    return await addToGitignore(repoPath, filePath)
   })
 
   // File watching handlers

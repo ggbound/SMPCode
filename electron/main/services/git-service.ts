@@ -367,7 +367,15 @@ export async function getFileDiff(repoPath: string, filePath: string, staged = f
     const git = initGit(repoPath)
     if (!git) return ''
 
-    const diff = await git.diff([staged ? '--cached' : '', '--', filePath])
+    // 构建参数数组，避免空字符串参数
+    const args: string[] = []
+    if (staged) {
+      args.push('--cached')
+    }
+    args.push('--')
+    args.push(filePath)
+    
+    const diff = await git.diff(args)
     return diff || ''
   } catch (error) {
     log.error('Failed to get file diff:', error)
@@ -1052,6 +1060,47 @@ export async function syncSubmodule(repoPath: string, submodulePath?: string): P
     return true
   } catch (error) {
     log.error('Failed to sync submodule:', error)
+    return false
+  }
+}
+
+// ==================== Gitignore Operations ====================
+
+// Add file to .gitignore
+export async function addToGitignore(repoPath: string, filePath: string): Promise<boolean> {
+  try {
+    const gitignorePath = path.join(repoPath, '.gitignore')
+    
+    // Normalize the path to use forward slashes
+    const normalizedPath = filePath.replace(/\\/g, '/')
+    
+    // Check if .gitignore exists
+    let content = ''
+    if (fs.existsSync(gitignorePath)) {
+      content = fs.readFileSync(gitignorePath, 'utf-8')
+      // Check if entry already exists
+      const lines = content.split('\n')
+      if (lines.includes(normalizedPath) || lines.includes(`/${normalizedPath}`)) {
+        log.info(`File already in .gitignore: ${filePath}`)
+        return true
+      }
+    }
+    
+    // Add new line if needed
+    if (content && !content.endsWith('\n')) {
+      content += '\n'
+    }
+    
+    // Add the file path
+    content += normalizedPath + '\n'
+    
+    // Write back to .gitignore
+    fs.writeFileSync(gitignorePath, content, 'utf-8')
+    
+    log.info(`Added to .gitignore: ${filePath}`)
+    return true
+  } catch (error) {
+    log.error('Failed to add to .gitignore:', error)
     return false
   }
 }

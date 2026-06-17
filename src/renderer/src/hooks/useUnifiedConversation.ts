@@ -539,7 +539,32 @@ export function useUnifiedConversation(options: UseUnifiedConversationOptions): 
     } catch (error) {
       console.error('[useUnifiedConversation] Error:', error)
       setExecutionState('error')
-      updateLastMessage(`Error: ${String(error)}`)
+      updateExecutionPhase('error')
+      
+      // 添加错误消息到对话内容
+      const errorMessage = `**错误：** ${String(error)}`
+      fullContent += `\n\n${errorMessage}`
+      updateLastMessage(fullContent)
+      
+      // 创建错误步骤
+      const errorStep: MessageStep = {
+        id: generateStepId(),
+        type: 'analysis',
+        title: '执行出错',
+        content: String(error),
+        status: 'failed',
+        timestamp: Date.now()
+      }
+      addMessageStep(errorStep)
+      
+      // 保存对话（包含错误信息）
+      if (projectPath && currentSession) {
+        const session = localSessions.find(s => s.id === currentSession)
+        if (session?.title !== '飞书专用对话' && !currentSession.startsWith('feishu-session-')) {
+          const updatedMessages = [...useStore.getState().messages]
+          await saveConversation(projectPath, currentSession, updatedMessages, session?.title)
+        }
+      }
     } finally {
       isRunningRef.current = false
       abortControllerRef.current = null
