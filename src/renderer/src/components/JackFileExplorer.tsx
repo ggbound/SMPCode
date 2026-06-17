@@ -194,10 +194,15 @@ const fsAdapter: FileTreeFsAdapter = {
     if (!api) return
 
     try {
+      // 使用 navigator.platform 判断平台，避免在渲染进程中使用 process
+      const platform = navigator.platform.toLowerCase()
+      const isMac = platform.includes('mac')
+      const isWin = platform.includes('win')
+      
       await api.executeTool(
         `open-fm-${Date.now()}`,
         'execute_bash',
-        { command: process.platform === 'darwin' ? `open "${path}"` : process.platform === 'win32' ? `explorer "${path}"` : `xdg-open "${path}"` },
+        { command: isMac ? `open "${path}"` : isWin ? `explorer "${path}"` : `xdg-open "${path}"` },
         path
       )
     } catch (error) {
@@ -365,13 +370,15 @@ export function JackFileExplorer({
     setRefreshKey(prev => prev + 1)
   }, [])
 
-  // 处理文件移动（拖放）
-  const handleFileMoved = useCallback(() => {
+  // 处理文件移动（拖放/剪切粘贴）
+  const handleFileMoved = useCallback((oldPath?: string, newPath?: string) => {
+    console.log('[JackFileExplorer] File moved:', oldPath, '->', newPath)
     setRefreshKey(prev => prev + 1)
   }, [])
 
   // 处理文件复制
   const handleFileCopied = useCallback((newPath: string, type: FileTreeItemType) => {
+    console.log('[JackFileExplorer] File copied:', newPath, type)
     setRefreshKey(prev => prev + 1)
   }, [])
 
