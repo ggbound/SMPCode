@@ -209,113 +209,12 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     const systemPrompt = generateSystemPrompt(store.currentMode)
     messages.push({ role: 'system', content: systemPrompt })
     
-    // 转换历史消息为 API 格式
-    // ✅ 修复：限制消息历史长度，避免发送过多旧消息（特别是带图片的消息）
-    const MAX_HISTORY_MESSAGES = 10  // 最多保留10条历史消息
-    const allHistoryMessages = store.messages.filter(m => m.id !== assistantMessageId && m.id !== userMessage.id)
-    // 只保留最近的消息（不包括当前用户消息，我们将单独添加）
-    const historyMessages = allHistoryMessages.slice(-MAX_HISTORY_MESSAGES)
+    // ✅ 关键修复：不再传递历史消息，只传递当前用户消息
+    // 这样可以避免 AI 重复执行之前已经完成的任务
+    // 如果需要上下文，用户可以在当前消息中明确提及
+    console.log('[useKiloConversation] Skipping history messages, only sending system prompt + current user message')
     
-    if (allHistoryMessages.length > MAX_HISTORY_MESSAGES) {
-      console.log(`[useKiloConversation] Truncated history messages from ${allHistoryMessages.length} to ${MAX_HISTORY_MESSAGES}`)
-    }
-    
-    // DEBUG: 检查历史消息中用户消息的内容格式
-    console.log('[useKiloConversation] History messages count (excluding current):', historyMessages.length)
-    
-    // ✅ 关键修复：先添加历史消息（旧消息，剥离图片），最后再添加当前用户消息
-    // 这样保证 messages 数组按时间顺序排列，且当前用户消息是最后一条
-    // 后端的重复检测会重置会话并重新添加"最后一条用户消息"，必须是包含图片的多模态消息
-    
-    // 先添加历史消息（旧消息，剥离图片）
-    for (const msg of historyMessages) {
-      if (msg.role === 'user') {
-        // 用户消息 - 对于旧消息，只保留文本内容，不保留图片
-        let messageContent = msg.content
-        
-        // ✅ 修复：旧的多模态消息，只提取文本部分，避免AI看到旧图片
-        if (Array.isArray(msg.content)) {
-          const textParts = msg.content.filter(c => c.type === 'text').map(c => (c as {type: 'text', text: string}).text)
-          messageContent = textParts.join('\n') || '[图片消息]'
-          console.log(`[useKiloConversation] Stripped images from old user message ${msg.id}, keeping only text`)
-        } else if (typeof msg.content === 'string' && msg.images && msg.images.length > 0) {
-          // 旧消息有 images 字段但 content 是纯文本，只保留文本
-          messageContent = msg.content
-          console.log(`[useKiloConversation] Old message with images field, using text only:`, msg.id)
-        }
-        
-        messages.push({ 
-          role: 'user', 
-          content: messageContent
-        })
-      } else if (msg.role === 'assistant') {
-        // 助手消息 - 检查是否包含工具调用
-        // 处理 content 格式：可能是 string 或 MessageContentPart[]
-        let cleanContent = ''
-        if (typeof msg.content === 'string') {
-          cleanContent = msg.content
-        } else {
-          // 如果是数组格式，提取文本内容
-          cleanContent = msg.content
-            .filter(p => p.type === 'text')
-            .map(p => (p as {type: 'text'; text: string}).text)
-            .join('')
-        }
-        
-        // 清理 content 中可能包含的工具调用格式
-        cleanContent = cleanContent
-          .replace(/\w+:\s*"\{[^}]*\}"/g, '')  // 移除工具调用 JSON 格式
-          .replace(/```json\s*\n?\{[\s\S]*?"tool"[\s\S]*?\}\s*\n?```/g, '')  // 移除代码块中的工具调用
-          .replace(/^\s*-\s+\w+\s*\([^)]*\)\s*$/gm, '')  // 移除列表格式的工具调用
-          .replace(/我将使用以下工具[：:]\s*\n?/g, '')  // 移除提示文本
-          .replace(/\n{3,}/g, '\n\n').trim()  // 清理空行
-        
-        // 构建助手消息
-        const assistantMsg: CliChatMessage = {
-          role: 'assistant',
-          content: cleanContent || '我将分析并处理您的请求。'
-        }
-        
-        // 如果有后端格式的工具调用，添加到消息中
-        if (msg.tool_calls && msg.tool_calls.length > 0) {
-          assistantMsg.tool_calls = msg.tool_calls
-        }
-        
-        messages.push(assistantMsg)
-        
-        // 添加工具结果作为 tool 角色消息
-        // 优先使用后端格式的工具调用
-        const toolCallList = msg.tool_calls || msg.toolCalls || []
-        for (const toolCall of toolCallList) {
-          // 处理两种格式的工具调用
-          const toolCallId = 'id' in toolCall ? toolCall.id : (toolCall as any).id
-          const toolResult = 'function' in toolCall 
-            ? (toolCall as any).result 
-            : (toolCall as KiloToolCall).result
-          const toolError = 'function' in toolCall 
-            ? undefined 
-            : (toolCall as KiloToolCall).error
-          
-          if ((toolCall as any).status === 'completed' || (toolCall as any).status === 'failed') {
-            messages.push({
-              role: 'tool',
-              content: String(toolResult || toolError || ''),
-              tool_call_id: toolCallId
-            })
-          }
-        }
-      } else if (msg.role === 'tool') {
-        // 直接传递工具消息
-        messages.push({
-          role: 'tool',
-          content: msg.content,
-          tool_call_id: msg.tool_call_id,
-          name: msg.name
-        })
-      }
-    }
-    
-    // ✅ 关键修复：最后添加当前用户消息（使用传入的参数，确保是最新的）
+    // 最后添加当前用户消息（使用传入的参数，确保是最新的）
     // 这样保证当前的多模态消息是 messages 数组中的最后一条用户消息
     // 后端重复检测重置会话时，会重新添加这条消息，保留图片数据
     let currentMessageContent: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}>
