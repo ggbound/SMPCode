@@ -17,8 +17,8 @@
 
 /* 头部 - 与编辑器标签栏保持一致 */
 .jack-file-explorer .sft-tree-header {
-  height: 27px;
-  min-height: 27px;
+  height: 37px;
+  min-height: 37px;
   flex-shrink: 0;
   display: flex;
   align-items: center;

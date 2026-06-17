@@ -834,7 +834,7 @@ body {
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
-  height: 35px;
+  height: 42px;
   overflow: hidden;
   user-select: none;
 }
@@ -857,7 +857,7 @@ body {
   align-items: center;
   gap: 6px;
   padding: 0 12px;
-  height: 35px;
+  height: 40px;
   min-width: 120px;
   max-width: 200px;
   background: var(--bg-secondary);
@@ -998,8 +998,8 @@ body {
 
 /* Toggle Browser View button */
 .toggle-browser-btn {
-  width: 32px;
-  height: 35px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4132,7 +4132,7 @@ code ::selection {
 .settings-page .modal-body {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 0;
 }
 
 .settings-page .modal-footer {
@@ -7425,7 +7425,7 @@ code ::selection {
 .title-bar {
   display: flex;
   align-items: center;
-  height: 32px;
+  height: 42px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
