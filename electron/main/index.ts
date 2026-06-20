@@ -1324,6 +1324,153 @@ function setupConversationHandlers(): void {
   log.info('Conversation storage handlers registered')
 }
 
+// Feishu conversation storage handlers
+function setupFeishuConversationHandlers(): void {
+  const FEISHU_CONVERSATION_DIR = '.smp-code/feishu/conversations'
+  const FEISHU_SESSIONS_FILE = '.smp-code/feishu/sessions.json'
+
+  // 确保飞书对话目录存在
+  const ensureFeishuConversationDir = (projectPath: string) => {
+    const dir = join(projectPath, FEISHU_CONVERSATION_DIR)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+    return dir
+  }
+
+  // 保存飞书会话列表
+  ipcMain.handle('feishu:conversation:save-sessions', async (_event, { projectPath, sessions }: { 
+    projectPath: string
+    sessions: any[]
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided' }
+      }
+
+      const dir = ensureFeishuConversationDir(projectPath)
+      const filePath = join(dir, '..', 'sessions.json')
+      
+      const data = {
+        sessions,
+        updatedAt: new Date().toISOString()
+      }
+      
+      writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8')
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to save feishu sessions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 加载飞书会话列表
+  ipcMain.handle('feishu:conversation:list-sessions', async (_event, { projectPath }: { 
+    projectPath: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: true, sessions: [] }
+      }
+
+      const dir = ensureFeishuConversationDir(projectPath)
+      const filePath = join(dir, '..', 'sessions.json')
+      
+      if (!existsSync(filePath)) {
+        return { success: true, sessions: [] }
+      }
+
+      const data = JSON.parse(readFileSync(filePath, 'utf-8'))
+      return { success: true, sessions: data.sessions || [] }
+    } catch (error) {
+      log.error('Failed to list feishu sessions:', error)
+      return { success: false, error: String(error), sessions: [] }
+    }
+  })
+
+  // 保存飞书对话
+  ipcMain.handle('feishu:conversation:save', async (_event, { projectPath, sessionId, messages, sessionTitle }: { 
+    projectPath: string
+    sessionId: string
+    messages: any[]
+    sessionTitle?: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided' }
+      }
+
+      const dir = ensureFeishuConversationDir(projectPath)
+      const filePath = join(dir, `${sessionId}.json`)
+      
+      const data = {
+        sessionId,
+        title: sessionTitle || `会话 ${new Date().toLocaleString()}`,
+        messages,
+        updatedAt: new Date().toISOString()
+      }
+      
+      const jsonData = JSON.stringify(data, null, 2)
+      writeFileSync(filePath, jsonData, 'utf-8')
+      
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to save feishu conversation:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // 加载飞书对话
+  ipcMain.handle('feishu:conversation:load', async (_event, { projectPath, sessionId }: { 
+    projectPath: string
+    sessionId: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided', messages: [] }
+      }
+
+      const filePath = join(projectPath, FEISHU_CONVERSATION_DIR, `${sessionId}.json`)
+      
+      if (!existsSync(filePath)) {
+        return { success: true, messages: [] }
+      }
+      
+      const data = JSON.parse(readFileSync(filePath, 'utf-8'))
+      return { success: true, messages: data.messages || [], title: data.title }
+    } catch (error) {
+      log.error('Failed to load feishu conversation:', error)
+      return { success: false, error: String(error), messages: [] }
+    }
+  })
+
+  // 删除飞书会话
+  ipcMain.handle('feishu:conversation:delete-session', async (_event, { projectPath, sessionId }: { 
+    projectPath: string
+    sessionId: string
+  }) => {
+    try {
+      if (!projectPath) {
+        return { success: false, error: 'No project path provided' }
+      }
+
+      const filePath = join(projectPath, FEISHU_CONVERSATION_DIR, `${sessionId}.json`)
+      
+      if (existsSync(filePath)) {
+        await unlinkAsync(filePath)
+        log.info(`Feishu session deleted: ${filePath}`)
+      }
+      
+      return { success: true }
+    } catch (error) {
+      log.error('Failed to delete feishu session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  log.info('Feishu conversation storage handlers registered')
+}
+
 // 初始化 CLI 注册表
 function initializeCLIRegistries(): void {
   // 注册内置命令
@@ -2031,6 +2178,9 @@ app.whenReady().then(async () => {
   
   // Setup conversation storage handlers
   setupConversationHandlers()
+  
+  // Setup Feishu conversation storage handlers
+  setupFeishuConversationHandlers()
   
   // Initialize MCP & Skill service
   log.info('[Main] Initializing MCP & Skill service...')

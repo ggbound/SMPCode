@@ -329,7 +329,18 @@ const api = {
     onStatusChange: (callback: (event: unknown, status: any) => void) => {
       ipcRenderer.on('feishu:ws:status', callback)
       return () => ipcRenderer.removeListener('feishu:ws:status', callback)
-    }
+    },
+    // 会话存储
+    saveSessions: (projectPath: string, sessions: any[]) => 
+      ipcRenderer.invoke('feishu:conversation:save-sessions', { projectPath, sessions }),
+    listSessions: (projectPath: string) => 
+      ipcRenderer.invoke('feishu:conversation:list-sessions', { projectPath }),
+    saveConversation: (projectPath: string, sessionId: string, messages: any[], sessionTitle?: string) => 
+      ipcRenderer.invoke('feishu:conversation:save', { projectPath, sessionId, messages, sessionTitle }),
+    loadConversation: (projectPath: string, sessionId: string) => 
+      ipcRenderer.invoke('feishu:conversation:load', { projectPath, sessionId }),
+    deleteSession: (projectPath: string, sessionId: string) => 
+      ipcRenderer.invoke('feishu:conversation:delete-session', { projectPath, sessionId })
   }
 }
 

@@ -96,6 +96,11 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
           const emptySessionIds: string[] = []
           
           for (const s of result.sessions) {
+            // 过滤掉飞书相关的会话（标题为"飞书专用对话"或 ID 以"feishu-"开头）
+            if (s.title === '飞书专用对话' || s.id.startsWith('feishu-')) {
+              console.log('[KiloPage] Skipping Feishu session:', s.id, s.title)
+              continue
+            }
             if (s.messageCount > 0) {
               sessionsToLoad.push(s)
             } else {

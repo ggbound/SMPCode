@@ -172,6 +172,12 @@ declare global {
         replyMessage: (content: string, messageId: string, chatId: string, chatType: 'group' | 'p2p') => Promise<{ success: boolean; error?: string }>
         onMessage: (callback: (event: unknown, data: any) => void) => () => void
         onStatusChange: (callback: (event: unknown, status: any) => void) => () => void
+        // 会话存储
+        saveSessions: (projectPath: string, sessions: any[]) => Promise<{ success: boolean; error?: string }>
+        listSessions: (projectPath: string) => Promise<{ success: boolean; sessions?: any[]; error?: string }>
+        saveConversation: (projectPath: string, sessionId: string, messages: any[], sessionTitle?: string) => Promise<{ success: boolean; error?: string }>
+        loadConversation: (projectPath: string, sessionId: string) => Promise<{ success: boolean; messages?: any[]; title?: string; error?: string }>
+        deleteSession: (projectPath: string, sessionId: string) => Promise<{ success: boolean; error?: string }>
       }
 
       // MCP & Skill API

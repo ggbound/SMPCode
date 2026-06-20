@@ -1,0 +1,379 @@
+/**
+ * Feishu 对话 Hook
+ * 基于 KiloConversation 但使用独立的 FeishuStore
+ */
+
+import { useCallback, useRef, useEffect, useState } from 'react'
+import { useFeishuStore, FeishuMessage, FeishuSession, FeishuToolCall, FeishuImageContent } from '../store/feishuStore'
+import { AgentMode, AGENT_MODE_CONFIGS } from '../types/agent'
+import { v4 as uuidv4 } from 'uuid'
+import { buildMultimodalContent } from '../App'
+
+interface UseFeishuConversationOptions {
+  apiKey: string
+  model: string
+  projectPath?: string
+}
+
+export function useFeishuConversation(options: UseFeishuConversationOptions) {
+  const { apiKey, model, projectPath } = options
+  
+  // 使用 ref 存储 store，避免闭包问题
+  const storeRef = useRef(useFeishuStore.getState())
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const unsubscribeRef = useRef<(() => void) | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  
+  // 使用 ref 存储最新的 model 值
+  const modelRef = useRef(model)
+  useEffect(() => {
+    modelRef.current = model
+  }, [model])
+  
+  // 同步 store 到 ref
+  useEffect(() => {
+    const unsubscribe = useFeishuStore.subscribe((state) => {
+      storeRef.current = state
+    })
+    return () => unsubscribe()
+  }, [])
+  
+  // 清理函数
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current()
+      }
+    }
+  }, [])
+  
+  // 生成系统提示词
+  const generateSystemPrompt = useCallback((mode: AgentMode) => {
+    const config = AGENT_MODE_CONFIGS[mode]
+    const basePrompt = config.systemPrompt
+    
+    const contextPrompt = projectPath 
+      ? `\n\n当前项目路径: ${projectPath}`
+      : ''
+    
+    const toolPrompt = config.allowedTools.length > 0
+      ? `\n\n可用工具:\n${config.allowedTools.map(t => `- ${t}`).join('\n')}`
+      : ''
+    
+    const imagePrompt = `\n\n【图片处理说明】
+用户可能会上传图片（截图、照片等）。当用户上传图片时，图片内容已经包含在对话中，你不需要去文件系统中查找图片文件。
+直接分析用户上传的图片内容并回答问题即可。`;
+    
+    return `${basePrompt}${contextPrompt}${toolPrompt}${imagePrompt}`
+  }, [projectPath])
+  
+  // 发送消息
+  const sendMessage = useCallback(async (content: string, images?: FeishuImageContent[]) => {
+    const store = storeRef.current
+    
+    if ((!content.trim() && !images?.length) || store.isGenerating) {
+      return
+    }
+    
+    setError(null)
+    
+    // 如果当前没有会话，创建一个新会话
+    if (!store.currentSession) {
+      const sessionId = uuidv4()
+      const sessionTitle = content.trim().slice(0, 50) || '图片对话'
+      
+      const session: FeishuSession = {
+        id: sessionId,
+        title: sessionTitle,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        messageCount: 0,
+        mode: store.currentMode
+      }
+      
+      store.addSession(session)
+      store.setCurrentSession(sessionId)
+    }
+    
+    // 构建消息内容
+    const messageContent = buildMultimodalContent(content, images)
+    
+    // 创建用户消息
+    const userMessage: FeishuMessage = {
+      id: uuidv4(),
+      role: 'user',
+      content: messageContent,
+      timestamp: Date.now(),
+      mode: store.currentMode,
+      images: images
+    }
+    
+    store.addMessage(userMessage)
+    store.setInput('')
+    
+    // 创建 AI 消息占位
+    const assistantMessageId = uuidv4()
+    const initialTextBlockId = uuidv4()
+    const assistantMessage: FeishuMessage = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: Date.now(),
+      isStreaming: true,
+      mode: store.currentMode,
+      blocks: [{
+        id: initialTextBlockId,
+        type: 'text',
+        content: '',
+        timestamp: Date.now()
+      }]
+    }
+    
+    store.addMessage(assistantMessage)
+    store.startStreaming(assistantMessageId)
+    
+    // 准备请求
+    const messages: any[] = []
+    
+    // 添加系统提示词
+    const systemPrompt = generateSystemPrompt(store.currentMode)
+    messages.push({ role: 'system', content: systemPrompt })
+    
+    // 添加当前用户消息
+    let currentMessageContent: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}>
+    if (images && images.length > 0) {
+      currentMessageContent = buildMultimodalContent(content, images)
+    } else {
+      currentMessageContent = content.trim()
+    }
+    
+    messages.push({
+      role: 'user',
+      content: currentMessageContent
+    })
+    
+    // 创建 AbortController
+    abortControllerRef.current = new AbortController()
+    
+    try {
+      // 获取 IPC API
+      const ipcApi = (window as unknown as {
+        api?: {
+          cliChat?: {
+            createSession: (mode: 'chat' | 'agent', cwd: string) => Promise<{ success: boolean; sessionId?: string; error?: string }>
+            sendMessage: (sessionId: string, message: string, messages?: any[], model?: string) => Promise<{ success: boolean; error?: string }>
+            stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+            onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => () => void
+          }
+        }
+      }).api
+
+      if (!ipcApi?.cliChat) {
+        throw new Error('CLI Chat IPC API not available')
+      }
+
+      // 创建会话
+      const mode = store.currentMode === 'ask' ? 'chat' : 'agent'
+      const cwd = projectPath || '/'
+      const createResult = await ipcApi.cliChat.createSession(mode, cwd)
+      if (!createResult.success || !createResult.sessionId) {
+        throw new Error(createResult.error || 'Failed to create CLI session')
+      }
+
+      const sessionId = createResult.sessionId
+      sessionIdRef.current = sessionId
+      
+      // 设置流式监听
+      // 使用本地变量累加内容，避免闭包问题
+      let accumulatedContent = ''
+      const unsubscribe = ipcApi.cliChat.onStreamChunk((_event, data) => {
+        if (data.sessionId !== sessionId) return
+        
+        const chunk = data.chunk
+        // 每次都从最新状态获取 store
+        const currentStore = useFeishuStore.getState()
+        
+        switch (chunk.type) {
+          case 'text':
+            if (chunk.content) {
+              // 使用本地变量累加，避免依赖 store 中的旧状态
+              accumulatedContent += chunk.content
+              // 同时更新 blocks 数组（用于渲染）
+              currentStore.appendTextToLastBlock(assistantMessageId, chunk.content)
+              // 更新 content 字段
+              currentStore.updateMessage(assistantMessageId, { content: accumulatedContent })
+            }
+            break
+            
+          case 'tool_call':
+            if (chunk.toolCall) {
+              const toolCall: FeishuToolCall = {
+                id: chunk.toolCall.id || uuidv4(),
+                name: chunk.toolCall.name,
+                args: chunk.toolCall.arguments || {},
+                status: 'running',
+                timestamp: Date.now()
+              }
+              currentStore.addToolCall(assistantMessageId, toolCall)
+            }
+            break
+            
+          case 'tool_result':
+            if (chunk.toolResult) {
+              const latestStore = useFeishuStore.getState()
+              const currentMsg = latestStore.messages.find(m => m.id === assistantMessageId)
+              if (currentMsg?.toolCalls) {
+                const toolCall = currentMsg.toolCalls.find(t => t.id === chunk.toolResult.toolCallId)
+                if (toolCall) {
+                  latestStore.updateToolCall(assistantMessageId, toolCall.id, {
+                    status: chunk.toolResult.success ? 'completed' : 'failed',
+                    result: chunk.toolResult.output,
+                    error: chunk.toolResult.error,
+                    duration: Date.now() - toolCall.timestamp
+                  })
+                }
+              }
+              
+              // 将工具结果追加到消息内容
+              const resultText = chunk.toolResult.success 
+                ? `\n\n**工具执行结果：**\n\`\`\`\n${chunk.toolResult.output}\n\`\`\``
+                : `\n\n**工具执行失败：**\n${chunk.toolResult.error || 'Unknown error'}`
+              
+              accumulatedContent += resultText
+              latestStore.updateMessage(assistantMessageId, {
+                content: accumulatedContent
+              })
+            }
+            break
+            
+          case 'error':
+            // 忽略 AbortError
+            if (chunk.error?.includes('aborted') || chunk.error?.includes('AbortError')) {
+              break
+            }
+            
+            const errorMsg = chunk.error || 'Unknown error'
+            accumulatedContent += `\n\n❌ **错误：** ${errorMsg}`
+            
+            currentStore.updateMessage(assistantMessageId, {
+              content: accumulatedContent,
+              isStreaming: false
+            })
+            currentStore.stopStreaming()
+            break
+            
+          case 'done':
+            const updateData: Partial<FeishuMessage> = {
+              isStreaming: false,
+              content: accumulatedContent
+            }
+            if (chunk.usage) {
+              updateData.usage = {
+                inputTokens: chunk.usage.inputTokens,
+                outputTokens: chunk.usage.outputTokens
+              }
+            }
+            currentStore.updateMessage(assistantMessageId, updateData)
+            currentStore.stopStreaming()
+            
+            // 更新会话
+            if (currentStore.currentSession) {
+              currentStore.updateSession(currentStore.currentSession, {
+                messageCount: currentStore.messages.length,
+                updatedAt: Date.now()
+              })
+            }
+            
+            // 取消订阅
+            if (unsubscribeRef.current) {
+              unsubscribeRef.current()
+              unsubscribeRef.current = null
+            }
+            break
+        }
+      })
+      
+      unsubscribeRef.current = unsubscribe
+
+      // 发送消息
+      const currentModel = modelRef.current
+      await ipcApi.cliChat.sendMessage(sessionId, content.trim(), messages, currentModel)
+      
+    } catch (error) {
+      console.error('[useFeishuConversation] Error:', error)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      
+      const currentStore = storeRef.current
+      currentStore.updateMessage(assistantMessageId, {
+        content: `❌ **错误：** ${errorMsg}`,
+        isStreaming: false
+      })
+      currentStore.stopStreaming()
+      setError(errorMsg)
+    }
+  }, [apiKey, model, projectPath])
+  
+  // 停止生成
+  const stopGeneration = useCallback(() => {
+    if (sessionIdRef.current) {
+      const ipcApi = (window as unknown as {
+        api?: {
+          cliChat?: {
+            stopSession: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+          }
+        }
+      }).api
+      
+      if (ipcApi?.cliChat) {
+        ipcApi.cliChat.stopSession(sessionIdRef.current)
+      }
+    }
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    
+    storeRef.current.stopStreaming()
+  }, [])
+  
+  // 清空消息
+  const clearMessages = useCallback(() => {
+    storeRef.current.clearMessages()
+  }, [])
+  
+  // 添加消息（用于同步）
+  const addMessage = useCallback((message: FeishuMessage) => {
+    storeRef.current.addMessage(message)
+  }, [])
+  
+  // 设置输入
+  const setInput = useCallback((input: string) => {
+    storeRef.current.setInput(input)
+  }, [])
+  
+  // 清除错误
+  const clearError = useCallback(() => {
+    setError(null)
+  }, [])
+  
+  // 从 store 获取当前状态
+  const store = useFeishuStore()
+  
+  return {
+    messages: store.messages,
+    input: store.input,
+    isGenerating: store.isGenerating,
+    error,
+    currentMode: store.currentMode,
+    sendMessage,
+    stopGeneration,
+    clearMessages,
+    addMessage,
+    setInput,
+    clearError
+  }
+}

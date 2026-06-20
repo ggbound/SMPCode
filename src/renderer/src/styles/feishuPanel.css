@@ -1,0 +1,682 @@
+/**
+ * FeishuPanel 样式 - 集成完整 AI 对话功能
+ * 
+ * 结构：
+ * - 区域1（顶部）：飞书连接状态栏
+ * - 区域2（左侧边栏）：新对话 + 历史对话
+ * - 区域3（主区域）：完整 AI 对话功能（参考 KiloPage）
+ */
+
+.feishu-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #0d0d0d;
+  color: #e0e0e0;
+}
+
+/* ========== 区域1：顶部连接状态栏 ========== */
+.feishu-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: #141414;
+  border-bottom: 1px solid #1f1f1f;
+  flex-shrink: 0;
+}
+
+.feishu-status-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.feishu-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.feishu-status-indicator.connected {
+  color: #22c55e;
+}
+
+.feishu-status-indicator.disconnected {
+  color: #ef4444;
+}
+
+.feishu-status-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ef4444;
+  font-size: 12px;
+}
+
+.feishu-status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feishu-status-btn {
+  padding: 8px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  background: transparent;
+  color: #a0a0a0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.feishu-status-btn:hover {
+  background: #1f1f1f;
+  border-color: #3a3a3a;
+  color: #e0e0e0;
+}
+
+.feishu-status-btn.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
+  color: white;
+}
+
+.feishu-status-btn.primary:hover {
+  opacity: 0.9;
+}
+
+.feishu-status-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========== 主体区域 ========== */
+.feishu-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ========== 区域2：左侧边栏 ========== */
+.feishu-sidebar {
+  width: 260px;
+  min-width: 260px;
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  background: #141414;
+  border-right: 1px solid #1f1f1f;
+  flex-shrink: 0;
+}
+
+/* 新对话按钮 */
+.feishu-sidebar-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #1f1f1f;
+}
+
+.feishu-new-chat-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: transparent;
+  color: #e0e0e0;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.feishu-new-chat-btn:hover {
+  background: #1f1f1f;
+  border-color: #3a3a3a;
+}
+
+.feishu-new-chat-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 历史对话 */
+.feishu-sidebar-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.feishu-sidebar-section-title {
+  padding: 12px 20px;
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.feishu-sessions-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px;
+}
+
+.feishu-empty-sessions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #666;
+  text-align: center;
+}
+
+.feishu-empty-sessions svg {
+  margin-bottom: 12px;
+  opacity: 0.3;
+}
+
+.feishu-empty-sessions p {
+  font-size: 13px;
+}
+
+/* 会话项 */
+.feishu-session-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-bottom: 2px;
+}
+
+.feishu-session-item:hover {
+  background: #1f1f1f;
+}
+
+.feishu-session-item.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.feishu-session-item.active {
+  background: #1f1f1f;
+}
+
+.feishu-session-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 0 2px 2px 0;
+}
+
+.feishu-session-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.feishu-session-title {
+  font-size: 13px;
+  color: #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feishu-session-time {
+  font-size: 11px;
+  color: #666;
+}
+
+.feishu-session-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #666;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.feishu-session-item:hover .feishu-session-menu-btn {
+  opacity: 1;
+}
+
+.feishu-session-menu-btn:hover {
+  background: #2a2a2a;
+  color: #e0e0e0;
+}
+
+/* 编辑框 */
+.feishu-session-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.feishu-session-edit input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #667eea;
+  border-radius: 6px;
+  background: #0d0d0d;
+  color: #e0e0e0;
+  font-size: 13px;
+  outline: none;
+}
+
+.feishu-session-edit button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #667eea;
+  cursor: pointer;
+}
+
+/* 下拉菜单 */
+.feishu-session-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #1f1f1f;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  padding: 4px;
+  min-width: 120px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.feishu-session-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #e0e0e0;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.feishu-session-dropdown button:hover {
+  background: #2a2a2a;
+}
+
+/* ========== 区域3：主对话区域 ========== */
+.feishu-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #0d0d0d;
+}
+
+/* 顶部工具栏 */
+.feishu-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid #1f1f1f;
+  flex-shrink: 0;
+}
+
+.feishu-chat-header-left {
+  display: flex;
+  align-items: center;
+}
+
+.feishu-chat-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #e0e0e0;
+}
+
+.feishu-chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feishu-clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #a0a0a0;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.feishu-clear-btn:hover {
+  background: #1f1f1f;
+  color: #e0e0e0;
+}
+
+/* 错误提示 */
+.feishu-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  flex-shrink: 0;
+}
+
+.feishu-error-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.feishu-error-icon {
+  color: #ef4444;
+}
+
+.feishu-error-message {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.feishu-error-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #ef4444;
+}
+
+.feishu-error-detail {
+  font-size: 12px;
+  color: #a0a0a0;
+}
+
+.feishu-error-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #a0a0a0;
+  cursor: pointer;
+}
+
+.feishu-error-close:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* 消息容器 */
+.feishu-messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.feishu-empty-chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  text-align: center;
+}
+
+.feishu-empty-chat h3 {
+  font-size: 18px;
+  font-weight: 400;
+  margin-bottom: 8px;
+  color: #a0a0a0;
+}
+
+.feishu-empty-chat p {
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.feishu-mode-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feishu-mode-hint {
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: #1f1f1f;
+  font-size: 13px;
+  color: #a0a0a0;
+}
+
+.feishu-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* 输入区域 */
+.feishu-input-section {
+  padding: 16px 20px;
+  border-top: 1px solid #1f1f1f;
+  background: #141414;
+  flex-shrink: 0;
+}
+
+/* 图片预览 */
+.feishu-image-preview-container {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.feishu-image-preview-item {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #2a2a2a;
+}
+
+.feishu-image-preview-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feishu-image-remove-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  cursor: pointer;
+}
+
+.feishu-image-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.9);
+}
+
+/* 输入框 */
+.feishu-input-box {
+  margin-bottom: 12px;
+}
+
+.feishu-input-box textarea {
+  width: 100%;
+  padding: 14px 18px;
+  border: 1px solid #2a2a2a;
+  border-radius: 12px;
+  background: #0d0d0d;
+  color: #e0e0e0;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: none;
+  min-height: 80px;
+  max-height: 200px;
+  outline: none;
+  font-family: inherit;
+}
+
+.feishu-input-box textarea:focus {
+  border-color: #667eea;
+}
+
+.feishu-input-box textarea::placeholder {
+  color: #666;
+}
+
+.feishu-input-box textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 输入工具栏 */
+.feishu-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feishu-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feishu-image-upload-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #a0a0a0;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.feishu-image-upload-btn:hover {
+  background: #1f1f1f;
+  color: #e0e0e0;
+}
+
+.feishu-image-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feishu-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feishu-send-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.feishu-send-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.feishu-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feishu-send-btn.stop {
+  background: #ef4444;
+}
+
+.feishu-send-btn.stop:hover {
+  background: #dc2626;
+}
+
+/* 无会话状态 */
+.feishu-no-session {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #666;
+  text-align: center;
+}
+
+.feishu-no-session svg {
+  margin-bottom: 20px;
+  color: #667eea;
+  opacity: 0.3;
+}
+
+.feishu-no-session h3 {
+  font-size: 16px;
+  font-weight: 400;
+}
