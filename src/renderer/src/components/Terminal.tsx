@@ -300,27 +300,27 @@ const Terminal = forwardRef<TerminalRef, TerminalProps>(({ isVisible, projectPat
             fontSize: 14,
             fontFamily: 'JetBrains Mono, Fira Code, Menlo, Monaco, "Courier New", monospace, "Apple Color Emoji"',
             theme: {
-              // Modern dark theme based on Dracula/One Dark
-              background: '#282c34',
-              foreground: '#abb2bf',
-              cursor: '#528bff',
-              selectionBackground: '#3e4451',
-              selectionForeground: '#abb2bf',
-              black: '#282c34',
-              red: '#e06c75',
-              green: '#98c379',
-              yellow: '#e5c07b',
-              blue: '#61afef',
-              magenta: '#c678dd',
-              cyan: '#56b6c2',
-              white: '#abb2bf',
-              brightBlack: '#5c6370',
-              brightRed: '#ff6b7a',
-              brightGreen: '#a5e075',
-              brightYellow: '#f5d78e',
-              brightBlue: '#6cb8ff',
-              brightMagenta: '#d282e8',
-              brightCyan: '#66c8d4',
+              // VS Code 默认深色主题
+              background: '#1e1e1e',  // VS Code 编辑器背景色
+              foreground: '#d4d4d4',  // VS Code 默认前景色
+              cursor: '#aeafad',        // VS Code 光标颜色
+              selectionBackground: '#264f78',  // VS Code 选中背景色
+              selectionForeground: '#ffffff',
+              black: '#1e1e1e',
+              red: '#f44747',
+              green: '#4ec9b0',
+              yellow: '#dcdcaa',
+              blue: '#569cd6',
+              magenta: '#c586c0',
+              cyan: '#4ec9b0',
+              white: '#d4d4d4',
+              brightBlack: '#808080',
+              brightRed: '#f44747',
+              brightGreen: '#4ec9b0',
+              brightYellow: '#dcdcaa',
+              brightBlue: '#569cd6',
+              brightMagenta: '#c586c0',
+              brightCyan: '#4ec9b0',
               brightWhite: '#ffffff'
             },
             cursorStyle: 'bar',

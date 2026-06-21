@@ -1,8 +1,9 @@
 /**
- * Terminal 样式 - 现代工业风格
+ * Terminal 样式 - VS Code 原生风格
+ * 参考 VS Code 集成终端设计
  */
 
-/* 终端面板 */
+/* ==================== 终端面板 ==================== */
 .terminal-panel {
   display: flex;
   flex-direction: column;
@@ -14,46 +15,25 @@
   flex-shrink: 0;
 }
 
-/* 终端标签容器 */
+/* ==================== 终端标签栏 ==================== */
 .terminal-tabs-container {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   height: 35px;
-  padding: 0 var(--space-lg);
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
-  position: relative;
-}
-
-/* 顶部渐变装饰 */
-.terminal-tabs-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    var(--accent-primary) 30%, 
-    var(--accent-hover) 70%, 
-    transparent 100%
-  );
-  opacity: 0.3;
 }
 
 /* 终端标签列表 */
 .terminal-tabs {
   display: flex;
   flex: 1;
-  gap: 2px;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .terminal-tabs::-webkit-scrollbar {
-  height: 4px;
+  height: 3px;
 }
 
 .terminal-tabs::-webkit-scrollbar-track {
@@ -61,50 +41,65 @@
 }
 
 .terminal-tabs::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
-  border-radius: var(--radius-full);
+  background: var(--border-primary);
 }
 
-/* 单个终端标签 */
+/* 单个终端标签 - VS Code 风格 */
 .terminal-tab {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  gap: 6px;
+  padding: 0 12px;
   min-width: 120px;
   max-width: 200px;
-  height: 32px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  height: 35px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-primary);
   cursor: pointer;
-  transition: all var(--transition-fast);
   font-size: 13px;
-  color: var(--fg-tertiary);
+  color: var(--fg-secondary);
   flex-shrink: 0;
+  position: relative;
 }
 
 .terminal-tab:hover {
   background: var(--bg-hover);
-  border-color: var(--border-default);
   color: var(--fg-primary);
 }
 
 .terminal-tab.active {
-  background: var(--bg-elevated);
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3);
+  background: var(--bg-primary);
   color: var(--fg-primary);
 }
 
+/* 激活标签底部指示器 */
+.terminal-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-primary);
+}
+
+/* 标签图标 */
 .terminal-tab > .tab-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
+  font-size: 12px;
+  color: var(--fg-tertiary);
 }
 
+.terminal-tab.active > .tab-icon {
+  color: var(--accent-primary);
+}
+
+/* 标签名称 */
 .terminal-tab > .tab-name {
   flex: 1;
   overflow: hidden;
@@ -112,6 +107,7 @@
   white-space: nowrap;
 }
 
+/* 关闭按钮 */
 .terminal-tab > .tab-close {
   display: flex;
   align-items: center;
@@ -120,12 +116,12 @@
   height: 16px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
-  color: var(--fg-disabled);
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: all var(--transition-fast);
   font-size: 14px;
+  line-height: 1;
 }
 
 .terminal-tab:hover > .tab-close {
@@ -137,108 +133,117 @@
   color: var(--fg-primary);
 }
 
-/* 终端操作按钮 */
+/* ==================== 终端操作按钮 ==================== */
 .terminal-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  padding: 0 8px;
 }
 
 .terminal-action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
   color: var(--fg-tertiary);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 300;
 }
 
 .terminal-action-btn:hover {
   background: var(--bg-hover);
-  border-color: var(--border-strong);
   color: var(--fg-primary);
 }
 
-/* 终端内容区域 */
+.terminal-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==================== 终端内容区域 ==================== */
 .terminal-content {
   flex: 1;
   overflow: hidden;
   position: relative;
-  background: var(--bg-primary);
+  background: var(--bg-secondary);  /* VS Code 编辑器背景色 #1e1e1e */
 }
 
 /* 终端实例 */
 .terminal-instance {
   width: 100%;
   height: 100%;
-  padding: var(--space-sm);
+}
+
+.terminal-instance.active {
+  display: block;
+}
+
+.terminal-instance:not(.active) {
+  display: none;
 }
 
 /* xterm 样式覆盖 */
 .terminal-instance .xterm {
-  padding: var(--space-sm);
+  padding: 4px;
 }
 
 .terminal-instance .xterm-viewport {
   background-color: var(--bg-primary) !important;
 }
 
-/* 空状态 */
+/* ==================== 空状态 ==================== */
 .terminal-empty {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: var(--space-8);
+  padding: 24px;
 }
 
 .terminal-empty-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-lg);
+  gap: 16px;
   text-align: center;
-  color: var(--fg-disabled);
+  color: var(--fg-tertiary);
 }
 
 .terminal-open-btn {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  color: var(--fg-tertiary);
-  font-size: 14px;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  color: var(--fg-secondary);
+  font-size: 13px;
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .terminal-open-btn:hover {
   background: var(--bg-hover);
-  border-color: var(--border-strong);
+  border-color: var(--border-default);
   color: var(--fg-primary);
 }
 
-/* 进程面板 */
+/* ==================== 进程面板 ==================== */
 .process-panel {
   position: absolute;
   bottom: 40px;
-  right: var(--space-lg);
+  right: 16px;
   width: 400px;
   max-height: 300px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   z-index: 100;
   overflow: hidden;
 }
@@ -247,7 +252,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-md) var(--space-lg);
+  padding: 12px 16px;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
 }
@@ -266,11 +271,10 @@
   height: 24px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
-  color: var(--fg-disabled);
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .process-panel-close:hover {
@@ -281,13 +285,13 @@
 .process-list {
   max-height: 250px;
   overflow-y: auto;
-  padding: var(--space-sm);
+  padding: 8px;
 }
 
 .process-empty {
-  padding: var(--space-lg);
+  padding: 16px;
   text-align: center;
-  color: var(--fg-disabled);
+  color: var(--fg-tertiary);
   font-size: 13px;
 }
 
@@ -295,31 +299,29 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-md);
-  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  border-radius: 3px;
   cursor: pointer;
-  transition: all var(--transition-fast);
-  border: 1px solid transparent;
+  border-left: 3px solid transparent;
 }
 
 .process-item:hover {
   background: var(--bg-hover);
-  border-color: var(--border-default);
 }
 
 .process-item.running {
-  border-left: 3px solid var(--success);
+  border-left-color: var(--status-success);
 }
 
 .process-item.stopped {
-  border-left: 3px solid var(--text-muted);
+  border-left-color: var(--fg-tertiary);
 }
 
 .process-info {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-xs);
+  gap: 4px;
 }
 
 .process-command {
@@ -328,7 +330,7 @@
   color: var(--fg-primary);
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 8px;
 }
 
 .reused-badge {
@@ -337,53 +339,53 @@
   padding: 2px 6px;
   background: rgba(245, 158, 11, 0.2);
   border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: var(--radius-sm);
+  border-radius: 3px;
   font-size: 11px;
-  color: var(--warning);
+  color: #f59e0b;
 }
 
 .process-meta {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: 8px;
   font-size: 11px;
-  color: var(--fg-disabled);
+  color: var(--fg-tertiary);
 }
 
 .process-status {
   padding: 2px 6px;
-  border-radius: var(--radius-sm);
+  border-radius: 3px;
   font-size: 11px;
   font-weight: 500;
 }
 
 .process-status.running {
   background: rgba(34, 197, 94, 0.15);
-  color: var(--success);
+  color: var(--status-success);
 }
 
 .process-status.stopped {
   background: rgba(148, 163, 184, 0.15);
-  color: var(--fg-disabled);
+  color: var(--fg-tertiary);
 }
 
 .process-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 4px;
 }
 
 .process-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  transition: all var(--transition-fast);
   font-size: 14px;
 }
 
@@ -392,13 +394,10 @@
 }
 
 .process-btn.stop:hover {
-  color: var(--error);
+  color: var(--status-error);
 }
 
-.process-btn.restart:hover {
-  color: var(--accent-primary);
-}
-
+.process-btn.restart:hover,
 .process-btn.focus:hover {
   color: var(--accent-primary);
 }

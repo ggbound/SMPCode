@@ -211,29 +211,74 @@
   background: var(--bg-hover);
 }
 
-/* ========== Breadcrumb 兼容性 ========== */
-.breadcrumb {
+/* ========== Breadcrumb 兼容性 - VS Code 风格 ========== */
+.breadcrumbs {
   display: flex;
   align-items: center;
   height: 22px;
-  padding: 0 var(--space-md);
-  background: var(--bg-primary);
+  padding: 0 12px;
+  background: var(--bg-primary);  /* VS Code 编辑器背景 #181818 */
   border-bottom: 1px solid var(--border-primary);
   font-size: 13px;
 }
 
+.breadcrumb-segment {
+  display: flex;
+  align-items: center;
+}
+
 .breadcrumb-item {
-  color: var(--fg-tertiary);
+  display: flex;
+  align-items: center;
+  padding: 2px 6px;
+  color: var(--fg-secondary);
   cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  font-size: 13px;
+  /* 重置按钮默认样式 */
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  line-height: inherit;
 }
 
 .breadcrumb-item:hover {
+  background: var(--bg-hover);
   color: var(--fg-primary);
 }
 
+.breadcrumb-item:focus {
+  outline: none;
+}
+
+/* 最后一个项目（当前文件） */
+.breadcrumb-segment:last-child .breadcrumb-item {
+  color: var(--fg-primary);
+  font-weight: 500;
+}
+
+.breadcrumb-segment:last-child .breadcrumb-item:hover {
+  background: var(--bg-hover);
+}
+
 .breadcrumb-separator {
-  margin: 0 var(--space-xs);
+  margin: 0 2px;
   color: var(--fg-tertiary);
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* 兼容旧类名 */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 12px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 13px;
 }
 
 /* ========== File Tree 兼容性 ========== */

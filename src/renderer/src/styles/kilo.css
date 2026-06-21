@@ -1170,7 +1170,7 @@
   display: flex;
   height: 100%;
   max-height: 100%;
-  background: var(--bg-quaternary);
+  background: var(--bg-primary);  /* VS Code 主背景色 #181818 */
   color: var(--fg-primary);
   overflow: hidden;
   position: relative;
@@ -1183,7 +1183,7 @@
   left: 0;
   width: 280px;
   height: 100%;
-  background: var(--bg-quaternary);
+  background: var(--bg-secondary);  /* VS Code 侧边栏背景色 #1e1e1e */
   border-right: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
@@ -1498,7 +1498,7 @@
   height: 35px;
   padding: 0 12px;
   border-bottom: 1px solid var(--border-primary);
-  background: var(--bg-quaternary);
+  background: var(--bg-secondary);  /* VS Code 标题栏背景色 #1e1e1e */
   flex-shrink: 0;
 }
 

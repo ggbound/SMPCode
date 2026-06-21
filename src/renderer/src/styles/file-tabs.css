@@ -1,48 +1,30 @@
 /**
- * File Tabs 样式 - 现代工业风格
+ * File Tabs 样式 - VS Code 原生风格
  * 编辑器标签栏样式
  */
 
-/* 标签容器 */
+/* ==================== 标签容器 ==================== */
 .file-tabs-container {
   display: flex;
   align-items: center;
   height: 35px;
-  background: var(--bg-secondary);
+  background: var(--bg-secondary);  /* VS Code 标题栏背景 #1e1e1e */
   border-bottom: 1px solid var(--border-primary);
   position: relative;
   overflow: hidden;
 }
 
-/* 顶部渐变装饰 */
-.file-tabs-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    var(--accent-primary) 30%, 
-    var(--accent-hover) 70%, 
-    transparent 100%
-  );
-  opacity: 0.3;
-}
-
-/* 标签列表 */
+/* ==================== 标签列表 ==================== */
 .file-tabs {
   display: flex;
   flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0 var(--space-sm);
-  gap: 2px;
+  padding: 0;
 }
 
 .file-tabs::-webkit-scrollbar {
-  height: 4px;
+  height: 3px;
 }
 
 .file-tabs::-webkit-scrollbar-track {
@@ -50,37 +32,47 @@
 }
 
 .file-tabs::-webkit-scrollbar-thumb {
-  background: var(--text-muted);
-  border-radius: var(--radius-full);
+  background: var(--border-primary);
 }
 
-/* 单个标签 */
+/* ==================== 单个标签 - VS Code 风格 ==================== */
 .file-tab {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  gap: 6px;
+  padding: 0 12px;
   min-width: 120px;
   max-width: 200px;
-  height: 36px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
+  height: 35px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-primary);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  position: relative;
+  font-size: 13px;
+  color: var(--fg-secondary);
   flex-shrink: 0;
+  position: relative;
 }
 
 .file-tab:hover {
   background: var(--bg-hover);
-  border-color: var(--border-primary);
+  color: var(--fg-primary);
 }
 
 .file-tab.active {
-  background: var(--bg-elevated);
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.3);
+  background: var(--bg-primary);  /* VS Code 编辑器背景 #181818 */
+  color: var(--fg-primary);
+}
+
+/* 激活标签顶部边框指示器 */
+.file-tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-primary);
 }
 
 .file-tab.preview {
@@ -88,14 +80,15 @@
   opacity: 0.8;
 }
 
+/* 未保存指示器 */
 .file-tab.dirty .tab-name::after {
   content: '●';
-  margin-left: var(--space-1);
+  margin-left: 4px;
   color: var(--accent-primary);
   font-size: 8px;
 }
 
-/* 标签图标 */
+/* ==================== 标签图标 ==================== */
 .tab-icon {
   display: flex;
   align-items: center;
@@ -110,11 +103,10 @@
   height: 16px;
 }
 
-/* 标签名称 */
+/* ==================== 标签名称 ==================== */
 .tab-name {
   flex: 1;
   font-size: 13px;
-  color: var(--fg-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -124,20 +116,21 @@
   color: var(--fg-primary);
 }
 
-/* 关闭按钮 */
+/* ==================== 关闭按钮 ==================== */
 .tab-close {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
-  color: var(--fg-disabled);
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
   opacity: 0;
-  transition: all var(--transition-fast);
+  font-size: 14px;
+  line-height: 1;
 }
 
 .file-tab:hover .tab-close {
@@ -154,19 +147,18 @@
   line-height: 1;
 }
 
-/* 滚动按钮 */
+/* ==================== 滚动按钮 ==================== */
 .tabs-scroll-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
-  color: var(--fg-disabled);
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  transition: all var(--transition-fast);
   font-size: 12px;
 }
 
@@ -175,20 +167,19 @@
   color: var(--fg-primary);
 }
 
-/* 浏览器切换按钮 */
+/* ==================== 浏览器切换按钮 ==================== */
 .toggle-browser-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
-  color: var(--fg-disabled);
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  transition: all var(--transition-fast);
-  margin-right: var(--space-sm);
+  margin-right: 8px;
 }
 
 .toggle-browser-btn:hover {
@@ -196,77 +187,44 @@
   color: var(--fg-primary);
 }
 
-/* 右键菜单 */
+/* ==================== 右键菜单 ==================== */
 .tab-context-menu {
   position: fixed;
-  z-index: 9999;
-  background: var(--bg-elevated);
+  background: var(--bg-secondary);
   border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) 0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
   min-width: 180px;
-  box-shadow: var(--shadow-lg);
+  padding: 4px;
 }
 
-.context-menu-item {
-  display: block;
-  width: 100%;
-  padding: var(--space-sm) var(--space-4);
-  background: transparent;
-  border: none;
-  color: var(--fg-primary);
-  font-size: 13px;
-  text-align: left;
+.tab-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
   cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.context-menu-item:hover {
-  background: var(--bg-hover);
-}
-
-/* 面包屑 */
-.breadcrumbs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-sm) var(--space-4);
-  background: var(--bg-tertiary);
-  border-bottom: 1px solid var(--border-primary);
+  border-radius: 3px;
   font-size: 13px;
-  color: var(--fg-tertiary);
+  color: var(--fg-secondary);
 }
 
-.breadcrumb-segment {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.breadcrumb-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  cursor: pointer;
-  padding: var(--space-1) var(--space-sm);
-  border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
-  background: transparent;
-  border: none;
-  color: var(--fg-tertiary);
-  font-size: 13px;
-}
-
-.breadcrumb-item:hover {
+.tab-context-menu-item:hover {
   background: var(--bg-hover);
   color: var(--fg-primary);
 }
 
-.breadcrumb-separator {
-  color: var(--text-muted);
+.tab-context-menu-item.danger {
+  color: var(--status-error);
 }
 
-.breadcrumb-segment:last-child .breadcrumb-item {
-  color: var(--fg-primary);
-  font-weight: 500;
+.tab-context-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.tab-context-menu-separator {
+  height: 1px;
+  background: var(--border-primary);
+  margin: 4px 0;
 }
