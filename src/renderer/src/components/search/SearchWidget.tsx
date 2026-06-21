@@ -17,41 +17,39 @@ export function SearchWidget({ onSearch }: SearchWidgetProps) {
 
   return (
     <div className="search-widget">
-      {/* 搜索输入行 */}
+      {/* 搜索输入行 - 紧凑设计 */}
       <div className="search-input-row">
-        <div className="search-input-wrapper">
-          <input
-            className="search-input"
-            value={query.contentPattern}
-            onChange={(e) => setQuery({ contentPattern: e.target.value })}
-            onKeyDown={handleKeyDown}
-            placeholder={t('searchPlaceholder')}
-          />
-          
-          {/* 搜索选项按钮 */}
-          <div className="search-options">
-            <button
-              className={`search-option-btn ${query.isRegex ? 'active' : ''}`}
-              onClick={() => setQuery({ isRegex: !query.isRegex })}
-              title={t('useRegex')}
-            >
-              .*
-            </button>
-            <button
-              className={`search-option-btn ${query.isCaseSensitive ? 'active' : ''}`}
-              onClick={() => setQuery({ isCaseSensitive: !query.isCaseSensitive })}
-              title={t('matchCase')}
-            >
-              Aa
-            </button>
-            <button
-              className={`search-option-btn ${query.isWholeWords ? 'active' : ''}`}
-              onClick={() => setQuery({ isWholeWords: !query.isWholeWords })}
-              title={t('matchWholeWord')}
-            >
-              W
-            </button>
-          </div>
+        <input
+          className="search-input"
+          value={query.contentPattern}
+          onChange={(e) => setQuery({ contentPattern: e.target.value })}
+          onKeyDown={handleKeyDown}
+          placeholder={t('searchPlaceholder')}
+        />
+        
+        {/* 搜索选项按钮 - 右侧紧凑排列 */}
+        <div className="search-options">
+          <button
+            className={`search-option-btn ${query.isCaseSensitive ? 'active' : ''}`}
+            onClick={() => setQuery({ isCaseSensitive: !query.isCaseSensitive })}
+            title={t('matchCase')}
+          >
+            Aa
+          </button>
+          <button
+            className={`search-option-btn ${query.isWholeWords ? 'active' : ''}`}
+            onClick={() => setQuery({ isWholeWords: !query.isWholeWords })}
+            title={t('matchWholeWord')}
+          >
+            Ab
+          </button>
+          <button
+            className={`search-option-btn ${query.isRegex ? 'active' : ''}`}
+            onClick={() => setQuery({ isRegex: !query.isRegex })}
+            title={t('useRegex')}
+          >
+            .*
+          </button>
         </div>
       </div>
       
@@ -65,9 +63,11 @@ export function SearchWidget({ onSearch }: SearchWidgetProps) {
             onKeyDown={handleKeyDown}
             placeholder={t('replacePlaceholder')}
           />
-          <button className="replace-all-btn" disabled>
-            {t('replaceAll')}
-          </button>
+          <div className="replace-options">
+            <button className="replace-option-btn" disabled>
+              All
+            </button>
+          </div>
         </div>
       )}
     </div>

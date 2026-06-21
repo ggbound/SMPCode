@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { Clock, Trash2, Play, Pause, RefreshCw, Calendar, Target, Zap, History, AlertCircle, Repeat, Plus } from 'lucide-react'
-import '../styles/vscode-sidebar.css'
 import './reminder-panel.css'
 
 export interface Reminder {
@@ -131,25 +130,23 @@ function ReminderPanel() {
   }
 
   return (
-    <div className="vscode-sidebar-panel reminder-panel">
+    <div className="reminder-panel">
       {/* Header */}
-      <div className="vscode-panel-header">
-        <div className="vscode-panel-header-left">
-          <span className="vscode-panel-title">定时任务</span>
-        </div>
-        <div className="vscode-panel-actions">
+      <div className="reminder-panel-header">
+        <span className="reminder-panel-title">定时任务</span>
+        <div className="reminder-panel-actions">
           <button
-            className="vscode-panel-action-btn"
+            className="reminder-panel-action-btn"
             onClick={fetchReminders}
             title="刷新"
           >
-            <RefreshCw size={16} />
+            <RefreshCw size={14} />
           </button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="vscode-panel-content reminder-panel-content">
+      <div className="reminder-panel-content">
         {loading ? (
           <div className="reminder-panel-loading">加载中...</div>
         ) : error ? (

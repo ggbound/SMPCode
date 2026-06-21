@@ -1,18 +1,16 @@
-/* MCP & Skill 配置面板样式 - VSCode Dark+ 主题 */
+/* MCP & Skill 配置面板样式 - VS Code 原生风格 */
 
 /* ============================================
-   面板容器 - 与文件资源管理器一致
+   面板容器
    ============================================ */
 .mcp-skill-panel-container {
   display: flex;
   flex-direction: column;
   height: 100%;
   width: 100%;
-  background-color: #0D1117;
-  color: #cccccc;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg-primary);
+  color: var(--fg-primary);
   font-size: 13px;
-  line-height: 1.4;
   overflow: hidden;
 }
 
@@ -24,31 +22,23 @@
 }
 
 /* ============================================
-   面板标题栏 - VSCode Dark+ 风格
+   面板标题栏 - VS Code 风格
    ============================================ */
 .mcp-skill-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 42px;
+  height: 35px;
   padding: 0 12px;
-  background-color: #161b22;
-  border-bottom: 1px solid #2b2b2b;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
-.mcp-skill-panel-header-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .mcp-skill-panel-header h2 {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: #cccccc;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
   margin: 0;
   user-select: none;
 }
@@ -63,18 +53,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   background: transparent;
   border: none;
-  border-radius: 5px;
-  color: #cccccc;
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  transition: background-color 0.1s ease;
 }
 
 .mcp-skill-panel-header-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background: var(--bg-hover);
+  color: var(--fg-primary);
 }
 
 .mcp-skill-panel-header-btn:disabled {
@@ -83,20 +73,20 @@
 }
 
 /* ============================================
-   标签页切换
+   标签页切换 - VS Code 风格
    ============================================ */
 .mcp-skill-panel-tabs {
   display: flex;
   flex-direction: column;
-  background-color: #0D1117;
+  background: var(--bg-primary);
 }
 
 .mcp-skill-panel-tabs-row {
   display: flex;
-  height: 36px;
+  height: 35px;
   padding: 0 8px;
   gap: 4px;
-  border-bottom: 1px solid #2b2b2b;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .mcp-skill-panel-tabs-row button {
@@ -108,22 +98,20 @@
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #858585;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
+  color: var(--fg-tertiary);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .mcp-skill-panel-tabs-row button:hover {
-  color: #cccccc;
-  background-color: #2a2d2e;
+  color: var(--fg-primary);
+  background: var(--bg-hover);
 }
 
 .mcp-skill-panel-tabs-row button.active {
-  color: #cccccc;
-  border-bottom-color: #007acc;
+  color: var(--fg-primary);
+  border-bottom-color: var(--accent-primary);
 }
 
 /* ============================================
@@ -132,75 +120,29 @@
 .mcp-skill-panel-content {
   flex: 1;
   overflow: auto;
-  background-color: #0D1117;
+  background: var(--bg-primary);
 }
 
 /* ============================================
-   工具栏
+   加载/空状态
    ============================================ */
-.mcp-skill-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  gap: 8px;
-}
-
-.mcp-skill-toolbar-left {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.mcp-skill-add-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  background-color: #007acc;
-  border: none;
-  border-radius: 4px;
-  color: #ffffff;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.mcp-skill-add-btn:hover {
-  background-color: #1177bb;
-}
-
-.mcp-skill-refresh-btn {
+.mcp-skill-loading {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: #858585;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  height: 100px;
+  color: var(--fg-tertiary);
+  font-size: 13px;
 }
 
-.mcp-skill-refresh-btn:hover {
-  background-color: #2a2d2e;
-  color: #cccccc;
-}
-
-/* ============================================
-   空状态
-   ============================================ */
 .mcp-skill-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  color: #858585;
+  padding: 60px 20px;
+  color: var(--fg-tertiary);
   text-align: center;
-  background-color: #0D1117;
 }
 
 .mcp-skill-empty-icon {
@@ -211,45 +153,39 @@
 
 .mcp-skill-empty-text {
   font-size: 13px;
-  margin: 0;
+  margin: 0 0 8px 0;
 }
 
 .mcp-skill-empty-hint {
   font-size: 12px;
-  margin-top: 8px;
   opacity: 0.7;
 }
 
 /* ============================================
-   服务器/Skill 列表
+   列表项 - VS Code 风格
    ============================================ */
 .mcp-skill-list {
   display: flex;
   flex-direction: column;
-  background-color: #0D1117;
 }
 
-/* ============================================
-   卡片项
-   ============================================ */
 .mcp-skill-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   cursor: pointer;
   transition: background-color 0.15s ease;
   border-left: 2px solid transparent;
-  background-color: #0D1117;
 }
 
 .mcp-skill-item:hover {
-  background-color: #2a2d2e;
+  background: var(--bg-hover);
 }
 
 .mcp-skill-item.selected {
-  background-color: #37373d;
-  border-left-color: #007acc;
+  background: var(--bg-secondary);
+  border-left-color: var(--accent-primary);
 }
 
 .mcp-skill-item.disabled {
@@ -266,21 +202,20 @@
 }
 
 .mcp-skill-status.connected {
-  background-color: #89d185;
-  box-shadow: 0 0 4px #89d185;
+  background: #22c55e;
 }
 
 .mcp-skill-status.connecting {
-  background-color: #cca700;
+  background: #fbbf24;
   animation: pulse 1.5s ease-in-out infinite;
 }
 
-.mcp-skill-status.disconnected {
-  background-color: #6e6e6e;
+.mcp-skill-status.error {
+  background: #ef4444;
 }
 
-.mcp-skill-status.error {
-  background-color: #f48771;
+.mcp-skill-status.disconnected {
+  background: var(--fg-tertiary);
 }
 
 @keyframes pulse {
@@ -294,7 +229,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .mcp-skill-header {
@@ -306,7 +241,7 @@
 .mcp-skill-name {
   font-size: 13px;
   font-weight: 500;
-  color: #cccccc;
+  color: var(--fg-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -316,142 +251,81 @@
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  background-color: #2d2d30;
+  background: var(--bg-secondary);
   border-radius: 3px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #858585;
+  color: var(--fg-tertiary);
   flex-shrink: 0;
 }
 
 .mcp-skill-badge.type-stdio {
-  color: #4fc1ff;
+  color: #60a5fa;
 }
 
 .mcp-skill-badge.type-http {
-  color: #89d185;
+  color: #f472b6;
 }
 
 .mcp-skill-badge.type-sse {
-  color: #cca700;
-}
-
-.mcp-skill-badge.type-code-review {
-  color: #007acc;
-}
-
-.mcp-skill-badge.type-security {
-  color: #f48771;
-}
-
-.mcp-skill-badge.type-debug {
-  color: #cca700;
-}
-
-.mcp-skill-badge.type-mini-app {
-  color: #89d185;
-}
-
-.mcp-skill-badge.type-custom {
-  color: #b180d7;
-}
-
-/* 安装状态徽章 */
-.mcp-skill-status-badge {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-weight: 500;
-  text-transform: uppercase;
-}
-
-.mcp-skill-status-badge.pending {
-  background: #3c3c3c;
-  color: #858585;
-}
-
-.mcp-skill-status-badge.downloading {
-  background: #1e3a5f;
-  color: #4da6ff;
-}
-
-.mcp-skill-status-badge.installing {
-  background: #1e3a5f;
-  color: #4da6ff;
-}
-
-.mcp-skill-status-badge.error {
-  background: #3c1818;
-  color: #f48771;
-}
-
-.mcp-skill-source {
-  color: #6e6e6e;
-}
-
-.mcp-skill-error {
-  color: #f48771;
+  color: #a78bfa;
 }
 
 .mcp-skill-description {
-  font-size: 12px;
-  color: #858585;
+  font-size: 11px;
+  color: var(--fg-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mcp-skill-tools-count {
+  font-size: 11px;
+  color: var(--accent-primary);
 }
 
 .mcp-skill-meta {
   font-size: 11px;
-  color: #6e6e6e;
-  font-family: monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--fg-tertiary);
 }
 
-/* 编辑模态框只读字段 */
-.mcp-skill-form-readonly {
-  padding: 6px 10px;
-  background: #252526;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
+.mcp-skill-source {
+  color: var(--fg-secondary);
 }
 
-.mcp-skill-form-readonly-text {
-  padding: 6px 10px;
-  background: #252526;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
-  color: #858585;
-  font-size: 12px;
-  font-family: monospace;
-  word-break: break-all;
+.mcp-skill-error {
+  color: #ef4444;
 }
 
-.mcp-skill-form-error-text {
-  padding: 6px 10px;
-  background: #3c1818;
-  border: 1px solid #5a1e1e;
-  border-radius: 4px;
-  color: #f48771;
-  font-size: 12px;
-}
-
-.mcp-skill-source-badge {
-  display: inline-block;
-  font-size: 11px;
-  padding: 2px 8px;
+/* 状态徽章 */
+.mcp-skill-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
   border-radius: 3px;
-  background: #094771;
-  color: #4da6ff;
+  font-size: 10px;
+  font-weight: 600;
 }
 
-.mcp-skill-form-divider {
-  height: 1px;
-  background: #2b2b2b;
-  margin: 16px 0;
+.mcp-skill-status-badge.pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.mcp-skill-status-badge.downloading {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.mcp-skill-status-badge.installing {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
+}
+
+.mcp-skill-status-badge.error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
 }
 
 /* 操作按钮 */
@@ -476,45 +350,30 @@
   height: 22px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: #858585;
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  font-size: 12px;
-  transition: all 0.15s ease;
 }
 
 .mcp-skill-action-btn:hover {
-  background-color: #2d2d30;
-  color: #cccccc;
+  background: var(--bg-secondary);
+  color: var(--fg-primary);
 }
 
-.mcp-skill-action-btn.toggle:hover {
-  color: #89d185;
-}
-
-.mcp-skill-action-btn.toggle.active:hover {
-  color: #f48771;
+.mcp-skill-action-btn.active {
+  color: var(--accent-primary);
 }
 
 .mcp-skill-action-btn.delete:hover {
-  color: #f48771;
+  color: #ef4444;
 }
 
-/* 工具数量提示 */
-.mcp-skill-tools-count {
-  font-size: 11px;
-  color: #89d185;
-  margin-top: 4px;
-}
-
-/* ============================================
-   开关切换
-   ============================================ */
+/* Toggle Switch */
 .mcp-skill-toggle {
   position: relative;
-  display: inline-block;
-  width: 28px;
-  height: 16px;
+  width: 36px;
+  height: 20px;
+  cursor: pointer;
 }
 
 .mcp-skill-toggle input {
@@ -525,38 +384,37 @@
 
 .mcp-skill-toggle-slider {
   position: absolute;
-  cursor: pointer;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #6e6e6e;
-  transition: 0.15s;
-  border-radius: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  transition: 0.2s;
 }
 
-.mcp-skill-toggle-slider:before {
+.mcp-skill-toggle-slider::before {
   position: absolute;
-  content: "";
-  height: 12px;
-  width: 12px;
+  content: '';
+  height: 16px;
+  width: 16px;
   left: 2px;
   bottom: 2px;
-  background-color: white;
-  transition: 0.15s;
+  background: white;
   border-radius: 50%;
+  transition: 0.2s;
 }
 
-input:checked + .mcp-skill-toggle-slider {
-  background-color: #007acc;
+.mcp-skill-toggle input:checked + .mcp-skill-toggle-slider {
+  background: var(--accent-primary);
 }
 
-input:checked + .mcp-skill-toggle-slider:before {
-  transform: translateX(12px);
+.mcp-skill-toggle input:checked + .mcp-skill-toggle-slider::before {
+  transform: translateX(16px);
 }
 
 /* ============================================
-   模态框
+   模态框 - VS Code 风格
    ============================================ */
 .mcp-skill-modal-overlay {
   position: fixed;
@@ -564,7 +422,7 @@ input:checked + .mcp-skill-toggle-slider:before {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -572,14 +430,13 @@ input:checked + .mcp-skill-toggle-slider:before {
 }
 
 .mcp-skill-modal {
-  background: #252526;
-  border: 1px solid #2b2b2b;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 6px;
-  width: 90%;
-  max-width: 480px;
+  width: 500px;
+  max-width: 90vw;
   max-height: 90vh;
   overflow: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .mcp-skill-modal-header {
@@ -587,29 +444,33 @@ input:checked + .mcp-skill-toggle-slider:before {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  border-bottom: 1px solid #2b2b2b;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .mcp-skill-modal-header h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #cccccc;
+  color: var(--fg-primary);
   margin: 0;
 }
 
 .mcp-skill-modal-close {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   border: none;
-  color: #858585;
-  font-size: 18px;
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  transition: color 0.15s ease;
+  font-size: 18px;
 }
 
 .mcp-skill-modal-close:hover {
-  color: #cccccc;
+  background: var(--bg-hover);
+  color: var(--fg-primary);
 }
 
 .mcp-skill-modal-body {
@@ -620,14 +481,11 @@ input:checked + .mcp-skill-toggle-slider:before {
   margin-bottom: 16px;
 }
 
-.mcp-skill-form-group:last-child {
-  margin-bottom: 0;
-}
-
 .mcp-skill-form-label {
   display: block;
-  font-size: 13px;
-  color: #cccccc;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-secondary);
   margin-bottom: 6px;
 }
 
@@ -636,27 +494,32 @@ input:checked + .mcp-skill-toggle-slider:before {
 .mcp-skill-form-textarea {
   width: 100%;
   padding: 6px 10px;
-  background: #3c3c3c;
-  border: 1px solid #3c3c3c;
-  border-radius: 4px;
-  color: #cccccc;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  color: var(--fg-primary);
   font-size: 13px;
-  font-family: inherit;
-  box-sizing: border-box;
-  transition: border-color 0.15s ease;
+  outline: none;
 }
 
 .mcp-skill-form-input:focus,
 .mcp-skill-form-select:focus,
 .mcp-skill-form-textarea:focus {
-  outline: none;
-  border-color: #007acc;
+  border-color: var(--accent-primary);
+}
+
+.mcp-skill-form-input::placeholder,
+.mcp-skill-form-textarea::placeholder {
+  color: var(--fg-tertiary);
+}
+
+.mcp-skill-form-select {
+  cursor: pointer;
 }
 
 .mcp-skill-form-textarea {
-  resize: vertical;
   min-height: 80px;
-  font-family: monospace;
+  resize: vertical;
 }
 
 .mcp-skill-modal-footer {
@@ -664,114 +527,29 @@ input:checked + .mcp-skill-toggle-slider:before {
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #2b2b2b;
+  border-top: 1px solid var(--border-primary);
 }
 
 .mcp-skill-btn {
-  padding: 6px 16px;
-  border: none;
-  border-radius: 4px;
+  padding: 6px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 3px;
+  color: var(--fg-primary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
-.mcp-skill-btn-secondary {
-  background: transparent;
-  color: #cccccc;
-  border: 1px solid #2b2b2b;
+.mcp-skill-btn:hover {
+  background: var(--bg-hover);
 }
 
-.mcp-skill-btn-secondary:hover {
-  background: #2a2d2e;
+.mcp-skill-btn.primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
 }
 
-.mcp-skill-btn-primary {
-  background: #007acc;
-  color: #ffffff;
-}
-
-.mcp-skill-btn-primary:hover {
-  background: #1177bb;
-}
-
-.mcp-skill-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ============================================
-   表单提示文字
-   ============================================ */
-.mcp-skill-form-hint {
-  font-size: 11px;
-  color: #858585;
-  margin-top: 4px;
-  line-height: 1.4;
-}
-
-/* ============================================
-   安装进度条
-   ============================================ */
-.mcp-skill-install-progress {
-  margin-top: 16px;
-  padding: 12px;
-  background: #1e1e1e;
-  border: 1px solid #2b2b2b;
-  border-radius: 4px;
-}
-
-.mcp-skill-progress-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.mcp-skill-status-text {
-  font-size: 13px;
-  color: #cccccc;
-}
-
-.mcp-skill-progress-bar {
-  width: 100%;
-  height: 4px;
-  background: #2b2b2b;
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.mcp-skill-progress-fill {
-  height: 100%;
-  background: #007acc;
-  border-radius: 2px;
-  transition: width 0.3s ease;
-}
-
-.mcp-skill-progress-message {
-  font-size: 12px;
-  color: #858585;
-}
-
-/* ============================================
-   加载状态
-   ============================================ */
-.mcp-skill-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100px;
-  color: #858585;
-  font-size: 13px;
-  background-color: #0D1117;
-}
-
-/* ============================================
-   分割线
-   ============================================ */
-.mcp-skill-divider {
-  height: 1px;
-  background-color: #2b2b2b;
-  margin: 8px 0;
+.mcp-skill-btn.primary:hover {
+  opacity: 0.9;
 }

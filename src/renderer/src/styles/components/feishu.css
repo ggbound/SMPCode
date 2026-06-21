@@ -1,0 +1,245 @@
+/**
+ * Component: Feishu
+ * 飞书面板样式
+ */
+
+.smp-feishu {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+.smp-feishu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 var(--space-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.smp-feishu__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 12px;
+}
+
+.smp-feishu__status--connected {
+  color: var(--status-success);
+}
+
+.smp-feishu__status--disconnected {
+  color: var(--fg-tertiary);
+}
+
+.smp-feishu__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.smp-feishu__btn {
+  height: 24px;
+  padding: 0 var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.smp-feishu__btn--primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.smp-feishu__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.smp-feishu__body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.smp-feishu__sidebar {
+  width: 200px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.smp-feishu__sidebar-header {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.smp-feishu__new-chat {
+  width: 100%;
+  height: 28px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.smp-feishu__sidebar-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-sm);
+}
+
+.smp-feishu__section-title {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-tertiary);
+  text-transform: uppercase;
+}
+
+.smp-feishu__session-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.smp-feishu__session {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.smp-feishu__session:hover {
+  background: var(--bg-hover);
+}
+
+.smp-feishu__session--active {
+  background: var(--bg-active);
+}
+
+.smp-feishu__session--disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.smp-feishu__session-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--fg-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smp-feishu__session-time {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+
+.smp-feishu__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.smp-feishu__chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 35px;
+  padding: 0 var(--space-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.smp-feishu__chat-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.smp-feishu__messages {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-md);
+}
+
+.smp-feishu__input-area {
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-primary);
+}
+
+.smp-feishu__input-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 35px;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+}
+
+.smp-feishu__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg-primary);
+  font-size: 13px;
+  outline: none;
+  resize: none;
+  min-height: 20px;
+  max-height: 120px;
+}
+
+.smp-feishu__input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-sm);
+}
+
+.smp-feishu__toolbar-left,
+.smp-feishu__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.smp-feishu__send-btn {
+  height: 28px;
+  padding: 0 var(--space-md);
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.smp-feishu__send-btn:hover {
+  background: var(--accent-hover);
+}
+
+.smp-feishu__send-btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.smp-feishu__send-btn--stop {
+  background: var(--status-error);
+}

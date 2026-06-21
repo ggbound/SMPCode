@@ -1,0 +1,93 @@
+/**
+ * Component: Tabs
+ * 标签页样式
+ */
+
+.smp-tabs {
+  display: flex;
+  align-items: center;
+  height: var(--height-tab);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  overflow: hidden;
+}
+
+.smp-tabs__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 100%;
+  padding: 0 var(--space-lg);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  color: var(--fg-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+  transition: background var(--transition-fast);
+}
+
+.smp-tabs__item:hover {
+  background: var(--bg-tertiary);
+}
+
+.smp-tabs__item--active {
+  background: var(--bg-primary);
+  color: var(--fg-primary);
+  border-top: 1px solid var(--fg-primary);
+}
+
+.smp-tabs__item--dirty::after {
+  content: '•';
+  margin-left: 4px;
+  color: var(--fg-primary);
+}
+
+.smp-tabs__close {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  opacity: 0;
+  transition: all var(--transition-fast);
+}
+
+.smp-tabs__item:hover .smp-tabs__close {
+  opacity: 1;
+}
+
+.smp-tabs__close:hover {
+  background: var(--bg-hover);
+}
+
+/* 面包屑 */
+.smp-breadcrumb {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--space-md);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 13px;
+}
+
+.smp-breadcrumb__item {
+  color: var(--fg-tertiary);
+  cursor: pointer;
+}
+
+.smp-breadcrumb__item:hover {
+  color: var(--fg-primary);
+}
+
+.smp-breadcrumb__separator {
+  margin: 0 var(--space-xs);
+  color: var(--fg-tertiary);
+}
+
+.smp-breadcrumb__item:last-child {
+  color: var(--fg-primary);
+}

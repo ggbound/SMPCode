@@ -5,7 +5,6 @@ import './styles/index.css'
 import './styles/tool-execution.css'
 import './styles/search.css'
 import './styles/lsp.css'
-import './styles/sidebar-panels.css'
 import '@xterm/xterm/css/xterm.css'
 // Import jack-file-tree styles and keyboard shield
 import '@knurdz/jack-file-tree/styles.css'

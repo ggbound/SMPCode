@@ -1,0 +1,994 @@
+/**
+ * Compatibility Styles - 兼容性样式
+ * 支持旧的类名，映射到新的 smp- 前缀类名
+ */
+
+/* ========== ActivityBar 兼容性 ========== */
+.activity-bar {
+  width: var(--width-activity-bar);
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-sm) 0;
+}
+
+.activity-bar-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.activity-bar-items.activity-bar-bottom {
+  margin-top: auto;
+}
+
+.activity-bar-item {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-tertiary);
+  cursor: pointer;
+  position: relative;
+  transition: color var(--transition-fast);
+  border: none;
+  background: transparent;
+}
+
+.activity-bar-item:hover,
+.activity-bar-item.hovered {
+  color: var(--fg-primary);
+}
+
+.activity-bar-item.active {
+  color: var(--fg-primary);
+}
+
+.activity-bar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  background: var(--fg-primary);
+}
+
+.activity-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-indicator {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+}
+
+/* ========== Sidebar 兼容性 ========== */
+.sidebar-panel,
+.vscode-sidebar-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: var(--width-sidebar);
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
+  overflow: hidden;
+}
+
+.panel-header,
+.vscode-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--height-header);
+  padding: 0 var(--space-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.panel-title,
+.vscode-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.panel-header-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--fg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  opacity: 0.8;
+}
+
+.panel-header-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+  opacity: 1;
+}
+
+.panel-header-btn.active {
+  background: var(--bg-active);
+  color: var(--fg-primary);
+}
+
+.panel-content,
+.vscode-panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-md);
+}
+
+/* ========== Tabs 兼容性 ========== */
+.tab-bar,
+.vscode-tab-bar {
+  display: flex;
+  align-items: center;
+  height: var(--height-tab);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  overflow: hidden;
+}
+
+.tab,
+.vscode-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 100%;
+  padding: 0 var(--space-lg);
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-primary);
+  color: var(--fg-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  position: relative;
+}
+
+.tab:hover,
+.vscode-tab:hover {
+  background: var(--bg-tertiary);
+}
+
+.tab.active,
+.vscode-tab.active {
+  background: var(--bg-primary);
+  color: var(--fg-primary);
+  border-top: 1px solid var(--fg-primary);
+}
+
+.tab-dirty::after,
+.vscode-tab-dirty::after {
+  content: '•';
+  margin-left: 4px;
+  color: var(--fg-primary);
+}
+
+.tab-close {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  opacity: 0;
+  transition: all var(--transition-fast);
+}
+
+.tab:hover .tab-close {
+  opacity: 1;
+}
+
+.tab-close:hover {
+  background: var(--bg-hover);
+}
+
+/* ========== Breadcrumb 兼容性 ========== */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--space-md);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-primary);
+  font-size: 13px;
+}
+
+.breadcrumb-item {
+  color: var(--fg-tertiary);
+  cursor: pointer;
+}
+
+.breadcrumb-item:hover {
+  color: var(--fg-primary);
+}
+
+.breadcrumb-separator {
+  margin: 0 var(--space-xs);
+  color: var(--fg-tertiary);
+}
+
+/* ========== File Tree 兼容性 ========== */
+.jack-file-explorer {
+  /* 无内边距，由子元素控制 */
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: var(--height-list-item);
+  padding-left: var(--space-lg);
+  color: var(--fg-primary);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tree-item:hover {
+  background: var(--bg-hover);
+}
+
+.tree-item.selected {
+  background: var(--bg-active);
+}
+
+.tree-toggle {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--fg-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.tree-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+.tree-icon {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ========== Search 兼容性 ========== */
+.search-container {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-md);
+  gap: var(--space-md);
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.search-input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: 26px;
+  padding: 0 var(--space-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+}
+
+.search-input-wrapper:focus-within {
+  border-color: var(--border-focus);
+}
+
+.search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--fg-tertiary);
+}
+
+.search-options {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.search-option-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.search-option-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.search-option-btn.active {
+  background: var(--bg-active);
+  color: var(--fg-primary);
+}
+
+.git-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  background: var(--bg-quaternary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-dropdown);
+  padding: var(--space-xs) 0;
+}
+
+.git-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  height: 28px;
+  padding: 0 var(--space-xl);
+  color: var(--fg-primary);
+  font-size: 13px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+}
+
+.git-context-menu-item:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* ========== Feishu 兼容性 ========== */
+.feishu-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+.feishu-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 var(--space-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.feishu-status-left,
+.feishu-status-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.feishu-status-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 12px;
+}
+
+.feishu-status-indicator.connected {
+  color: var(--status-success);
+}
+
+.feishu-status-indicator.disconnected {
+  color: var(--fg-tertiary);
+}
+
+.feishu-status-btn {
+  height: 24px;
+  padding: 0 var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.feishu-status-btn.primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.feishu-status-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feishu-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.feishu-sidebar {
+  width: 200px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.feishu-sidebar-header {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.feishu-new-chat-btn {
+  width: 100%;
+  height: 28px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.feishu-sidebar-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-sm);
+}
+
+.feishu-sidebar-section-title {
+  padding: var(--space-sm) var(--space-md);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-tertiary);
+  text-transform: uppercase;
+}
+
+.feishu-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.feishu-session-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.feishu-session-item:hover {
+  background: var(--bg-hover);
+}
+
+.feishu-session-item.active {
+  background: var(--bg-active);
+}
+
+.feishu-session-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.feishu-session-title {
+  flex: 1;
+  font-size: 13px;
+  color: var(--fg-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feishu-session-time {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+
+.feishu-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.feishu-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 var(--space-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.feishu-chat-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.feishu-messages-container {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-md);
+}
+
+.feishu-input-section {
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-primary);
+}
+
+.feishu-input-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 40px;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+}
+
+.feishu-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-sm);
+}
+
+.feishu-toolbar-left,
+.feishu-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.feishu-send-btn {
+  height: 28px;
+  padding: 0 var(--space-md);
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.feishu-send-btn:hover {
+  background: var(--accent-hover);
+}
+
+.feishu-send-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.feishu-send-btn.stop {
+  background: var(--status-error);
+}
+
+/* ========== Settings 兼容性 ========== */
+.settings-container {
+  padding: var(--space-xl);
+}
+
+.settings-section {
+  margin-bottom: var(--space-xl);
+}
+
+.settings-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin-bottom: var(--space-md);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-md);
+}
+
+.settings-label {
+  width: 150px;
+  font-size: 13px;
+  color: var(--fg-primary);
+}
+
+/* ========== Status Bar 兼容性 ========== */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--height-status-bar);
+  padding: 0 var(--space-md);
+  background: var(--accent-primary);
+  color: white;
+  font-size: 12px;
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.status-bar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-sm);
+  height: 100%;
+  cursor: pointer;
+}
+
+.status-bar-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ========== Terminal 兼容性 ========== */
+.terminal-panel {
+  height: 200px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ========== App Layout 兼容性 ========== */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.app-main-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.app-top-area {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.main-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 三列布局 */
+.three-column-layout {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 中间列 */
+.center-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* 右侧列 */
+.right-column {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border-primary);
+}
+
+/* 设置页面全屏 */
+.settings-full-page {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 侧边栏面板容器 */
+.sidebar-panel-container {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 强制移除顶部内边距 */
+  padding-top: 0 !important;
+  margin-top: 0 !important;
+}
+
+/* 针对 VS Code Tree 组件的顶部内边距 */
+.sidebar-panel-container [style*="--sft-panel-top-padding"] {
+  --sft-panel-top-padding: 0px !important;
+  padding-top: 0 !important;
+}
+
+/* 文件查看器容器 */
+.file-viewer-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 飞书全屏容器 */
+.feishu-full-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.editor-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ========== FileViewer 兼容性 ========== */
+.file-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.file-viewer-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+}
+
+.file-viewer-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-tertiary);
+  text-align: center;
+  padding: var(--space-xl);
+}
+
+.file-viewer-placeholder .placeholder-icon {
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+}
+
+.file-viewer-placeholder .placeholder-icon svg {
+  width: 64px;
+  height: 64px;
+  color: var(--fg-tertiary);
+}
+
+.file-viewer-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.file-viewer-image {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: var(--bg-primary);
+}
+
+.file-viewer-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.code-editor-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ========== TitleBar 兼容性 ========== */
+.title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--space-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  -webkit-app-region: drag;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.title-bar-traffic-lights {
+  width: 60px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-bar-title {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+
+.title-bar-spacer {
+  width: 60px;
+}
+
+/* ========== Utility Classes ========== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  height: 28px;
+  padding: 0 var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-secondary);
+}
+
+.btn-primary {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.input {
+  height: 26px;
+  padding: 0 var(--space-md);
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--border-focus);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  color: var(--fg-tertiary);
+  text-align: center;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-primary);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.fade-in {
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

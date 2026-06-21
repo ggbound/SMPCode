@@ -46,7 +46,8 @@ import {
   X,
 } from 'lucide-react'
 import { useGit, GitFile } from '../hooks/useGit'
-import '../styles/components/git.css'
+import '../styles/vscode-sidebar.css'
+import '../styles/git-panel.css'
 
 // ==================== 类型定义 ====================
 
@@ -319,7 +320,7 @@ const FileItem: React.FC<FileItemProps> = ({
         </span>
         
         {/* 文件图标 */}
-        <span className={`git-file-icon git-file-icon--${getFileExt(fileName)}`}>
+        <span className="git-file-icon" style={{ color: fileIcon.color }}>
           {fileIcon.icon}
         </span>
         
@@ -369,8 +370,9 @@ const FileItem: React.FC<FileItemProps> = ({
             <button
               onClick={(e) => { e.stopPropagation(); onDiscard() }}
               onContextMenu={(e) => { e.stopPropagation() }}
-              className="git-file-action-btn git-file-action-btn--danger"
+              className="git-file-action-btn"
               title="放弃更改"
+              style={{ color: '#f85149' }}
             >
               <RotateCcw size={14} />
             </button>
@@ -401,28 +403,34 @@ interface SectionProps {
 
 const Section: React.FC<SectionProps> = ({ title, count, children, expanded, onToggle, actions }) => {
   return (
-    <div className="git-section">
+    <div style={{ marginBottom: 8 }}>
       <div
         onClick={onToggle}
-        className="git-section-header"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          padding: '6px 12px',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
       >
-        <span className="git-section-arrow" style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
-          <ChevronRight size={14} />
+        <span style={{ marginRight: 6, transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+          <ChevronRight size={14} style={{ color: '#8b949e' }} />
         </span>
-        <span className="git-section-title">
+        <span style={{ fontSize: 11, fontWeight: 600, color: '#cccccc', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {title}
         </span>
-        <span className="git-section-count">
+        <span style={{ marginLeft: 6, fontSize: 11, color: '#6e7681' }}>
           ({count})
         </span>
         {expanded && actions && (
-          <div className="git-section-actions">
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
             {actions}
           </div>
         )}
       </div>
       {expanded && (
-        <div className="git-section-content">
+        <div style={{ paddingLeft: 12 }}>
           {children}
         </div>
       )}
@@ -797,12 +805,21 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
   // 如果没有 Git 仓库
   if (!isRepo) {
     return (
-      <div className="git-empty">
-        <FolderGit size={48} className="git-empty-icon" />
-        <div className="git-empty-title">
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100%',
+        padding: 40,
+        color: '#8b949e',
+        background: '#0D1117',
+      }}>
+        <FolderGit size={48} style={{ marginBottom: 16, opacity: 0.5 }} />
+        <div style={{ fontSize: 16, fontWeight: 500, marginBottom: 8 }}>
           未找到 Git 仓库
         </div>
-        <div className="git-empty-desc">
+        <div style={{ fontSize: 13 }}>
           请打开一个包含 Git 仓库的项目
         </div>
       </div>
@@ -810,23 +827,47 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
   }
 
   return (
-    <div className="git-panel">
+    <div style={{ height: '100%', overflow: 'auto', background: '#0D1117' }}>
       {/* 头部 */}
-      <div className="git-panel-header">
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        padding: '8px 12px',
+        borderBottom: '1px solid #30363d',
+        background: '#161b22',
+      }}>
         {/* 分支信息 */}
-        <div className="git-branch-info">
-          <GitBranch size={14} className="git-branch-icon" />
-          <span className="git-branch-name">
+        <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: 8 }}>
+          <GitBranch size={14} style={{ color: '#8b949e' }} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: '#e6edf3' }}>
             {branch || 'main'}
           </span>
           {ahead > 0 && (
-            <span className="git-branch-status ahead">
+            <span style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              padding: '2px 6px',
+              background: '#238636',
+              borderRadius: 10,
+              fontSize: 11,
+              color: '#fff',
+            }}>
               <CloudUpload size={10} />
               {ahead}
             </span>
           )}
           {behind > 0 && (
-            <span className="git-branch-status behind">
+            <span style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              padding: '2px 6px',
+              background: '#d29922',
+              borderRadius: 10,
+              fontSize: 11,
+              color: '#fff',
+            }}>
               <CloudDownload size={10} />
               {behind}
             </span>
@@ -834,21 +875,35 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
         </div>
 
         {/* 操作按钮 */}
-        <div className="git-panel-header-actions">
+        <div style={{ display: 'flex', gap: 4 }}>
           <button
             onClick={refresh}
             disabled={isLoading}
-            className="git-panel-header-btn"
+            style={{
+              padding: 4,
+              border: 'none',
+              background: 'transparent',
+              color: '#8b949e',
+              cursor: 'pointer',
+              borderRadius: 4,
+            }}
             title="刷新"
           >
             <RefreshCw size={14} className={isLoading ? 'spinning' : ''} />
           </button>
           
           {/* 分支菜单 */}
-          <div ref={branchMenuRef} className="git-branch-menu">
+          <div ref={branchMenuRef} style={{ position: 'relative' }}>
             <button
               onClick={() => setShowBranchMenu(!showBranchMenu)}
-              className="git-panel-header-btn"
+              style={{
+                padding: 4,
+                border: 'none',
+                background: 'transparent',
+                color: '#8b949e',
+                cursor: 'pointer',
+                borderRadius: 4,
+              }}
               title="分支操作"
             >
               <MoreVertical size={14} />
@@ -866,7 +921,12 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
       </div>
 
       {/* 视图切换 */}
-      <div className="git-view-tabs">
+      <div style={{
+        display: 'flex',
+        padding: '4px 8px',
+        gap: 4,
+        borderBottom: '1px solid #30363d',
+      }}>
         {[
           { key: 'changes', label: '更改', icon: <File size={14} /> },
           { key: 'history', label: '历史', icon: <History size={14} /> },
@@ -874,7 +934,18 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
           <button
             key={key}
             onClick={() => setViewMode(key as ViewMode)}
-            className={`git-view-tab ${viewMode === key ? 'active' : ''}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              border: 'none',
+              background: viewMode === key ? '#1f6feb' : 'transparent',
+              color: viewMode === key ? '#fff' : '#8b949e',
+              fontSize: 12,
+              cursor: 'pointer',
+              borderRadius: 4,
+            }}
           >
             {icon}
             {label}
@@ -884,7 +955,7 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
 
       {/* 更改视图 */}
       {viewMode === 'changes' && (
-        <div className="git-changes-list">
+        <div style={{ padding: '8px 0' }}>
           {/* 暂存的更改 */}
           {groupedFiles.staged.length > 0 && (
             <Section
@@ -898,7 +969,17 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
                     e.stopPropagation()
                     unstageFiles(groupedFiles.staged.map(f => f.path))
                   }}
-                  className="git-section-action-btn"
+                  style={{
+                    padding: '2px 6px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#8b949e',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                  }}
                 >
                   <Minus size={12} />
                   全部取消暂存
@@ -936,7 +1017,17 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
                       e.stopPropagation()
                       stageFiles(groupedFiles.modified.map(f => f.path))
                     }}
-                    className="git-section-action-btn"
+                    style={{
+                      padding: '2px 6px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#8b949e',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 2,
+                    }}
                   >
                     <Plus size={12} />
                     全部暂存
@@ -976,18 +1067,40 @@ ${lines.map((line: string) => '+' + line).join('\n')}`
           </Section>
 
           {/* 提交信息输入 */}
-          <div className="git-commit-box">
+          <div style={{ padding: '12px' }}>
             <textarea
               value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
               placeholder="输入提交信息..."
-              className="git-commit-input"
+              style={{
+                width: '100%',
+                minHeight: 60,
+                padding: 8,
+                border: '1px solid #30363d',
+                borderRadius: 4,
+                background: '#0D1117',
+                color: '#e6edf3',
+                fontSize: 13,
+                resize: 'vertical',
+                fontFamily: 'inherit',
+              }}
             />
             <button
               onClick={handleCommit}
               disabled={!commitMessage.trim() || groupedFiles.staged.length === 0}
-              className="git-commit-btn"
+              style={{
+                width: '100%',
+                marginTop: 8,
+                padding: '6px 12px',
+                border: 'none',
+                borderRadius: 4,
+                background: commitMessage.trim() && groupedFiles.staged.length > 0 ? '#238636' : '#30363d',
+                color: '#fff',
+                fontSize: 13,
+                cursor: commitMessage.trim() && groupedFiles.staged.length > 0 ? 'pointer' : 'not-allowed',
+              }}
             >
+              <Check size={14} style={{ marginRight: 6 }} />
               提交
             </button>
           </div>

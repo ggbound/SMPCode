@@ -1,0 +1,72 @@
+/**
+ * Component: Terminal
+ * 终端样式
+ */
+
+.smp-terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+.smp-terminal__tabs {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.smp-terminal__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 100%;
+  padding: 0 var(--space-md);
+  color: var(--fg-tertiary);
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  transition: all var(--transition-fast);
+}
+
+.smp-terminal__tab:hover {
+  color: var(--fg-primary);
+  background: var(--bg-hover);
+}
+
+.smp-terminal__tab--active {
+  color: var(--fg-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.smp-terminal__content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-md);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.smp-terminal__line {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.smp-terminal__prompt {
+  color: var(--status-success);
+}
+
+.smp-terminal__command {
+  color: var(--fg-primary);
+}
+
+.smp-terminal__output {
+  color: var(--fg-tertiary);
+}
+
+.smp-terminal__error {
+  color: var(--status-error);
+}

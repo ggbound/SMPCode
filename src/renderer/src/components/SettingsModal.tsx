@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Eye, EyeOff, X, Trash2, Plus, Edit2, Check, Loader2, ChevronDown, Cloud, CloudOff, MessageSquare } from 'lucide-react'
 import type { ProviderConfig, ModelConfig, FeishuConfig, SyncStatus } from '../store'
 import { t } from '../i18n'
+import '../styles/settings.css'
 
 // 检测状态类型
 type TestStatus = 'idle' | 'testing' | 'success' | 'error'
@@ -604,74 +605,68 @@ function SettingsModal({ apiKey, model, defaultModel, permissionMode, providers,
                                     <div className="model-group-header">{groupName}</div>
                                     {models.map(model => (
                                       <div key={model.id} className="model-item">
-                                        <span className="model-id">{model.id}</span>
-                                        <span className="model-name">{model.name}</span>
-                                        <span
-                                          className={`model-vision-badge ${model.supportsVision ? 'active' : ''}`}
-                                          onClick={() => toggleModelVisionSupport(selectedProvider.id, model.id)}
-                                          title={model.supportsVision ? '支持视觉' : '点击启用视觉支持'}
-                                          style={{
-                                            marginRight: '8px',
-                                            cursor: 'pointer',
-                                            fontSize: '12px',
-                                            padding: '2px 6px',
-                                            borderRadius: '4px',
-                                            background: model.supportsVision ? 'var(--accent-color)' : 'var(--bg-tertiary)',
-                                            color: model.supportsVision ? 'white' : 'var(--text-secondary)'
-                                          }}
-                                        >
-                                          {model.supportsVision ? (
-                                            <>
-                                              <Eye size={12} style={{ marginRight: '4px' }} /> 视觉
-                                            </>
-                                          ) : (
-                                            <EyeOff size={12} />
-                                          )}
-                                        </span>
-                                        <button
-                                          className="btn btn-icon btn-remove"
-                                          onClick={() => removeModel(selectedProvider.id, model.id)}
-                                          title="删除"
-                                        >
-                                          <X size={14} />
-                                        </button>
+                                        <div className="model-icon">{model.name.charAt(0).toUpperCase()}</div>
+                                        <div className="model-info">
+                                          <span className="model-name">{model.name}</span>
+                                        </div>
+                                        <div className="model-badges">
+                                          <span
+                                            className={`model-badge vision ${model.supportsVision ? 'active' : ''}`}
+                                            onClick={() => toggleModelVisionSupport(selectedProvider.id, model.id)}
+                                            title={model.supportsVision ? '支持视觉' : '点击启用视觉支持'}
+                                          >
+                                            {model.supportsVision ? (
+                                              <>
+                                                <Eye size={12} /> 视觉
+                                              </>
+                                            ) : (
+                                              <EyeOff size={12} />
+                                            )}
+                                          </span>
+                                        </div>
+                                        <div className="model-actions">
+                                          <button
+                                            className="model-action-btn delete"
+                                            onClick={() => removeModel(selectedProvider.id, model.id)}
+                                            title="删除"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
                                 ))}
                                 {ungrouped.map(model => (
                                   <div key={model.id} className="model-item">
-                                    <span className="model-id">{model.id}</span>
-                                    <span className="model-name">{model.name}</span>
-                                    <span
-                                      className={`model-vision-badge ${model.supportsVision ? 'active' : ''}`}
-                                      onClick={() => toggleModelVisionSupport(selectedProvider.id, model.id)}
-                                      title={model.supportsVision ? '支持视觉' : '点击启用视觉支持'}
-                                      style={{
-                                        marginRight: '8px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        padding: '2px 6px',
-                                        borderRadius: '4px',
-                                        background: model.supportsVision ? 'var(--accent-color)' : 'var(--bg-tertiary)',
-                                        color: model.supportsVision ? 'white' : 'var(--text-secondary)'
-                                      }}
-                                    >
-                                      {model.supportsVision ? (
-                                        <>
-                                          <Eye size={12} style={{ marginRight: '4px' }} /> 视觉
-                                        </>
-                                      ) : (
-                                        <EyeOff size={12} />
-                                      )}
-                                    </span>
-                                    <button
-                                      className="btn btn-icon btn-remove"
-                                      onClick={() => removeModel(selectedProvider.id, model.id)}
-                                      title="删除"
-                                    >
-                                      <X size={14} />
-                                    </button>
+                                    <div className="model-icon">{model.name.charAt(0).toUpperCase()}</div>
+                                    <div className="model-info">
+                                      <span className="model-name">{model.name}</span>
+                                    </div>
+                                    <div className="model-badges">
+                                      <span
+                                        className={`model-badge vision ${model.supportsVision ? 'active' : ''}`}
+                                        onClick={() => toggleModelVisionSupport(selectedProvider.id, model.id)}
+                                        title={model.supportsVision ? '支持视觉' : '点击启用视觉支持'}
+                                      >
+                                        {model.supportsVision ? (
+                                          <>
+                                            <Eye size={12} /> 视觉
+                                          </>
+                                        ) : (
+                                          <EyeOff size={12} />
+                                        )}
+                                      </span>
+                                    </div>
+                                    <div className="model-actions">
+                                      <button
+                                        className="model-action-btn delete"
+                                        onClick={() => removeModel(selectedProvider.id, model.id)}
+                                        title="删除"
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </>

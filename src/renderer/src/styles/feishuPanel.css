@@ -109,15 +109,79 @@
   max-width: 260px;
   display: flex;
   flex-direction: column;
-  background: #141414;
-  border-right: 1px solid #1f1f1f;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
   flex-shrink: 0;
+}
+
+/* 面板头部 - VS Code 风格 */
+.feishu-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 35px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.feishu-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.feishu-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 状态指示灯 */
+.feishu-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.feishu-status-dot.connected {
+  background: #22c55e;
+}
+
+.feishu-status-dot.disconnected {
+  background: #ef4444;
+}
+
+/* 面板按钮 */
+.feishu-panel-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--fg-tertiary);
+  cursor: pointer;
+}
+
+.feishu-panel-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.feishu-panel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 新对话按钮 */
 .feishu-sidebar-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid #1f1f1f;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-primary);
 }
 
 .feishu-new-chat-btn {
@@ -447,11 +511,12 @@
   color: #ef4444;
 }
 
-/* 消息容器 */
+/* 消息容器 - VS Code Vibe Coding 风格 */
 .feishu-messages-container {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 16px;
+  background: var(--bg-primary);
 }
 
 .feishu-empty-chat {
@@ -460,20 +525,21 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
+  color: var(--fg-tertiary);
   text-align: center;
 }
 
 .feishu-empty-chat h3 {
-  font-size: 18px;
-  font-weight: 400;
+  font-size: 16px;
+  font-weight: 500;
   margin-bottom: 8px;
-  color: #a0a0a0;
+  color: var(--fg-secondary);
 }
 
 .feishu-empty-chat p {
-  font-size: 14px;
+  font-size: 13px;
   margin-bottom: 20px;
+  color: var(--fg-tertiary);
 }
 
 .feishu-mode-hints {
@@ -485,18 +551,176 @@
 .feishu-mode-hint {
   padding: 8px 16px;
   border-radius: 6px;
-  background: #1f1f1f;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   font-size: 13px;
-  color: #a0a0a0;
+  color: var(--fg-secondary);
 }
 
 .feishu-messages-list {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 900px;
+  max-width: 800px;
   margin: 0 auto;
   width: 100%;
+  padding: 0 20px;
+}
+
+/* 消息项 - VS Code 风格 */
+.feishu-message {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  animation: feishu-fade-in 0.2s ease;
+}
+
+@keyframes feishu-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 用户消息 - 右对齐，气泡样式 */
+.feishu-message.user {
+  align-items: flex-end;
+}
+
+.feishu-message.user .feishu-message-content {
+  background: var(--accent-primary);
+  color: white;
+  border-radius: 12px 12px 4px 12px;
+  padding: 10px 14px;
+  max-width: 80%;
+}
+
+/* AI 消息 - 左对齐，平铺样式 */
+.feishu-message.assistant {
+  align-items: flex-start;
+}
+
+.feishu-message.assistant .feishu-message-content {
+  background: transparent;
+  color: var(--fg-primary);
+  padding: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+/* 消息头部 */
+.feishu-message-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--fg-tertiary);
+}
+
+.feishu-message.user .feishu-message-header {
+  flex-direction: row-reverse;
+}
+
+/* 消息内容 */
+.feishu-message-content {
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.feishu-message-content p {
+  margin: 0 0 8px 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.feishu-message-content p:last-child {
+  margin-bottom: 0;
+}
+
+/* 代码块 - VS Code 风格 */
+.feishu-message-content pre {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.feishu-message-content code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.feishu-message-content pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* 行内代码 */
+.feishu-message-content p code {
+  background: var(--bg-secondary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--accent-primary);
+}
+
+/* 链接 - VS Code 深色主题风格 */
+.feishu-message-content a {
+  color: #3794ff;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(55, 148, 255, 0.3);
+  transition: all 0.15s ease;
+}
+
+.feishu-message-content a:hover {
+  color: #4da6ff;
+  border-bottom-color: #3794ff;
+  background: rgba(55, 148, 255, 0.1);
+  border-radius: 2px;
+}
+
+.feishu-message-content a:visited {
+  color: #b180d7;
+  border-bottom-color: rgba(177, 128, 215, 0.3);
+}
+
+.feishu-message-content a:visited:hover {
+  color: #c49bdf;
+  background: rgba(177, 128, 215, 0.1);
+}
+
+/* 列表 */
+.feishu-message-content ul,
+.feishu-message-content ol {
+  margin: 8px 0;
+  padding-left: 24px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.feishu-message-content li {
+  margin: 4px 0;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.feishu-message-content li::marker {
+  color: var(--fg-tertiary);
 }
 
 /* 输入区域 */
@@ -679,4 +903,88 @@
 .feishu-no-session h3 {
   font-size: 16px;
   font-weight: 400;
+}
+
+/* ========== 响应式适配 ========== */
+@media (max-width: 768px) {
+  .feishu-sidebar {
+    width: 200px;
+    min-width: 200px;
+    max-width: 200px;
+  }
+
+  .feishu-chat-header {
+    padding: 8px 12px;
+  }
+
+  .feishu-chat-title {
+    font-size: 13px;
+  }
+
+  .feishu-messages-container {
+    padding: 12px;
+  }
+
+  .feishu-messages-list {
+    gap: 12px;
+    padding: 0 12px;
+  }
+
+  .feishu-input-section {
+    padding: 12px;
+  }
+
+  .feishu-input-box textarea {
+    padding: 10px 14px;
+    font-size: 13px;
+    min-height: 60px;
+  }
+
+  .feishu-input-toolbar {
+    gap: 8px;
+  }
+
+  .feishu-send-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@media (max-width: 480px) {
+  .feishu-sidebar {
+    width: 160px;
+    min-width: 160px;
+    max-width: 160px;
+  }
+
+  .feishu-session-item {
+    padding: 8px;
+  }
+
+  .feishu-session-title {
+    font-size: 12px;
+  }
+
+  .feishu-messages-container {
+    padding: 12px 16px;
+  }
+
+  .feishu-messages-list {
+    gap: 12px;
+    padding: 0 8px;
+  }
+
+  .feishu-message {
+    padding: 10px 14px;
+  }
+
+  .feishu-input-section {
+    padding: 8px;
+  }
+
+  .feishu-input-box textarea {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 50px;
+  }
 }

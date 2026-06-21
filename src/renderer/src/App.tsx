@@ -33,11 +33,12 @@ import { useCodeCompletion } from './hooks/useCodeCompletion'
 import { useCodeIntelligence } from './hooks/useCodeIntelligence'
 import FileWriteIndicator, { useFileWriteStatus } from './components/FileWriteIndicator'
 import Resizer from './components/Resizer'
+import './styles/index.css'
 import './styles/completion.css'
-import './styles/vscode-sidebar.css'
 import './styles/resizer.css'
 import { getLanguageFromPath } from './utils/languageMap'
 import { saveWorkspaceState, loadWorkspaceState } from './utils/workspaceState'
+import { parseToolCalls } from './utils/toolParser'
 
 // API_BASE 已移除 - 现在使用 IPC 通信替代 HTTP API
 // const API_BASE = 'http://localhost:3847/api'
@@ -1028,170 +1029,6 @@ function App() {
     }
   }, [addSession, selectSession, clearMessages])
 
-  // Parse tool calls from AI response text
-  const parseToolCalls = (text: string): Array<{ tool: string; arguments: Record<string, unknown> }> | null => {
-    const toolCalls: Array<{ tool: string; arguments: Record<string, unknown> }> = []
-
-    // Method 0: Parse special tool call format <|tool_calls_section_begin|>...</think>
-    const toolCallsSectionRegex = /<\|tool_calls_section_begin\|>([\s\S]*?)<\|tool_calls_section_end\|>/g
-    let sectionMatch
-    while ((sectionMatch = toolCallsSectionRegex.exec(text)) !== null) {
-      const sectionContent = sectionMatch[1]
-      // Parse individual tool calls within the section
-      const toolCallRegex = /<\|tool_call_begin\|>functions\.(\w+):\d+<\|tool_call_args\|>([\s\S]*?)<\|tool_call_end\|>/g
-      let toolMatch
-      while ((toolMatch = toolCallRegex.exec(sectionContent)) !== null) {
-        const toolName = toolMatch[1]
-        const argsJson = toolMatch[2].trim()
-        
-        // Validate JSON before parsing
-        if (!argsJson || argsJson.length < 2) {
-          continue
-        }
-        
-        try {
-          const args = JSON.parse(argsJson)
-          toolCalls.push({ tool: toolName, arguments: args })
-        } catch (e) {
-          console.error('Failed to parse tool call args:', argsJson.substring(0, 200))
-          console.error('Parse error:', e)
-        }
-      }
-    }
-
-    // Method 1: Look for JSON in markdown code blocks (```json ... ```)
-    // 使用字符串分割方法，更可靠
-    const codeBlockMarker = '```'
-    let searchIndex = 0
-    let matchCount = 0
-    
-    // 检查文本中是否包含 ```
-    const firstBacktick = text.indexOf('`')
-    if (firstBacktick !== -1) {
-      console.log('[parseToolCalls] Text around first backtick:', text.substring(firstBacktick, firstBacktick + 20))
-    }
-    
-    while (true) {
-      // 找到代码块开始标记
-      const blockStart = text.indexOf(codeBlockMarker, searchIndex)
-      if (blockStart === -1) {
-        break
-      }
-
-      // 找到代码块结束标记
-      const blockEnd = text.indexOf(codeBlockMarker, blockStart + codeBlockMarker.length)
-      if (blockEnd === -1) {
-        console.log('[parseToolCalls] No closing marker found')
-        break
-      }
-      
-      matchCount++
-      
-      // 提取代码块内容（包括 ```json 或 ``` 标记）
-      const blockWithMarker = text.substring(blockStart, blockEnd + codeBlockMarker.length)
-      
-      // 检查是否包含 json 标记
-      const hasJsonMarker = text.substring(blockStart, blockStart + 7) === '```json'
-      
-      // 提取代码块内部内容
-      const contentStart = hasJsonMarker ? blockStart + 7 : blockStart + 3
-      const blockContent = text.substring(contentStart, blockEnd).trim()
-      
-      try {
-        // Try to parse the entire block as JSON
-        // First check if content looks like valid JSON
-        if (!blockContent.trim().startsWith('{') || !blockContent.trim().endsWith('}')) {
-          console.log(`[parseToolCalls] Code block #${matchCount} doesn't look like JSON object, skipping`)
-          // Continue to line-by-line parsing
-        } else {
-          const parsed = JSON.parse(blockContent)
-          console.log(`[parseToolCalls] Parsed JSON from code block #${matchCount}:`, parsed)
-          if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
-            toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-            console.log(`[parseToolCalls] Added tool call from code block #${matchCount}:`, parsed.tool)
-          }
-        }
-      } catch (e) {
-        console.log(`[parseToolCalls] Failed to parse code block #${matchCount} as single JSON, trying line by line. Error:`, e)
-        // If the block contains multiple JSON objects (one per line), try each line
-        const lines = blockContent.split('\n')
-        for (const line of lines) {
-          const trimmedLine = line.trim()
-          if (!trimmedLine || trimmedLine.startsWith('//')) continue
-          
-          // Skip if doesn't look like JSON
-          if (!trimmedLine.startsWith('{') || !trimmedLine.endsWith('}')) {
-            continue
-          }
-          
-          try {
-            const parsed = JSON.parse(trimmedLine)
-            if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
-              toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-              console.log(`[parseToolCalls] Added tool call from line:`, parsed.tool)
-            }
-          } catch (e2) {
-            // Try to find JSON object in the line
-            const jsonStart = trimmedLine.indexOf('{')
-            const jsonEnd = trimmedLine.lastIndexOf('}')
-            if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-              try {
-                const jsonStr = trimmedLine.substring(jsonStart, jsonEnd + 1)
-                // Validate JSON string looks complete
-                if (jsonStr.length < 10 || !jsonStr.includes('"tool"')) {
-                  continue
-                }
-                const parsed = JSON.parse(jsonStr)
-                if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
-                  toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-                  console.log(`[parseToolCalls] Added tool call from JSON in line:`, parsed.tool)
-                }
-              } catch (e3) {
-                // Ignore parse errors for individual lines
-              }
-            }
-          }
-        }
-      }
-      
-      // 继续搜索下一个代码块
-      searchIndex = blockEnd + codeBlockMarker.length
-    }
-    
-    console.log(`[parseToolCalls] Total code blocks found: ${matchCount}`)
-
-    // Method 2: Look for inline JSON objects with "tool" and "arguments" fields
-    // Match patterns like: {"tool": "name", "arguments": {...}} or {\n  "tool": "name",\n  ...\n}
-    const jsonObjectRegex = /\{[\s\S]*?"tool"\s*:\s*"[^"]+"[\s\S]*?"arguments"\s*:\s*\{[\s\S]*?\}\s*\}/g
-    let jsonMatch
-    while ((jsonMatch = jsonObjectRegex.exec(text)) !== null) {
-      const jsonStr = jsonMatch[0]
-      
-      // Validate JSON string before parsing
-      if (!jsonStr || jsonStr.length < 10) {
-        continue
-      }
-      
-      // Skip if this JSON was already found in a code block
-      const alreadyFound = toolCalls.some(tc => {
-        const tcStr = JSON.stringify(tc)
-        return jsonStr.includes(tcStr) || tcStr.includes(jsonStr.substring(0, 50))
-      })
-      if (alreadyFound) continue
-
-      try {
-        const parsed = JSON.parse(jsonStr)
-        if (parsed.tool && typeof parsed.tool === 'string' && parsed.arguments && typeof parsed.arguments === 'object') {
-          toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-        }
-      } catch (e) {
-        // Ignore parse errors for inline JSON
-        console.log(`[parseToolCalls] Failed to parse inline JSON:`, jsonStr.substring(0, 100))
-      }
-    }
-
-    return toolCalls.length > 0 ? toolCalls : null
-  }
 
   // State for pending continuation
   const [pendingContinuation, setPendingContinuation] = useState<{

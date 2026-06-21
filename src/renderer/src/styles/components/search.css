@@ -1,0 +1,220 @@
+/**
+ * Component: Search
+ * 搜索面板样式
+ */
+
+.smp-search {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.smp-search__input-area {
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.smp-search__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-xs);
+}
+
+.smp-search__row:last-child {
+  margin-bottom: 0;
+}
+
+.smp-search__input-wrapper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: 26px;
+  padding: 0 var(--space-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-md);
+}
+
+.smp-search__input-wrapper:focus-within {
+  border-color: var(--border-focus);
+}
+
+.smp-search__input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.smp-search__input::placeholder {
+  color: var(--fg-tertiary);
+}
+
+.smp-search__options {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.smp-search__option-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--fg-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.smp-search__option-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.smp-search__option-btn--active {
+  background: var(--bg-active);
+  color: var(--fg-primary);
+}
+
+.smp-search__replace-btn {
+  height: 26px;
+  padding: 0 var(--space-md);
+  background: var(--status-success);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.smp-search__replace-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: var(--bg-quaternary);
+}
+
+/* 搜索结果 */
+.smp-search__results {
+  flex: 1;
+  overflow: auto;
+}
+
+.smp-search__result-header {
+  display: flex;
+  align-items: center;
+  padding: var(--space-sm) var(--space-md);
+  font-size: 11px;
+  color: var(--fg-tertiary);
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.smp-search__file-match {
+  margin-bottom: var(--space-xs);
+}
+
+.smp-search__file-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: var(--height-list-item);
+  padding: 0 var(--space-md);
+  cursor: pointer;
+}
+
+.smp-search__file-header:hover {
+  background: var(--bg-hover);
+}
+
+.smp-search__file-toggle {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--fg-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.smp-search__file-toggle--expanded {
+  transform: rotate(90deg);
+}
+
+.smp-search__file-icon {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.smp-search__file-path {
+  flex: 1;
+  font-size: 12px;
+  color: var(--fg-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smp-search__match-count {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+  background: var(--bg-tertiary);
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.smp-search__match-lines {
+  padding-left: 28px;
+}
+
+.smp-search__match-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  height: 20px;
+  padding: 0 var(--space-md);
+  cursor: pointer;
+}
+
+.smp-search__match-line:hover {
+  background: var(--bg-hover);
+}
+
+.smp-search__match-line--selected {
+  background: rgba(0, 122, 204, 0.2);
+}
+
+.smp-search__line-number {
+  min-width: 36px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--fg-disabled);
+  font-family: var(--font-mono);
+}
+
+.smp-search__line-content {
+  flex: 1;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--fg-tertiary);
+}
+
+.smp-search__highlight {
+  background: rgba(204, 167, 0, 0.4);
+  color: var(--fg-primary);
+  border-radius: var(--radius-sm);
+}

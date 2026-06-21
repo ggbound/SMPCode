@@ -937,12 +937,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
           </div>
           
           <div className="kilo-header-right">
-            {conversation.messages.length > 0 && (
-              <button className="kilo-clear-btn" onClick={handleClearChat}>
-                <Trash2 size={16} />
-                <span>清空</span>
-              </button>
-            )}
+            {/* 清空按钮已移除 */}
           </div>
         </header>
         

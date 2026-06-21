@@ -6,6 +6,7 @@
 import { useRef, useCallback, useEffect } from 'react'
 import { useStore, type Message } from '../store'
 import { executeTool } from '../services/tool-client'
+import { parseToolCalls as parseToolCallsUtil, cleanToolCallBlocks as cleanToolCallBlocksUtil } from '../utils/toolParser'
 
 // CLI Chat 流式响应块类型 - 共享类型定义
 export interface StreamChunk {
@@ -89,169 +90,18 @@ export const TOOL_NAME_MAP: Record<string, string> = {
 }
 
 /**
- * 解析工具调用 - 共享实现
+ * 解析工具调用 - 使用共享模块实现
  */
 export function parseToolCalls(text: string): ToolCall[] | null {
-  const toolCalls: ToolCall[] = []
-
-  // Method 1: Parse <tool_code> XML format
-  const toolCodeRegex = /<tool_code>[\s\S]*?<tool\s+name="([^"]+)"([\s\S]*?)(?:\/>|<\/tool>)[\s\S]*?(?:<\/tool_code>|$)/g
-  const toolCodeMatches = Array.from(text.matchAll(toolCodeRegex))
-
-  for (const match of toolCodeMatches) {
-    const toolName = match[1]
-    // 验证 toolName 格式：必须是合法的标识符（字母、数字、下划线、连字符）
-    if (!toolName || !/^\w[\w_-]*$/.test(toolName)) {
-      console.warn('[parseToolCalls] Invalid tool name format:', toolName)
-      continue
-    }
-    let attrsContent = match[2]
-    attrsContent = attrsContent.replace(/&quot;/g, '"').replace(/&amp;/g, '&')
-    const args: Record<string, unknown> = {}
-    const attrRegex = /(\w+)="((?:[^"\\]|\\.)*)"/g
-    let attrMatch
-    while ((attrMatch = attrRegex.exec(attrsContent)) !== null) {
-      const attrName = attrMatch[1]
-      let attrValue = attrMatch[2]
-      attrValue = attrValue.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n')
-      if (attrName !== 'name') {
-        args[attrName] = attrValue
-      }
-    }
-    if (Object.keys(args).length > 0) {
-      toolCalls.push({ tool: toolName, arguments: args })
-    }
-  }
-
-  // Method 2: Parse MiniMax XML format
-  const xmlToolCallRegex = /<minimax:tool_call>[\s\S]*?<invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/invoke>[\s\S]*?<\/minimax:tool_call>/g
-  const xmlMatches = Array.from(text.matchAll(xmlToolCallRegex))
-
-  for (const match of xmlMatches) {
-    const toolName = match[1]
-    // 验证 toolName 格式：必须是合法的标识符
-    if (!toolName || !/^\w[\w_-]*$/.test(toolName)) {
-      console.warn('[parseToolCalls] Invalid tool name format in MiniMax XML:', toolName)
-      continue
-    }
-    const paramsContent = match[2]
-    const args: Record<string, unknown> = {}
-    const paramRegex = /<parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/parameter>/g
-    const paramMatches = Array.from(paramsContent.matchAll(paramRegex))
-
-    for (const paramMatch of paramMatches) {
-      const paramName = paramMatch[1]
-      const paramValue = paramMatch[2].trim()
-      args[paramName] = paramValue
-    }
-
-    if (Object.keys(args).length > 0) {
-      toolCalls.push({ tool: toolName, arguments: args })
-    }
-  }
-
-  // Method 3: Parse JSON format from code blocks
-  const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
-  const matches = Array.from(text.matchAll(codeBlockRegex))
-
-  for (const match of matches) {
-    let blockContent = match[1].trim()
-
-    // Try to fix incomplete JSON
-    const openBraces = (blockContent.match(/\{/g) || []).length
-    const closeBraces = (blockContent.match(/\}/g) || []).length
-    if (openBraces > closeBraces) {
-      blockContent += '}'.repeat(openBraces - closeBraces)
-    }
-
-    if (blockContent.includes('"tool"') && blockContent.includes('"arguments"')) {
-      try {
-        const parsed = JSON.parse(blockContent)
-        if (parsed.tool && typeof parsed.arguments === 'object') {
-          toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-          continue
-        }
-      } catch (e) {
-        // Not valid JSON, try line by line
-      }
-    }
-
-    // Infer tool from fields
-    try {
-      const parsed = JSON.parse(blockContent)
-      let inferredTool: string | null = null
-      if (parsed.command !== undefined) inferredTool = 'execute_bash'
-      else if (parsed.path !== undefined && parsed.content !== undefined) inferredTool = 'write_file'
-      else if (parsed.path !== undefined && parsed.old_string !== undefined) inferredTool = 'edit_file'
-      else if (parsed.path !== undefined) inferredTool = 'read_file'
-      else if (parsed.query !== undefined) inferredTool = 'search_files'  // ✅ 修复：使用正确的工具名称
-
-      if (inferredTool) {
-        toolCalls.push({ tool: inferredTool, arguments: parsed })
-        continue
-      }
-    } catch (e) {
-      // Not JSON
-    }
-
-    // Try line by line parsing
-    const lines = blockContent.split('\n').filter(line => line.trim())
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line.trim())
-        if (parsed.tool && typeof parsed.arguments === 'object') {
-          toolCalls.push({ tool: parsed.tool, arguments: parsed.arguments })
-        }
-      } catch (e) {
-        // Ignore
-      }
-    }
-  }
-
-  return toolCalls.length > 0 ? toolCalls : null
+  const result = parseToolCallsUtil(text)
+  return result?.map(tc => ({ tool: tc.tool, arguments: tc.arguments, id: tc.id })) || null
 }
 
 /**
- * 清理工具调用代码块 - 共享实现
+ * 清理工具调用代码块 - 使用共享模块实现
  */
 export function cleanToolCallBlocks(content: string): string {
-  let cleaned = content
-  const codeBlockRegex = /```(?:json)?\s*\n?([\s\S]*?)```/g
-  const matches = Array.from(content.matchAll(codeBlockRegex))
-
-  for (const match of matches) {
-    const blockContent = match[1].trim()
-    const fullBlock = match[0]
-    const hasToolPattern = blockContent.includes('"tool"') ||
-      blockContent.includes('"tool_calls"') ||
-      (blockContent.includes('"name"') && blockContent.includes('"arguments"'))
-
-    if (hasToolPattern) {
-      cleaned = cleaned.replace(fullBlock, '')
-    }
-  }
-
-  // Remove XML tool calls
-  const toolCodeRegex = /<tool_code>[\s\S]*?<tool\s+name="[^"]+"[\s\S]*?(?:\/>|<\/tool>)[\s\S]*?(?:<\/tool_code>|$)/g
-  const toolCodeMatches = Array.from(cleaned.matchAll(toolCodeRegex))
-  for (const match of toolCodeMatches) {
-    cleaned = cleaned.replace(match[0], '')
-  }
-
-  const minimaxToolRegex = /<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/g
-  const minimaxMatches = Array.from(cleaned.matchAll(minimaxToolRegex))
-  for (const match of minimaxMatches) {
-    cleaned = cleaned.replace(match[0], '')
-  }
-
-  // Remove thinking tags
-  const thinkRegex = /<thinking>[\s\S]*?<\/thinking>/g
-  const thinkMatches = Array.from(cleaned.matchAll(thinkRegex))
-  for (const match of thinkMatches) {
-    cleaned = cleaned.replace(match[0], '')
-  }
-
-  return cleaned.trim()
+  return cleanToolCallBlocksUtil(content)
 }
 
 /**

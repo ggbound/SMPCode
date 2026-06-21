@@ -230,7 +230,7 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
   }, [store.sessions, projectPath, saveSessionsToFile])
 
   // ========== 飞书连接相关 ==========
-  
+
   const checkConnection = useCallback(async () => {
     try {
       const status = await window.api?.feishu?.getWebSocketStatus?.()
@@ -242,6 +242,21 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
       setIsConnected(false)
     }
   }, [])
+
+  // 自动监控飞书连接状态
+  useEffect(() => {
+    // 初始检查连接状态
+    checkConnection()
+
+    // 每 5 秒检查一次连接状态
+    const interval = setInterval(() => {
+      checkConnection()
+    }, 5000)
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [checkConnection])
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true)
@@ -590,6 +605,22 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
     checkConnection()
   }, [checkConnection])
 
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // 如果点击的不是下拉菜单内部，则关闭菜单
+      if (!target.closest('.feishu-session-dropdown') && !target.closest('.feishu-session-menu-btn')) {
+        setShowMenuFor(null)
+      }
+    }
+
+    if (showMenuFor) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showMenuFor])
+
   // 转换消息格式给 KiloMessageInline
   const displayMessages = conversation.messages.map((msg, index) => ({
     ...msg,
@@ -599,41 +630,37 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
 
   return (
     <div className="feishu-panel">
-      {/* 区域1：顶部连接状态栏 */}
-      <div className="feishu-status-bar">
-        <div className="feishu-status-left">
-          <div className={`feishu-status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
-            {isConnected ? <LinkIcon size={14} /> : <Unlink size={14} />}
-            <span>{isConnected ? '已连接' : '未连接'}</span>
-          </div>
-          {connectionError && (
-            <div className="feishu-status-error">
-              <AlertCircle size={14} />
-              <span>{connectionError}</span>
-            </div>
-          )}
-        </div>
-        <div className="feishu-status-right">
-          {isConnected ? (
-            <button className="feishu-status-btn" onClick={handleDisconnect} disabled={conversation.isGenerating}>
-              断开连接
-            </button>
-          ) : (
-            <button 
-              className="feishu-status-btn primary" 
-              onClick={handleConnect}
-              disabled={isConnecting || conversation.isGenerating}
-            >
-              {isConnecting ? '连接中...' : '连接飞书'}
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* 主体区域 */}
       <div className="feishu-body">
         {/* 区域2：左侧边栏 */}
         <div className="feishu-sidebar">
+          {/* 面板头部：飞书对话 + 连接状态 */}
+          <div className="feishu-panel-header">
+            <span className="feishu-panel-title">飞书对话</span>
+            <div className="feishu-panel-actions">
+              <div className={`feishu-status-dot ${isConnected ? 'connected' : 'disconnected'}`} title={isConnected ? '已连接' : '未连接'} />
+              {isConnected ? (
+                <button 
+                  className="feishu-panel-btn" 
+                  onClick={handleDisconnect} 
+                  disabled={conversation.isGenerating}
+                  title="断开连接"
+                >
+                  <Unlink size={14} />
+                </button>
+              ) : (
+                <button 
+                  className="feishu-panel-btn" 
+                  onClick={handleConnect}
+                  disabled={isConnecting || conversation.isGenerating}
+                  title={isConnecting ? '连接中...' : '连接飞书'}
+                >
+                  <LinkIcon size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* 新对话按钮 */}
           <div className="feishu-sidebar-header">
             <button 

@@ -11,6 +11,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useKiloStore, type KiloMessage, type KiloToolCall, type ContentBlock } from '../store/kiloStore'
 import type { StreamEvent, StreamEventType } from '../services/streaming-conversation'
+import { parseToolCalls as parseToolCallsUtil, cleanToolCallBlocks as cleanToolCallBlocksUtil } from '../utils/toolParser'
 
 interface UseStreamingAgentOptions {
   cwd: string
@@ -90,39 +91,15 @@ function createToolCall(name: string, args: Record<string, unknown>): KiloToolCa
   }
 }
 
-// 解析工具调用
+// 解析工具调用 - 使用共享模块
 function parseToolCalls(content: string): Array<{ name: string; args: Record<string, unknown> }> {
-  const toolCalls: Array<{ name: string; args: Record<string, unknown> }> = []
-  
-  // 匹配 <tool name="..." .../> 格式
-  const toolRegex = /<tool\s+name="([^"]+)"([^\/>]*)\/>/g
-  let match
-  
-  while ((match = toolRegex.exec(content)) !== null) {
-    const toolName = match[1]
-    const attrsContent = match[2]
-    
-    const args: Record<string, unknown> = {}
-    const attrRegex = /(\w+)="([^"]*)"/g
-    let attrMatch
-    
-    while ((attrMatch = attrRegex.exec(attrsContent)) !== null) {
-      let value = attrMatch[2]
-      value = value.replace(/\\"/g, '"').replace(/\\n/g, '\n')
-      args[attrMatch[1]] = value
-    }
-    
-    toolCalls.push({ name: toolName, args })
-  }
-  
-  return toolCalls
+  const result = parseToolCallsUtil(content)
+  return result?.map(tc => ({ name: tc.tool, args: tc.arguments })) || []
 }
 
-// 清理工具调用标记
+// 清理工具调用标记 - 使用共享模块
 function cleanToolCallMarkers(content: string): string {
-  return content
-    .replace(/<tool\s+name="[^"]+"[^\/>]*\/>\s*/g, '')
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+  return cleanToolCallBlocksUtil(content)
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
@@ -323,7 +300,10 @@ export function useStreamingAgent(options: UseStreamingAgentOptions): UseStreami
       // 准备消息历史
       const apiMessages = store.messages
         .slice(-20)
-        .map(m => ({ role: m.role, content: m.content }))
+        .map(m => ({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
+        }))
       
       // 发送消息并等待流式响应
       await sendToCLI(sessionId, userContent, apiMessages)
@@ -400,7 +380,10 @@ export function useStreamingAgent(options: UseStreamingAgentOptions): UseStreami
     }
     
     // 重新生成
-    await generateResponse(lastUserMessage.content)
+    const content = typeof lastUserMessage.content === 'string'
+      ? lastUserMessage.content
+      : lastUserMessage.content.map(c => c.type === 'text' ? c.text : '').join('')
+    await generateResponse(content)
   }, [generateResponse, store])
   
   // 清空消息

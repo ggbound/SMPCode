@@ -1,19 +1,60 @@
-/* Reminder Panel 样式 - 仅保留自定义样式，标题栏使用 vscode-sidebar.css */
+/* Reminder Panel - VS Code 原生风格 */
 
 /* 面板容器 */
 .reminder-panel {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--bg-primary);
+}
+
+/* 面板头部 - VS Code 风格 */
+.reminder-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 35px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.reminder-panel-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.reminder-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.reminder-panel-action-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--fg-tertiary);
+  cursor: pointer;
+}
+
+.reminder-panel-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
 }
 
 /* 内容区域 */
 .reminder-panel-content {
   flex: 1;
   overflow: auto;
-  display: flex;
-  flex-direction: column;
-  background-color: #0D1117;
+  background: var(--bg-primary);
 }
 
 /* 加载/错误/空状态 */
@@ -22,7 +63,7 @@
   align-items: center;
   justify-content: center;
   height: 100px;
-  color: #858585;
+  color: var(--fg-tertiary);
   font-size: 13px;
 }
 
@@ -42,7 +83,7 @@
   align-items: center;
   justify-content: center;
   padding: 60px 20px;
-  color: #858585;
+  color: var(--fg-tertiary);
   text-align: center;
 }
 
@@ -67,24 +108,24 @@
   flex-direction: column;
 }
 
-/* 任务项 */
+/* 任务项 - VS Code 风格 */
 .reminder-item {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 6px 12px;
   cursor: pointer;
   transition: background-color 0.15s ease;
   border-left: 2px solid transparent;
 }
 
 .reminder-item:hover {
-  background-color: #2a2d2e;
+  background-color: var(--bg-hover);
 }
 
 .reminder-item.selected {
-  background-color: #37373d;
-  border-left-color: #007acc;
+  background-color: var(--bg-secondary);
+  border-left-color: var(--accent-primary);
 }
 
 .reminder-item.disabled {
@@ -106,7 +147,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .reminder-item-header {
@@ -118,7 +159,7 @@
 .reminder-item-title {
   font-size: 13px;
   font-weight: 500;
-  color: #cccccc;
+  color: var(--fg-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -128,18 +169,18 @@
   display: inline-flex;
   align-items: center;
   padding: 1px 6px;
-  background-color: #2d2d30;
+  background-color: var(--bg-secondary);
   border-radius: 3px;
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #858585;
+  color: var(--fg-tertiary);
   flex-shrink: 0;
 }
 
 .reminder-item-meta {
   font-size: 11px;
-  color: #6e6e6e;
+  color: var(--fg-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -167,16 +208,16 @@
   height: 22px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: #858585;
+  border-radius: 3px;
+  color: var(--fg-tertiary);
   cursor: pointer;
   font-size: 12px;
   transition: all 0.15s ease;
 }
 
 .reminder-item-action-btn:hover {
-  background-color: #2d2d30;
-  color: #cccccc;
+  background-color: var(--bg-secondary);
+  color: var(--fg-primary);
 }
 
 .reminder-item-action-btn.delete:hover {

@@ -1,0 +1,70 @@
+/**
+ * Component: Sidebar
+ * 侧边栏样式
+ */
+
+.smp-sidebar {
+  width: var(--width-sidebar);
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.smp-sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--height-header);
+  padding: 0 var(--space-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.smp-sidebar__title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.smp-sidebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.smp-sidebar__content {
+  flex: 1;
+  overflow: auto;
+}
+
+/* 侧边栏按钮 */
+.smp-sidebar__btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--fg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  opacity: 0.8;
+}
+
+.smp-sidebar__btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+  opacity: 1;
+}
+
+.smp-sidebar__btn--active {
+  background: var(--bg-active);
+  color: var(--fg-primary);
+}

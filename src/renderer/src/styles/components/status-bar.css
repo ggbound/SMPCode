@@ -1,0 +1,42 @@
+/**
+ * Component: StatusBar
+ * 状态栏样式
+ */
+
+.smp-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--height-status-bar);
+  padding: 0 var(--space-md);
+  background: var(--accent-primary);
+  color: white;
+  font-size: 12px;
+}
+
+.smp-status-bar__left,
+.smp-status-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.smp-status-bar__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 0 var(--space-sm);
+  height: 100%;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.smp-status-bar__item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.smp-status-bar__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
