@@ -282,13 +282,11 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Handle window close
+  // Handle window close - 直接退出应用
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault()
-      mainWindow?.hide()
-      return false
-    }
+    // 设置退出标志，确保应用完全退出
+    isQuitting = true
+    // 允许窗口关闭，触发 before-quit 事件
     return true
   })
 
@@ -2220,9 +2218,8 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // 所有平台都退出应用，包括 macOS
+  app.quit()
 })
 
 app.on('before-quit', () => {
