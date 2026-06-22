@@ -372,27 +372,11 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             }
             console.error('[useKiloConversation] Error chunk:', chunk.error)
             const errorMsg = chunk.error || 'Unknown error'
-            const currentContent = store.messages.find(m => m.id === assistantMessageId)?.content || ''
             
-            // 判断错误类型
-            let errorType: 'model' | 'network' | 'api' | 'unknown' = 'unknown'
-            if (errorMsg.includes('model') && errorMsg.includes('not supported')) {
-              errorType = 'model'
-            } else if (errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('ECONNREFUSED')) {
-              errorType = 'network'
-            } else if (errorMsg.includes('API error') || errorMsg.includes('401') || errorMsg.includes('403') || errorMsg.includes('429')) {
-              errorType = 'api'
-            }
-            
-            // 设置全局错误状态，用于显示错误提示
-            store.setError(errorMsg, errorType)
-            
-            // 更新消息内容
-            store.updateMessage(assistantMessageId, {
-              content: currentContent + `\n\n❌ **错误：** ${errorMsg}`,
-              isStreaming: false
-            })
-            store.stopStreaming()
+            // 所有错误都不应该停止 AI 对话，AI 会继续处理并返回最终结果
+            // 只记录错误日志，不中断流式输出
+            console.log('[useKiloConversation] Error occurred but continuing conversation:', errorMsg)
+            // 不追加错误信息到内容，不停止流式输出，让 AI 自行处理并返回结果
             break
             
           case 'done':

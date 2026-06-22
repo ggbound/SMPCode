@@ -250,13 +250,11 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
             }
             
             const errorMsg = chunk.error || 'Unknown error'
-            accumulatedContent += `\n\n❌ **错误：** ${errorMsg}`
             
-            currentStore.updateMessage(assistantMessageId, {
-              content: accumulatedContent,
-              isStreaming: false
-            })
-            currentStore.stopStreaming()
+            // 所有错误都不应该停止 AI 对话，AI 会继续处理并返回最终结果
+            // 只记录错误日志，不中断流式输出
+            console.log('[useFeishuConversation] Error occurred but continuing conversation:', errorMsg)
+            // 不追加错误信息到内容，不停止流式输出，让 AI 自行处理并返回结果
             break
             
           case 'done':
