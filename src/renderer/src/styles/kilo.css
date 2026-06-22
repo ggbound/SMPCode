@@ -2098,6 +2098,80 @@
   border-bottom: none;
 }
 
+/* ==================== Markdown 标题样式 ==================== */
+.markdown-h1 {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin: 16px 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.markdown-h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin: 14px 0 10px 0;
+}
+
+.markdown-h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin: 12px 0 8px 0;
+}
+
+.markdown-h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin: 10px 0 6px 0;
+}
+
+.markdown-h5,
+.markdown-h6 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin: 8px 0 4px 0;
+}
+
+/* ==================== Markdown 列表样式 ==================== */
+.markdown-ul,
+.markdown-ol {
+  margin: 8px 0;
+  padding-left: 24px;
+}
+
+.markdown-li {
+  margin: 4px 0;
+  color: var(--fg-primary);
+  line-height: 1.6;
+}
+
+.markdown-ul .markdown-ul,
+.markdown-ol .markdown-ol {
+  margin: 4px 0;
+}
+
+/* ==================== Markdown 段落和文本样式 ==================== */
+.markdown-renderer p {
+  margin: 8px 0;
+  line-height: 1.6;
+  color: var(--fg-primary);
+}
+
+.markdown-renderer strong {
+  font-weight: 600;
+  color: var(--fg-primary);
+}
+
+.markdown-renderer em {
+  font-style: italic;
+  color: var(--fg-secondary);
+}
+
 /* ==================== 代码块样式 ==================== */
 
 .kilo-message-content pre {

@@ -281,21 +281,59 @@ export const useFeishuStore = create<FeishuState>((set, get) => ({
   
   appendTextToLastBlock: (messageId, text) => set((state) => {
     const message = state.messages.find(m => m.id === messageId)
-    if (!message || !message.blocks || message.blocks.length === 0) return state
+    if (!message) return state
+    
+    // 如果没有 blocks，创建一个
+    if (!message.blocks || message.blocks.length === 0) {
+      return {
+        messages: state.messages.map(m => 
+          m.id === messageId 
+            ? {
+                ...m,
+                blocks: [{
+                  id: `text-${Date.now()}`,
+                  type: 'text',
+                  content: text,
+                  timestamp: Date.now()
+                } as FeishuTextBlock]
+              }
+            : m
+        )
+      }
+    }
     
     const lastBlock = message.blocks[message.blocks.length - 1]
-    if (lastBlock.type !== 'text') return state
     
+    // 如果最后一个 block 是 text 类型，追加内容
+    if (lastBlock.type === 'text') {
+      return {
+        messages: state.messages.map(m => 
+          m.id === messageId 
+            ? {
+                ...m,
+                blocks: m.blocks?.map((b, idx) => 
+                  idx === m.blocks!.length - 1 && b.type === 'text'
+                    ? { ...b, content: (b as FeishuTextBlock).content + text }
+                    : b
+                ) as FeishuContentBlock[]
+              }
+            : m
+        )
+      }
+    }
+    
+    // 如果最后一个 block 不是 text 类型（如 tool_call），追加一个新的 text block
     return {
       messages: state.messages.map(m => 
         m.id === messageId 
           ? {
               ...m,
-              blocks: m.blocks?.map((b, idx) => 
-                idx === m.blocks!.length - 1 && b.type === 'text'
-                  ? { ...b, content: (b as FeishuTextBlock).content + text }
-                  : b
-              ) as FeishuContentBlock[]
+              blocks: [...(m.blocks || []), {
+                id: `text-${Date.now()}`,
+                type: 'text',
+                content: text,
+                timestamp: Date.now()
+              } as FeishuTextBlock]
             }
           : m
       )

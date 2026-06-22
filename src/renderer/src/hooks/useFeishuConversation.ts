@@ -238,15 +238,8 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
                 }
               }
               
-              // 将工具结果追加到消息内容
-              const resultText = chunk.toolResult.success 
-                ? `\n\n**工具执行结果：**\n\`\`\`\n${chunk.toolResult.output}\n\`\`\``
-                : `\n\n**工具执行失败：**\n${chunk.toolResult.error || 'Unknown error'}`
-              
-              accumulatedContent += resultText
-              latestStore.updateMessage(assistantMessageId, {
-                content: accumulatedContent
-              })
+              // 工具结果不直接显示在消息中，只存储在 toolCall.result 中供 AI 参考
+              // AI 的分析结果会通过后续的 'text' chunk 接收并显示
             }
             break
             
