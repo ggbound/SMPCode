@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, dialog, nativeTheme } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, shell, dialog, nativeTheme, session } from 'electron'
 import { join, dirname } from 'path'
 import { readFileSync, existsSync, readFile, writeFileSync, mkdirSync, readdir, unlink, statSync } from 'fs'
 import { promisify } from 'util'
@@ -2128,6 +2128,19 @@ async function runCLIMode(): Promise<void> {
 // App lifecycle
 app.whenReady().then(async () => {
   log.info('App ready, initializing...')
+
+  // 设置默认语言为中文
+  app.commandLine.appendSwitch('lang', 'zh-CN')
+  
+  // 设置默认用户代理语言
+  const defaultSession = session.defaultSession
+  if (defaultSession) {
+    defaultSession.setUserAgent(
+      defaultSession.getUserAgent().replace(/\([^)]*\)/, '(Macintosh; Intel Mac OS X 10_15_7)'),
+      'zh-CN,zh;q=0.9,en;q=0.8'
+    )
+    log.info('Default language set to zh-CN')
+  }
 
   // 检查是否以 CLI 模式运行
   if (isCLIMode()) {

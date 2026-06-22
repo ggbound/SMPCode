@@ -19,6 +19,7 @@
 @import './components/git.css';
 @import './components/tabs.css';
 @import './terminal.css';
+@import './browser.css';
 @import './components/status-bar.css';
 @import './components/feishu.css';
 @import './components/settings.css';

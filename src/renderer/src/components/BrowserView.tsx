@@ -189,10 +189,11 @@ function BrowserView({ initialUrl = '', onClose, onUrlChange }: BrowserViewProps
             ref={webviewRef}
             src={url}
             className="browser-webview"
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
             allowpopups={true}
             plugins={true}
             nodeintegration={false}
-            webpreferences="contextIsolation=yes"
+            webpreferences="contextIsolation=yes,spellCheck=no"
           />
         ) : (
           <div className="browser-empty-state">
