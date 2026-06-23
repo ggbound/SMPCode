@@ -139,7 +139,12 @@ class ReminderService {
       triggerCount: 0
     }
 
-    log.info(`[ReminderService] Adding reminder: ${JSON.stringify({ content: newReminder.content, cronExpression: newReminder.cronExpression, scheduleType: newReminder.scheduleType })}`)
+    log.info(`[ReminderService] Adding reminder: ${JSON.stringify({ 
+      content: newReminder.content, 
+      cronExpression: newReminder.cronExpression, 
+      scheduleType: newReminder.scheduleType,
+      isOneTime: newReminder.isOneTime 
+    })}`)
 
     // 验证 Cron 表达式
     if (cron && !cron.validate(reminder.cronExpression)) {
@@ -150,8 +155,21 @@ class ReminderService {
     this.reminders.set(newReminder.id, newReminder)
     await this.saveReminders()
 
+    // 检查是否是一次性提醒，并且时间已经过了
+    if (newReminder.isOneTime) {
+      const triggerTime = this.getNextExecutionTime(newReminder.cronExpression)
+      const now = new Date()
+      if (triggerTime && triggerTime <= now) {
+        log.warn(`[ReminderService] One-time reminder time has passed! Trigger time: ${triggerTime.toLocaleString('zh-CN')}, Now: ${now.toLocaleString('zh-CN')}`)
+        log.info(`[ReminderService] Triggering immediately...`)
+        await this.onReminderTrigger(newReminder)
+        return newReminder
+      }
+    }
+
     // 如果启用，立即启动
     if (newReminder.enabled) {
+      log.info(`[ReminderService] Starting reminder: ${newReminder.id}`)
       this.startReminder(newReminder)
     }
 
@@ -233,7 +251,12 @@ class ReminderService {
    * 启动单个提醒
    */
   private startReminder(reminder: Reminder): void {
-    if (!reminder.enabled) return
+    if (!reminder.enabled) {
+      log.warn(`[ReminderService] Reminder is disabled, not starting: ${reminder.id}`)
+      return
+    }
+
+    log.info(`[ReminderService] Starting reminder: ${reminder.id}, cron: ${reminder.cronExpression}`)
 
     // 停止已有的任务
     this.stopReminder(reminder.id)
@@ -241,18 +264,22 @@ class ReminderService {
     if (cron) {
       // 使用 node-cron
       try {
+        log.info(`[ReminderService] Scheduling with node-cron, timezone: Asia/Shanghai`)
         const job = cron.schedule(reminder.cronExpression, () => {
+          log.info(`[ReminderService] Cron job triggered: ${reminder.id}`)
           this.onReminderTrigger(reminder)
         }, {
           scheduled: true,
           timezone: 'Asia/Shanghai'  // 使用中国时区
         })
         this.cronJobs.set(reminder.id, job)
+        log.info(`[ReminderService] ✅ Cron job scheduled successfully: ${reminder.id}`)
       } catch (error) {
         log.error(`[ReminderService] Failed to schedule cron job for ${reminder.id}:`, error)
       }
     } else {
       // Fallback: 使用 setTimeout 模拟简单的定时任务
+      log.info(`[ReminderService] Using setTimeout fallback (node-cron not available)`)
       this.scheduleWithTimeout(reminder)
     }
   }
@@ -284,19 +311,39 @@ class ReminderService {
   }
 
   /**
-   * 简单的 Cron 表达式解析（仅支持基本格式）
+   * Cron 表达式解析（支持基本格式和一次性提醒）
    * 返回下一次执行时间
    */
   private getNextExecutionTime(cronExpression: string): Date | null {
-    // 简单解析：支持 "分 时 * * *" 格式（每天指定时间）
     const parts = cronExpression.split(' ')
     if (parts.length !== 5) return null
 
-    const [minute, hour] = parts.map(p => parseInt(p, 10))
+    const [minuteStr, hourStr, dayStr, monthStr, weekdayStr] = parts
+    const minute = parseInt(minuteStr, 10)
+    const hour = parseInt(hourStr, 10)
+    
     if (isNaN(minute) || isNaN(hour)) return null
 
     const now = new Date()
-    let next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0)
+    let next: Date
+
+    // 检查是否是一次性提醒（日期和月份都是数字，不是 *）
+    if (dayStr !== '*' && monthStr !== '*') {
+      const day = parseInt(dayStr, 10)
+      const month = parseInt(monthStr, 10) - 1 // 月份是 0-11
+      
+      if (!isNaN(day) && !isNaN(month)) {
+        // 一次性提醒：今天或明天的特定时间
+        next = new Date(now.getFullYear(), month, day, hour, minute, 0, 0)
+        log.info(`[ReminderService] One-time reminder parsed: ${next.toLocaleString('zh-CN')}`)
+        
+        // 如果时间已经过了，也返回（调用者会决定如何处理）
+        return next
+      }
+    }
+
+    // 重复提醒：每天/每周/工作日
+    next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, minute, 0, 0)
 
     // 如果今天的时间已过，设置为明天
     if (next <= now) {
@@ -353,6 +400,8 @@ class ReminderService {
    */
   private async onReminderTrigger(reminder: Reminder): Promise<void> {
     log.info(`[ReminderService] Reminder triggered: ${reminder.id}`)
+    log.info(`[ReminderService] Reminder details: isOneTime=${reminder.isOneTime}, triggerCount=${reminder.triggerCount}, content=${reminder.content}`)
+    log.info(`[ReminderService] Current time: ${new Date().toLocaleString('zh-CN')}`)
 
     try {
       // 更新触发统计
@@ -364,21 +413,22 @@ class ReminderService {
       const message = this.formatReminderMessage(reminder)
       const feishuService = getFeishuWebSocketService()
       if (feishuService) {
+        log.info(`[ReminderService] Sending message to ${reminder.targetType}:${reminder.targetId}`)
         await feishuService.sendMessage(
           message,
           reminder.targetId,
           reminder.targetType === 'group' ? 'group' : 'p2p'
         )
+        log.info(`[ReminderService] ✅ Message sent successfully`)
       } else {
         log.warn('[ReminderService] Feishu service not available, skipping message send')
       }
 
-      log.info(`[ReminderService] Sent reminder message to ${reminder.targetType}:${reminder.targetId}`)
-
       // 如果是一次性提醒，触发后自动删除
       if (reminder.isOneTime) {
+        log.info(`[ReminderService] One-time reminder, removing from list...`)
         await this.removeReminder(reminder.id)
-        log.info(`[ReminderService] Removed one-time reminder: ${reminder.id}`)
+        log.info(`[ReminderService] ✅ Removed one-time reminder: ${reminder.id}`)
       }
     } catch (error) {
       log.error('[ReminderService] Failed to send reminder:', error)
@@ -482,205 +532,6 @@ export async function updateReminder(
   return service.updateReminder(id, updates)
 }
 
-/**
- * 解析自然语言为 Cron 表达式
- * 支持：
- * - "今天早上9点" -> "0 9 日 月 *" (一次性提醒)
- * - "明天下午3点" -> "0 15 日 月 *" (一次性提醒)
- * - "每天早上9点" -> "0 9 * * *"
- * - "每周一早上9点" -> "0 9 * * 1"
- * - "工作日早上9点" -> "0 9 * * 1-5"
- */
-export function parseNaturalLanguageToCron(text: string): { cron: string; description: string; isOneTime?: boolean; scheduleType?: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom' } | null {
-  const now = new Date()
 
-  const patterns = [
-    // ========== 中文格式 ==========
-    // 今天特定时间（一次性提醒）
-    {
-      regex: /今天(?:早上|上午|下午|晚上)?(\d{1,2})点(?:钟)?(?:的时候)?/,
-      handler: (match: RegExpMatchArray) => {
-        const hour = parseInt(match[1], 10)
-        return {
-          cron: `0 ${hour} ${now.getDate()} ${now.getMonth() + 1} *`,
-          description: `今天 ${hour}:00`,
-          isOneTime: true,
-          scheduleType: 'today' as const
-        }
-      }
-    },
-    // 明天特定时间（一次性提醒）
-    {
-      regex: /明天(?:早上|上午|下午|晚上)?(\d{1,2})点/,
-      handler: (match: RegExpMatchArray) => {
-        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-        const hour = parseInt(match[1], 10)
-        return {
-          cron: `0 ${hour} ${tomorrow.getDate()} ${tomorrow.getMonth() + 1} *`,
-          description: `明天 ${hour}:00`,
-          isOneTime: true,
-          scheduleType: 'today' as const
-        }
-      }
-    },
-    // 每天特定时间
-    {
-      regex: /每天(?:早上|上午|下午|晚上)?(\d{1,2})点/,
-      handler: (match: RegExpMatchArray) => ({
-        cron: `0 ${match[1]} * * *`,
-        description: `每天 ${match[1]}:00`,
-        scheduleType: 'daily' as const
-      })
-    },
-    // 工作日特定时间
-    {
-      regex: /工作日(?:早上|上午|下午|晚上)?(\d{1,2})点/,
-      handler: (match: RegExpMatchArray) => ({
-        cron: `0 ${match[1]} * * 1-5`,
-        description: `工作日 ${match[1]}:00`,
-        scheduleType: 'workday' as const
-      })
-    },
-    // 每周几特定时间
-    {
-      regex: /每周([一二三四五六日])(?:早上|上午|下午|晚上)?(\d{1,2})点/,
-      handler: (match: RegExpMatchArray) => {
-        const dayMap: Record<string, number> = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0 }
-        const day = dayMap[match[1]]
-        return {
-          cron: `0 ${match[2]} * * ${day}`,
-          description: `每周${match[1]} ${match[2]}:00`,
-          scheduleType: 'weekly' as const
-        }
-      }
-    },
-    // ========== 英文格式 ==========
-    // today at 10am / today at 3pm
-    {
-      regex: /today at (\d{1,2})(am|pm)/i,
-      handler: (match: RegExpMatchArray) => {
-        let hour = parseInt(match[1], 10)
-        if (match[2].toLowerCase() === 'pm' && hour < 12) {
-          hour += 12
-        }
-        if (match[2].toLowerCase() === 'am' && hour === 12) {
-          hour = 0
-        }
-        return {
-          cron: `0 ${hour} ${now.getDate()} ${now.getMonth() + 1} *`,
-          description: `今天 ${hour}:00`,
-          isOneTime: true,
-          scheduleType: 'today' as const
-        }
-      }
-    },
-    // tomorrow at 10am / tomorrow at 3pm
-    {
-      regex: /tomorrow at (\d{1,2})(am|pm)/i,
-      handler: (match: RegExpMatchArray) => {
-        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-        let hour = parseInt(match[1], 10)
-        if (match[2].toLowerCase() === 'pm' && hour < 12) {
-          hour += 12
-        }
-        if (match[2].toLowerCase() === 'am' && hour === 12) {
-          hour = 0
-        }
-        return {
-          cron: `0 ${hour} ${tomorrow.getDate()} ${tomorrow.getMonth() + 1} *`,
-          description: `明天 ${hour}:00`,
-          isOneTime: true,
-          scheduleType: 'today' as const
-        }
-      }
-    },
-    // daily at 10am / every day at 3pm
-    {
-      regex: /(daily|every day) at (\d{1,2})(am|pm)/i,
-      handler: (match: RegExpMatchArray) => {
-        let hour = parseInt(match[2], 10)
-        if (match[3].toLowerCase() === 'pm' && hour < 12) {
-          hour += 12
-        }
-        if (match[3].toLowerCase() === 'am' && hour === 12) {
-          hour = 0
-        }
-        return {
-          cron: `0 ${hour} * * *`,
-          description: `每天 ${hour}:00`,
-          scheduleType: 'daily' as const
-        }
-      }
-    },
-    // weekdays at 10am
-    {
-      regex: /weekdays? at (\d{1,2})(am|pm)/i,
-      handler: (match: RegExpMatchArray) => {
-        let hour = parseInt(match[1], 10)
-        if (match[2].toLowerCase() === 'pm' && hour < 12) {
-          hour += 12
-        }
-        if (match[2].toLowerCase() === 'am' && hour === 12) {
-          hour = 0
-        }
-        return {
-          cron: `0 ${hour} * * 1-5`,
-          description: `工作日 ${hour}:00`,
-          scheduleType: 'workday' as const
-        }
-      }
-    },
-    // every Monday at 10am
-    {
-      regex: /every (monday|tuesday|wednesday|thursday|friday|saturday|sunday) at (\d{1,2})(am|pm)/i,
-      handler: (match: RegExpMatchArray) => {
-        const dayMap: Record<string, number> = {
-          'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4,
-          'friday': 5, 'saturday': 6, 'sunday': 0
-        }
-        const day = dayMap[match[1].toLowerCase()]
-        let hour = parseInt(match[2], 10)
-        if (match[3].toLowerCase() === 'pm' && hour < 12) {
-          hour += 12
-        }
-        if (match[3].toLowerCase() === 'am' && hour === 12) {
-          hour = 0
-        }
-        return {
-          cron: `0 ${hour} * * ${day}`,
-          description: `每周${['日', '一', '二', '三', '四', '五', '六'][day]} ${hour}:00`,
-          scheduleType: 'weekly' as const
-        }
-      }
-    },
-    // 每小时
-    {
-      regex: /每(\d{1,2})小时/,
-      handler: (match: RegExpMatchArray) => ({
-        cron: `0 */${match[1]} * * *`,
-        description: `每 ${match[1]} 小时`,
-        scheduleType: 'hourly' as const
-      })
-    },
-    // 每分钟
-    {
-      regex: /每(\d{1,2})分钟/,
-      handler: (match: RegExpMatchArray) => ({
-        cron: `*/${match[1]} * * * *`,
-        description: `每 ${match[1]} 分钟`,
-        scheduleType: 'hourly' as const
-      })
-    }
-  ]
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern.regex)
-    if (match) {
-      return pattern.handler(match)
-    }
-  }
-
-  return null
-}
 
 export default getReminderService

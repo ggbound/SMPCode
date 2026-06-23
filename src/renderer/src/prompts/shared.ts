@@ -64,6 +64,19 @@ export const CHAT_MODE_TOOLS: PromptTool[] = [
     description: 'List all scheduled reminders. Use when user asks to check scheduled tasks or reminders.',
     parameters: {},
     required: []
+  },
+  {
+    name: 'add_reminder',
+    description: 'Add a scheduled reminder. You MUST analyze the natural language time expression and provide structured data directly!',
+    parameters: {
+      content: { type: 'string', description: 'The reminder message content', required: true },
+      cron_expression: { type: 'string', description: 'Standard node-cron format: "minute hour day month weekday". Examples: "0 10 * * *" (every day at 10am), "0 9 * * 1-5" (weekdays at 9am), "14 11 25 6 *" (June 25 at 11:14am). IMPORTANT: For one-time reminders, use specific day/month!', required: true },
+      display_time: { type: 'string', description: 'Human-readable time description in Chinese, e.g., "每天上午10点", "工作日9点", "6月25日上午11点14分", "今天11点14分", "明天下午3点半"', required: true },
+      is_one_time: { type: 'boolean', description: 'Whether this is a one-time reminder (true for "今天", "明天", "待会", etc. / false for repeating like "每天", "每周"). REMINDER WILL BE DELETED AFTER TRIGGERING IF TRUE!', required: true },
+      schedule_type: { type: 'string', description: 'Schedule type: "today" (今天/明天/待会), "daily" (每天), "workday" (工作日), "weekly" (每周), "hourly" (每小时), "custom" (其他)', required: true },
+      description: { type: 'string', description: 'Optional description or notes for this reminder', required: false }
+    },
+    required: ['content', 'cron_expression', 'display_time', 'is_one_time', 'schedule_type']
   }
 ]
 

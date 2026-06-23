@@ -25,8 +25,7 @@ import {
   addReminder,
   getAllReminders,
   removeReminder,
-  updateReminder,
-  parseNaturalLanguageToCron
+  updateReminder
 } from './services/reminder-service'
 import { 
   initFeishuWebSocketService, 
@@ -1892,18 +1891,33 @@ function initializeCLIRegistries(): void {
   // 注册定时提醒工具
   toolRegistry.register({
     name: 'add_reminder',
-    description: 'Add a scheduled reminder that will send messages via Feishu at specified times. Supports natural language time expressions like "every day at 9am", "workdays at 9am", "every Monday at 9am". The reminder will be sent to the current Feishu chat by default.',
+    description: 'Add a scheduled reminder that will send messages via Feishu at specified times. You MUST analyze the natural language and provide structured data directly!',
     sourceHint: 'builtin',
-    responsibility: 'Create scheduled reminders to send messages at specific times',
+    responsibility: 'Create scheduled reminders by analyzing natural language time expressions and outputting structured data',
     parameters: {
       content: {
         type: 'string',
         description: 'The reminder message content to send',
         required: true
       },
-      time_expression: {
+      cron_expression: {
         type: 'string',
-        description: 'When to send the reminder. Examples: "every day at 9am", "workdays at 9am", "every Monday at 9am", "0 9 * * *" (cron format)',
+        description: 'Standard node-cron format: "minute hour day month weekday". Examples: "0 10 * * *" (every day at 10am), "0 9 * * 1-5" (weekdays at 9am), "30 14 25 12 *" (December 25 at 2:30pm)',
+        required: true
+      },
+      display_time: {
+        type: 'string',
+        description: 'Human-readable time description in Chinese, e.g., "每天上午10点", "工作日9点", "12月25日下午2点30分", "今天11点14分"',
+        required: true
+      },
+      is_one_time: {
+        type: 'boolean',
+        description: 'Whether this is a one-time reminder (true for "今天", "明天", "待会", etc. / false for repeating like "每天", "每周"). REMINDER WILL BE DELETED AFTER TRIGGERING IF TRUE!',
+        required: true
+      },
+      schedule_type: {
+        type: 'string',
+        description: 'Schedule type: "today" (今天/明天/待会), "daily" (每天), "workday" (工作日), "weekly" (每周), "hourly" (每小时), "custom" (其他)',
         required: true
       },
       description: {
@@ -1912,15 +1926,18 @@ function initializeCLIRegistries(): void {
         required: false
       }
     },
-    required: ['content', 'time_expression'],
+    required: ['content', 'cron_expression', 'display_time', 'is_one_time', 'schedule_type'],
     execute: async (args, context) => {
       try {
         const content = String(args.content)
-        const timeExpression = String(args.time_expression)
+        const cronExpression = String(args.cron_expression)
+        const displayTime = String(args.display_time)
+        const isOneTime = Boolean(args.is_one_time)
+        const scheduleType = String(args.schedule_type) as 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom'
         const description = args.description ? String(args.description) : undefined
 
         log.info(`[add_reminder] Creating reminder: ${content}`)
-        log.info(`[add_reminder] Args: content=${content}, time_expression=${timeExpression}, description=${description}`)
+        log.info(`[add_reminder] Structured data: cron=${cronExpression}, display=${displayTime}, isOneTime=${isOneTime}, type=${scheduleType}`)
 
         // 使用当前飞书会话上下文，如果没有则报错
         if (!currentFeishuContext.chatId) {
@@ -1937,21 +1954,13 @@ function initializeCLIRegistries(): void {
         const targetType = currentFeishuContext.chatType === 'p2p' ? 'user' : 'group'
         const targetId = currentFeishuContext.chatId
 
-        // 解析时间表达式
-        let cronExpression = timeExpression
-        let displayTime = timeExpression
-        let isOneTime = false
-        let scheduleType: 'daily' | 'workday' | 'today' | 'weekly' | 'hourly' | 'custom' | undefined = undefined
-        const parsed = parseNaturalLanguageToCron(timeExpression)
-        if (parsed) {
-          cronExpression = parsed.cron
-          displayTime = parsed.description
-          isOneTime = parsed.isOneTime || false
-          scheduleType = parsed.scheduleType
-          log.info(`[add_reminder] Parsed time expression: ${parsed.description}, isOneTime: ${isOneTime}, scheduleType: ${scheduleType}`)
+        // 验证 cron 表达式格式（基本验证）
+        const cronParts = cronExpression.split(' ')
+        if (cronParts.length !== 5) {
+          throw new Error(`Invalid cron expression: ${cronExpression}. Must be "minute hour day month weekday"`)
         }
 
-        // 创建提醒
+        // 创建提醒（直接使用 AI 提供的结构化数据）
         const reminder = await addReminder(
           content,
           cronExpression,
@@ -1962,7 +1971,7 @@ function initializeCLIRegistries(): void {
           scheduleType
         )
 
-        const output = `✅ 提醒已创建\n\nID: ${reminder.id}\n内容: ${reminder.content}\n时间: ${displayTime}\n目标: ${targetType === 'user' ? '私聊' : '群聊'}`
+        const output = `✅ 提醒已创建\n\nID: ${reminder.id}\n内容: ${reminder.content}\n时间: ${displayTime} ${isOneTime ? '(一次性)' : '(重复提醒)'}\nCron: ${cronExpression}\n目标: ${targetType === 'user' ? '私聊' : '群聊'}`
 
         return {
           success: true,
