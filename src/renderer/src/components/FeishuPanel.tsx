@@ -57,6 +57,7 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
   const [showMenuFor, setShowMenuFor] = useState<string | null>(null)
   const [attachedImages, setAttachedImages] = useState<FeishuImageContent[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [, setTimeTrigger] = useState(0) // 用于触发时间更新
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -604,6 +605,14 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
   useEffect(() => {
     checkConnection()
   }, [checkConnection])
+
+  // 定期更新会话列表时间显示
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeTrigger(prev => prev + 1)
+    }, 60000) // 每分钟更新一次
+    return () => clearInterval(timer)
+  }, [])
 
   // 点击外部关闭下拉菜单
   useEffect(() => {

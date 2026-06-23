@@ -55,6 +55,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   // 会话重命名状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [, setTimeTrigger] = useState(0) // 用于触发时间更新
   
   const store = useKiloStore()
   const mainStore = useMainStore()
@@ -74,6 +75,14 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   
+  // 定期更新会话列表时间显示
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeTrigger(prev => prev + 1)
+    }, 60000) // 每分钟更新一次
+    return () => clearInterval(timer)
+  }, [])
+
   // 从项目目录加载会话列表
   useEffect(() => {
     const loadSessions = async () => {
