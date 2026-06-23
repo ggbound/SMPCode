@@ -294,7 +294,7 @@ export const TOOL_CONFIG: Record<string, {
   borderColor: string
   description: string
 }> = {
-  // 文件读取相关
+  // ========== 文件操作工具 ==========
   read_file: {
     label: '读取文件',
     icon: 'FileText',
@@ -311,7 +311,14 @@ export const TOOL_CONFIG: Record<string, {
     borderColor: 'rgba(59, 130, 246, 0.3)',
     description: '读取文件内容'
   },
-  // 文件写入相关
+  write_file: {
+    label: '写入文件',
+    icon: 'FileEdit',
+    color: '#10b981',
+    bgColor: 'rgba(16, 185, 129, 0.1)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+    description: '创建或覆盖文件'
+  },
   write_to_file: {
     label: '写入文件',
     icon: 'FileEdit',
@@ -328,29 +335,29 @@ export const TOOL_CONFIG: Record<string, {
     borderColor: 'rgba(16, 185, 129, 0.3)',
     description: '创建或覆盖文件'
   },
-  apply_diff: {
-    label: '应用修改',
-    icon: 'GitPullRequest',
+  edit_file: {
+    label: '编辑文件',
+    icon: 'FileEdit',
     color: '#8b5cf6',
     bgColor: 'rgba(139, 92, 246, 0.1)',
     borderColor: 'rgba(139, 92, 246, 0.3)',
-    description: '应用代码差异'
+    description: '编辑文件特定行'
   },
-  search_files: {
-    label: '搜索文件',
-    icon: 'Search',
-    color: '#f59e0b',
-    bgColor: 'rgba(245, 158, 11, 0.1)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    description: '搜索代码和文件'
-  },
-  list_files: {
-    label: '列出文件',
-    icon: 'FolderTree',
+  append_file: {
+    label: '追加文件',
+    icon: 'FileEdit',
     color: '#06b6d4',
     bgColor: 'rgba(6, 182, 212, 0.1)',
     borderColor: 'rgba(6, 182, 212, 0.3)',
-    description: '列出目录内容'
+    description: '向文件末尾追加内容'
+  },
+  delete_file: {
+    label: '删除文件',
+    icon: 'Wrench',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    description: '删除文件或目录'
   },
   list_directory: {
     label: '列出目录',
@@ -360,6 +367,31 @@ export const TOOL_CONFIG: Record<string, {
     borderColor: 'rgba(6, 182, 212, 0.3)',
     description: '列出目录内容'
   },
+  list_files: {
+    label: '列出文件',
+    icon: 'FolderTree',
+    color: '#06b6d4',
+    bgColor: 'rgba(6, 182, 212, 0.1)',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    description: '列出目录内容'
+  },
+  search_files: {
+    label: '搜索文件',
+    icon: 'Search',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '搜索代码和文件'
+  },
+  // ========== 终端和进程工具 ==========
+  execute_bash: {
+    label: '执行命令',
+    icon: 'Terminal',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    description: '执行终端命令'
+  },
   execute_command: {
     label: '执行命令',
     icon: 'Terminal',
@@ -367,6 +399,71 @@ export const TOOL_CONFIG: Record<string, {
     bgColor: 'rgba(239, 68, 68, 0.1)',
     borderColor: 'rgba(239, 68, 68, 0.3)',
     description: '执行终端命令'
+  },
+  bash: {
+    label: '执行命令',
+    icon: 'Terminal',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    description: '执行终端命令'
+  },
+  get_running_processes: {
+    label: '获取进程',
+    icon: 'Wrench',
+    color: '#3b82f6',
+    bgColor: 'rgba(59, 130, 246, 0.1)',
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+    description: '获取正在运行的进程列表'
+  },
+  stop_process: {
+    label: '停止进程',
+    icon: 'Wrench',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    description: '停止正在运行的进程'
+  },
+  restart_process: {
+    label: '重启进程',
+    icon: 'Wrench',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '重启正在运行的进程'
+  },
+  kill_process: {
+    label: '杀死进程',
+    icon: 'Wrench',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.1)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    description: '强制杀死进程'
+  },
+  find_process: {
+    label: '查找进程',
+    icon: 'Search',
+    color: '#3b82f6',
+    bgColor: 'rgba(59, 130, 246, 0.1)',
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+    description: '查找正在运行的进程'
+  },
+  check_port: {
+    label: '检查端口',
+    icon: 'Wrench',
+    color: '#8b5cf6',
+    bgColor: 'rgba(139, 92, 246, 0.1)',
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    description: '检查端口是否被占用'
+  },
+  // ========== 浏览器工具 ==========
+  browse_website: {
+    label: '浏览网站',
+    icon: 'Globe',
+    color: '#06b6d4',
+    bgColor: 'rgba(6, 182, 212, 0.1)',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    description: '访问网站并获取内容'
   },
   browser_action: {
     label: '浏览器操作',
@@ -376,6 +473,57 @@ export const TOOL_CONFIG: Record<string, {
     borderColor: 'rgba(236, 72, 153, 0.3)',
     description: '浏览器自动化'
   },
+  // ========== 定时任务工具 ==========
+  add_reminder: {
+    label: '添加提醒',
+    icon: 'Wrench',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '设置定时提醒'
+  },
+  list_reminders: {
+    label: '列出提醒',
+    icon: 'Wrench',
+    color: '#06b6d4',
+    bgColor: 'rgba(6, 182, 212, 0.1)',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
+    description: '列出所有提醒任务'
+  },
+  // ========== 搜索和其他工具 ==========
+  glob: {
+    label: '文件搜索',
+    icon: 'Search',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '按模式搜索文件'
+  },
+  search_code: {
+    label: '搜索代码',
+    icon: 'Search',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '搜索代码库'
+  },
+  search_codebase: {
+    label: '搜索代码库',
+    icon: 'Search',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '搜索代码库'
+  },
+  grep_code: {
+    label: 'Grep搜索',
+    icon: 'Search',
+    color: '#f59e0b',
+    bgColor: 'rgba(245, 158, 11, 0.1)',
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+    description: '搜索代码库'
+  },
+  // ========== 对话相关工具 ==========
   ask_followup_question: {
     label: '追问',
     icon: 'HelpCircle',
@@ -391,5 +539,13 @@ export const TOOL_CONFIG: Record<string, {
     bgColor: 'rgba(34, 197, 94, 0.1)',
     borderColor: 'rgba(34, 197, 94, 0.3)',
     description: '标记任务完成'
+  },
+  apply_diff: {
+    label: '应用修改',
+    icon: 'GitPullRequest',
+    color: '#8b5cf6',
+    bgColor: 'rgba(139, 92, 246, 0.1)',
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+    description: '应用代码差异'
   }
 }

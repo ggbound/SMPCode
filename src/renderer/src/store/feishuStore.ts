@@ -166,7 +166,7 @@ export const useFeishuStore = create<FeishuState>((set, get) => ({
   currentSession: null,
   sessions: [],
   messages: [],
-  currentMode: 'ask',
+  currentMode: 'code',
   input: '',
   isGenerating: false,
   streamingMessageId: null,
