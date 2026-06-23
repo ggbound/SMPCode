@@ -114,7 +114,7 @@
   flex-shrink: 0;
 }
 
-/* 面板头部 - VS Code 风格 */
+/* 面板头部 - VS Code 风格（与 feishu-chat-header 完全一致） */
 .feishu-panel-header {
   display: flex;
   align-items: center;
@@ -127,15 +127,19 @@
 }
 
 .feishu-panel-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg-primary);
+  font-size: 15px;
+  font-weight: 500;
+  color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  height: 100%;
 }
 
 .feishu-panel-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  height: 100%;
 }
 
 /* 状态指示灯 */
@@ -409,13 +413,15 @@
   background: #0d0d0d;
 }
 
-/* 顶部工具栏 */
+/* 顶部工具栏 - VS Code 风格统一高度 */
 .feishu-chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid #1f1f1f;
+  height: 35px;
+  padding: 0 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
   flex-shrink: 0;
 }
 
