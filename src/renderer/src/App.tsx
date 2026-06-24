@@ -157,6 +157,13 @@ function App() {
   const [activeActivity, setActiveActivity] = useState<ActivityBarItem>('explorer')
   const [previousActivity, setPreviousActivity] = useState<ActivityBarItem>('explorer')
 
+  // 确保当没有项目路径时，activeActivity 始终是 explorer
+  useEffect(() => {
+    if (!projectPath && activeActivity !== 'explorer') {
+      setActiveActivity('explorer')
+    }
+  }, [projectPath, activeActivity])
+
   // Panel widths state - 可调整的面板宽度
   const [leftPanelWidth, setLeftPanelWidth] = useState(320)
   const [rightPanelWidth, setRightPanelWidth] = useState(420)
@@ -167,6 +174,12 @@ function App() {
   
   // Activity Bar click handler
   const handleActivityClick = useCallback((item: ActivityBarItem) => {
+    // 如果没有项目路径，且不是 explorer，则不允许切换
+    if (!projectPath && item !== 'explorer') {
+      alert('请先打开一个文件夹')
+      return
+    }
+    
     // Settings 按钮切换设置页面
     if (item === 'settings') {
       setShowSettings(true)
@@ -184,7 +197,7 @@ function App() {
       setPreviousActivity(activeActivity)
       setActiveActivity(item)
     }
-  }, [activeActivity, showSettings])
+  }, [activeActivity, showSettings, projectPath])
   
   // Command Palette state
   const [showCommandPalette, setShowCommandPalette] = useState(false)
@@ -2018,7 +2031,13 @@ function App() {
       description: 'Show/hide terminal panel',
       shortcut: 'Ctrl+`',
       category: 'View',
-      execute: () => setShowTerminal(prev => !prev)
+      execute: () => {
+        if (!projectPath) {
+          alert('请先打开一个文件夹')
+          return
+        }
+        setShowTerminal(prev => !prev)
+      }
     },
     {
       id: 'view.toggleSearch',
@@ -2026,7 +2045,13 @@ function App() {
       description: 'Show/hide search panel',
       shortcut: 'Ctrl+Shift+F',
       category: 'View',
-      execute: () => setActiveActivity('search')
+      execute: () => {
+        if (!projectPath) {
+          alert('请先打开一个文件夹')
+          return
+        }
+        setActiveActivity('search')
+      }
     },
     {
       id: 'view.toggleExplorer',
@@ -2042,7 +2067,13 @@ function App() {
       description: 'Open settings modal',
       shortcut: 'Ctrl+,',
       category: 'Preferences',
-      execute: () => setShowSettings(true)
+      execute: () => {
+        if (!projectPath) {
+          alert('请先打开一个文件夹')
+          return
+        }
+        setShowSettings(true)
+      }
     },
     {
       id: 'editor.splitRight',
@@ -2079,16 +2110,24 @@ function App() {
         return
       }
 
-      // Ctrl+,: Settings
+      // Ctrl+,: Settings - require projectPath
       if ((e.ctrlKey || e.metaKey) && e.key === ',') {
         e.preventDefault()
+        if (!projectPath) {
+          alert('请先打开一个文件夹')
+          return
+        }
         setShowSettings(true)
         return
       }
 
-      // Ctrl+`: Toggle terminal
+      // Ctrl+`: Toggle terminal - require projectPath
       if ((e.ctrlKey || e.metaKey) && e.key === '`') {
         e.preventDefault()
+        if (!projectPath) {
+          alert('请先打开一个文件夹')
+          return
+        }
         setShowTerminal(prev => !prev)
         return
       }
@@ -2100,9 +2139,13 @@ function App() {
         return
       }
 
-      // Ctrl+Shift+F: Search
+      // Ctrl+Shift+F: Search - require projectPath
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
         e.preventDefault()
+        if (!projectPath) {
+          alert('请先打开一个文件夹')
+          return
+        }
         setActiveActivity('search')
         return
       }
@@ -2121,7 +2164,7 @@ function App() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [showCommandPalette, activeTab, handleTabSave])
+  }, [showCommandPalette, activeTab, handleTabSave, projectPath])
 
   return (
     <div className="app-container">
@@ -2135,6 +2178,7 @@ function App() {
           <ActivityBar
             activeItem={activeActivity}
             onItemClick={handleActivityClick}
+            hasProjectPath={!!projectPath}
           />
 
           {/* Main Content Area */}

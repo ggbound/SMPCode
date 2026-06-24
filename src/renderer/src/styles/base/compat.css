@@ -47,6 +47,15 @@
   color: var(--fg-primary);
 }
 
+.activity-bar-item.disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.activity-bar-item.disabled:hover {
+  color: var(--fg-tertiary);
+}
+
 .activity-bar-item.active::before {
   content: '';
   position: absolute;

@@ -3,7 +3,7 @@
  * 集中管理所有工具调用解析相关功能
  */
 
-import { TOOL_NAME_MAP as BaseTOOL_NAME_MAP } from '../hooks/useConversationBase'
+import { TOOL_NAME_MAP as BaseTOOL_NAME_MAP } from './toolConstants'
 
 // 导出基础工具名称映射
 export { BaseTOOL_NAME_MAP }

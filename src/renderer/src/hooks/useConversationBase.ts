@@ -7,6 +7,7 @@ import { useRef, useCallback, useEffect } from 'react'
 import { useStore, type Message } from '../store'
 import { executeTool } from '../services/tool-client'
 import { parseToolCalls as parseToolCallsUtil, cleanToolCallBlocks as cleanToolCallBlocksUtil } from '../utils/toolParser'
+import { TOOL_NAME_MAP } from '../utils/toolConstants'
 
 // CLI Chat 流式响应块类型 - 共享类型定义
 export interface StreamChunk {
@@ -47,47 +48,8 @@ export interface ConversationOptions {
   localSessions: Array<{ id: string; title?: string }>
 }
 
-// 工具名称映射
-export const TOOL_NAME_MAP: Record<string, string> = {
-  'BashTool': 'execute_bash',
-  'bash_tool': 'execute_bash',
-  'bash': 'execute_bash',
-  'ReadFileTool': 'read_file',
-  'read_file_tool': 'read_file',
-  'WriteFileTool': 'write_file',
-  'write_file_tool': 'write_file',
-  'EditFileTool': 'edit_file',
-  'edit_file_tool': 'edit_file',
-  'ListDirectoryTool': 'list_directory',
-  'list_directory_tool': 'list_directory',
-  'list_directory': 'list_directory',
-  'SearchCodeTool': 'search_files',  // ✅ 修复：统一使用 search_files
-  'search_code_tool': 'search_files',
-  'search_code': 'search_files',  // 兼容旧名称
-  'DeleteFileTool': 'delete_file',
-  'delete_file_tool': 'delete_file',
-  'delete_file': 'delete_file',
-  'GlobTool': 'search_files',
-  'glob_tool': 'search_files',
-  'glob': 'search_files',
-  'file_read': 'read_file',
-  'file_write': 'write_file',
-  'file_edit': 'edit_file',
-  'read_file': 'read_file',
-  'write_file': 'write_file',
-  'edit_file': 'edit_file',
-  'search_files': 'search_files',  // ✅ 修复：直接使用正确名称
-  'execute_bash': 'execute_bash',
-  'CheckPortTool': 'check_port',
-  'check_port_tool': 'check_port',
-  'check_port': 'check_port',
-  'KillProcessTool': 'kill_process',
-  'kill_process_tool': 'kill_process',
-  'kill_process': 'kill_process',
-  'FindProcessTool': 'find_process',
-  'find_process_tool': 'find_process',
-  'find_process': 'find_process',
-}
+// 导出工具名称映射
+export { TOOL_NAME_MAP }
 
 /**
  * 解析工具调用 - 使用共享模块实现
