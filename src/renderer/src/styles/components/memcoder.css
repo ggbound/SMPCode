@@ -1,0 +1,530 @@
+/**
+ * Component: MemCoder
+ * MemCoder 面板样式
+ */
+
+.smp-memcoder {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-primary);
+}
+
+/* 顶部标题栏 */
+.smp-memcoder__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--height-header);
+  padding: 0 var(--space-lg);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+}
+
+.smp-memcoder__title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.smp-memcoder__title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.smp-memcoder__icon {
+  color: var(--accent-primary);
+}
+
+.smp-memcoder__close-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--fg-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.smp-memcoder__close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+/* 消息提示 */
+.smp-memcoder__message {
+  margin: var(--space-md) var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.smp-memcoder__message--success {
+  background: rgba(137, 209, 133, 0.1);
+  color: var(--status-success);
+  border: 1px solid rgba(137, 209, 133, 0.2);
+}
+
+.smp-memcoder__message--error {
+  background: rgba(244, 135, 113, 0.1);
+  color: var(--status-error);
+  border: 1px solid rgba(244, 135, 113, 0.2);
+}
+
+/* 导航标签 */
+.smp-memcoder__nav {
+  display: flex;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-lg);
+  border-bottom: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+}
+
+.smp-memcoder__nav-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.smp-memcoder__nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--fg-primary);
+}
+
+.smp-memcoder__nav-btn--active {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.smp-memcoder__nav-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 内容区域 */
+.smp-memcoder__content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-lg);
+}
+
+.smp-memcoder__content-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--fg-tertiary);
+  font-size: 12px;
+}
+
+/* 统计视图 */
+.smp-memcoder__stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.smp-memcoder__stat-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.smp-memcoder__stat-icon {
+  margin-bottom: var(--space-sm);
+}
+
+.smp-memcoder__stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg-primary);
+  margin-bottom: var(--space-xs);
+}
+
+.smp-memcoder__stat-label {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+
+.smp-memcoder__summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.smp-memcoder__summary-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-primary);
+  margin-bottom: var(--space-md);
+}
+
+.smp-memcoder__summary-content {
+  font-size: 12px;
+  color: var(--fg-tertiary);
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+}
+
+.smp-memcoder__actions {
+  display: flex;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+}
+
+.smp-memcoder__btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+}
+
+.smp-memcoder__btn--primary {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.smp-memcoder__btn--primary:hover {
+  background: var(--accent-hover);
+}
+
+.smp-memcoder__btn--secondary {
+  background: transparent;
+  color: var(--fg-primary);
+  border: 1px solid var(--border-primary);
+}
+
+.smp-memcoder__btn--secondary:hover {
+  background: var(--bg-hover);
+}
+
+.smp-memcoder__btn--danger {
+  background: transparent;
+  color: var(--status-error);
+  border: 1px solid transparent;
+}
+
+.smp-memcoder__btn--danger:hover {
+  background: rgba(244, 135, 113, 0.1);
+  border-color: rgba(244, 135, 113, 0.2);
+}
+
+/* 记忆视图 */
+.smp-memcoder__memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-md);
+}
+
+.smp-memcoder__memory-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+
+.smp-memcoder__mapping-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.smp-memcoder__mapping-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.smp-memcoder__mapping-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.smp-memcoder__mapping-intent {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-primary);
+  line-height: 1.4;
+}
+
+.smp-memcoder__mapping-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+.smp-memcoder__mapping-confidence {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.smp-memcoder__mapping-confidence--high {
+  background: rgba(137, 209, 133, 0.2);
+  color: var(--status-success);
+}
+
+.smp-memcoder__mapping-confidence--medium {
+  background: rgba(204, 167, 0, 0.2);
+  color: var(--status-warning);
+}
+
+.smp-memcoder__mapping-confidence--low {
+  background: rgba(109, 118, 129, 0.2);
+  color: var(--fg-disabled);
+}
+
+.smp-memcoder__mapping-usage {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+
+.smp-memcoder__mapping-files {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+  margin-bottom: var(--space-md);
+}
+
+.smp-memcoder__mapping-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.smp-memcoder__mapping-actions .smp-memcoder__btn {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.smp-memcoder__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xxl) 0;
+  text-align: center;
+}
+
+.smp-memcoder__empty-icon {
+  color: var(--fg-tertiary);
+  margin-bottom: var(--space-md);
+  opacity: 0.5;
+}
+
+.smp-memcoder__empty-text {
+  font-size: 13px;
+  color: var(--fg-tertiary);
+  margin-bottom: var(--space-xs);
+}
+
+.smp-memcoder__empty-hint {
+  font-size: 11px;
+  color: var(--fg-disabled);
+}
+
+/* 配置视图 */
+.smp-memcoder__config-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.smp-memcoder__config-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.smp-memcoder__config-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+
+.smp-memcoder__config-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-primary);
+  margin-bottom: var(--space-md);
+}
+
+.smp-memcoder__config-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.smp-memcoder__config-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.smp-memcoder__config-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-primary);
+}
+
+.smp-memcoder__config-field-desc {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+
+.smp-memcoder__config-input {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  color: var(--fg-primary);
+  font-size: 12px;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.smp-memcoder__config-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.2);
+}
+
+.smp-memcoder__config-switch {
+  position: relative;
+  width: 48px;
+  height: 24px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.smp-memcoder__config-switch--active {
+  background: var(--accent-primary);
+}
+
+.smp-memcoder__config-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all var(--transition-fast);
+}
+
+.smp-memcoder__config-switch--active .smp-memcoder__config-switch-knob {
+  left: 26px;
+}
+
+.smp-memcoder__config-save {
+  width: 100%;
+  justify-content: center;
+  margin-top: var(--space-md);
+}
+
+/* 反馈视图 */
+.smp-memcoder__feedback-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-primary);
+  margin-bottom: var(--space-md);
+}
+
+.smp-memcoder__feedback-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.smp-memcoder__feedback-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.smp-memcoder__feedback-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.smp-memcoder__feedback-type {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+}
+
+.smp-memcoder__feedback-type--approve {
+  background: rgba(137, 209, 133, 0.2);
+  color: var(--status-success);
+}
+
+.smp-memcoder__feedback-type--reject {
+  background: rgba(244, 135, 113, 0.2);
+  color: var(--status-error);
+}
+
+.smp-memcoder__feedback-type--modify {
+  background: rgba(117, 190, 255, 0.2);
+  color: var(--status-info);
+}
+
+.smp-memcoder__feedback-date {
+  font-size: 11px;
+  color: var(--fg-tertiary);
+}
+
+.smp-memcoder__feedback-content {
+  font-size: 12px;
+  color: var(--fg-tertiary);
+}
+
+.smp-memcoder__feedback-code {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--fg-primary);
+  overflow-x: auto;
+}

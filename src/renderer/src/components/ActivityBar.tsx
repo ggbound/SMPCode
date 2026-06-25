@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { File, Search, Settings, GitBranch, Clock, Plug, MessageSquare, Lock } from 'lucide-react'
+import { File, Search, Settings, GitBranch, Clock, Plug, MessageSquare, Lock, Brain } from 'lucide-react'
 import { t } from '../i18n'
 
 export type ActivityBarItem =
@@ -9,6 +9,7 @@ export type ActivityBarItem =
   | 'reminders'
   | 'mcp-skill'
   | 'feishu'
+  | 'memcoder'
   | 'settings'
 
 interface ActivityBarProps {
@@ -27,6 +28,7 @@ function ActivityBar({ activeItem, onItemClick, hasProjectPath }: ActivityBarPro
     { id: 'reminders', icon: <Clock size={16} />, label: '定时任务', disabled: !hasProjectPath },
     { id: 'mcp-skill', icon: <Plug size={16} />, label: 'MCP & Skill', disabled: !hasProjectPath },
     { id: 'feishu', icon: <MessageSquare size={16} />, label: '飞书', disabled: !hasProjectPath },
+    { id: 'memcoder', icon: <Brain size={16} />, label: 'MemCoder', disabled: !hasProjectPath },
     { id: 'settings', icon: <Settings size={16} />, label: t('settings') || 'Settings', disabled: !hasProjectPath },
   ]
 

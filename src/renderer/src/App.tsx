@@ -14,6 +14,7 @@ import GitPanel from './components/GitPanel'
 import ReminderPanel from './components/ReminderPanel'
 import MCPSkillPanel from './components/MCPSkillPanel'
 import FeishuPanel from './components/FeishuPanel'
+import MemCoderPanel from './components/MemCoderPanel'
 import FileViewer from './components/FileViewer'
 import DiffViewer from './components/DiffViewer'
 import BrowserView from './components/BrowserView'
@@ -2203,7 +2204,7 @@ function App() {
             </div>
 
             {/* Left: Sidebar (File Explorer or Search) - 可调整宽度 */}
-            {(activeActivity === 'explorer' || activeActivity === 'search' || activeActivity === 'git' || activeActivity === 'reminders' || activeActivity === 'mcp-skill') && (
+            {(activeActivity === 'explorer' || activeActivity === 'search' || activeActivity === 'git' || activeActivity === 'reminders' || activeActivity === 'mcp-skill' || activeActivity === 'memcoder') && (
               <>
                 <div 
                   className="sidebar-panel-container" 
@@ -2264,6 +2265,7 @@ function App() {
                   {activeActivity === 'git' && <GitPanel repoPath={projectPath} openFile={openFile} />}
                   {activeActivity === 'reminders' && <ReminderPanel />}
                   {activeActivity === 'mcp-skill' && <MCPSkillPanel />}
+                  {activeActivity === 'memcoder' && <MemCoderPanel projectPath={projectPath} />}
                 </div>
                 {/* Left Resizer */}
                 <Resizer

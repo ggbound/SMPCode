@@ -340,7 +340,43 @@ const api = {
     loadConversation: (projectPath: string, sessionId: string) => 
       ipcRenderer.invoke('feishu:conversation:load', { projectPath, sessionId }),
     deleteSession: (projectPath: string, sessionId: string) => 
-      ipcRenderer.invoke('feishu:conversation:delete-session', { projectPath, sessionId })
+      ipcRenderer.invoke('feishu:conversation:delete-sessions', { projectPath, sessionId })
+  },
+
+  // MemCoder
+  memcoder: {
+    initialize: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:initialize', projectPath),
+    getConfig: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:get-config', projectPath),
+    updateConfig: (projectPath: string, config: any) => 
+      ipcRenderer.invoke('memcoder:update-config', { projectPath, config }),
+    setEnabled: (projectPath: string, enabled: boolean) => 
+      ipcRenderer.invoke('memcoder:set-enabled', { projectPath, enabled }),
+    analyzeGit: (projectPath: string, maxCommits?: number) => 
+      ipcRenderer.invoke('memcoder:analyze-git', { projectPath, maxCommits }),
+    learnFromWork: (projectPath: string, intent: string, files: string[]) => 
+      ipcRenderer.invoke('memcoder:learn-from-work', { projectPath, intent, files }),
+    searchHistory: (projectPath: string, query: string, limit?: number) => 
+      ipcRenderer.invoke('memcoder:search-history', { projectPath, query, limit }),
+    getEnhancedPrompt: (projectPath: string, basePrompt: string) => 
+      ipcRenderer.invoke('memcoder:get-enhanced-prompt', { projectPath, basePrompt }),
+    getRelevantContext: (projectPath: string, query: string, limit?: number) => 
+      ipcRenderer.invoke('memcoder:get-relevant-context', { projectPath, query, limit }),
+    provideFeedback: (projectPath: string, mappingId: string, type: 'approve' | 'reject' | 'modify', feedback: string) => 
+      ipcRenderer.invoke('memcoder:provide-feedback', { projectPath, mappingId, type, feedback }),
+    getStats: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:get-stats', projectPath),
+    getMemorySummary: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:get-memory-summary', projectPath),
+    getSuggestions: (projectPath: string, query: string) => 
+      ipcRenderer.invoke('memcoder:get-suggestions', { projectPath, query }),
+    getFeedback: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:get-feedback', projectPath),
+    exportMemory: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:export-memory', projectPath),
+    clearMemory: (projectPath: string) => 
+      ipcRenderer.invoke('memcoder:clear-memory', projectPath)
   }
 }
 

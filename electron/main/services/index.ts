@@ -1,4 +1,5 @@
 // Services barrel export
+export * from './memcoder'
 export * from './llm-service'
 export * from './commands-service'
 // Note: tools-service removed - using core/tools and tool-executor instead

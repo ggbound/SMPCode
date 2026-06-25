@@ -25,6 +25,16 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
   const sessionIdRef = useRef<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   
+  // MemCoder 初始化 - 当项目路径变化时
+  useEffect(() => {
+    if (projectPath && window.api?.memcoder) {
+      console.log('[useFeishuConversation] Initializing MemCoder for project:', projectPath)
+      window.api.memcoder.initialize(projectPath).catch(err => {
+        console.error('[useFeishuConversation] Failed to initialize MemCoder:', err)
+      })
+    }
+  }, [projectPath])
+  
   // 使用 ref 存储最新的 model 值
   const modelRef = useRef(model)
   useEffect(() => {
@@ -52,9 +62,9 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
   }, [])
   
   // 生成系统提示词
-  const generateSystemPrompt = useCallback((mode: AgentMode) => {
+  const generateSystemPrompt = useCallback(async (mode: AgentMode) => {
     const config = AGENT_MODE_CONFIGS[mode]
-    const basePrompt = config.systemPrompt
+    let basePrompt = config.systemPrompt
     
     const contextPrompt = projectPath 
       ? `\n\n当前项目路径: ${projectPath}`
@@ -67,6 +77,18 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
     const imagePrompt = `\n\n【图片处理说明】
 用户可能会上传图片（截图、照片等）。当用户上传图片时，图片内容已经包含在对话中，你不需要去文件系统中查找图片文件。
 直接分析用户上传的图片内容并回答问题即可。`;
+    
+    // 使用 MemCoder 增强提示词（如果可用）
+    if (projectPath && window.api?.memcoder) {
+      try {
+        const result = await window.api.memcoder.getEnhancedPrompt(projectPath, basePrompt)
+        if (result.success && result.prompt) {
+          basePrompt = result.prompt
+        }
+      } catch (err) {
+        console.error('[useFeishuConversation] Failed to get enhanced prompt from MemCoder:', err)
+      }
+    }
     
     return `${basePrompt}${contextPrompt}${toolPrompt}${imagePrompt}`
   }, [projectPath])
@@ -139,9 +161,27 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
     // 准备请求
     const messages: any[] = []
     
-    // 添加系统提示词
-    const systemPrompt = generateSystemPrompt(store.currentMode)
+    // 添加系统提示词（异步获取，支持 MemCoder 增强）
+    const systemPrompt = await generateSystemPrompt(store.currentMode)
     messages.push({ role: 'system', content: systemPrompt })
+    
+    // 获取 MemCoder 的相关历史上下文（如果可用）
+    let memcoderContext = ''
+    if (projectPath && window.api?.memcoder) {
+      try {
+        const result = await window.api.memcoder.getRelevantContext(projectPath, content, 3)
+        if (result.success && result.context) {
+          memcoderContext = result.context
+        }
+      } catch (err) {
+        console.error('[useFeishuConversation] Failed to get relevant context from MemCoder:', err)
+      }
+    }
+    
+    // 如果有 MemCoder 上下文，添加到系统提示词之后
+    if (memcoderContext) {
+      messages.push({ role: 'system', content: memcoderContext })
+    }
     
     // 添加当前用户消息
     let currentMessageContent: string | Array<{type: 'text'; text: string} | {type: 'image_url'; image_url: {url: string}}>
@@ -278,6 +318,70 @@ export function useFeishuConversation(options: UseFeishuConversationOptions) {
                 updatedAt: Date.now()
               })
             }
+            
+            // ✅ 学习对话：使用 MemCoder 学习用户意图和文件变更
+            setTimeout(() => {
+              if (projectPath && window.api?.memcoder) {
+                const currentStore = useFeishuStore.getState()
+                
+                // 找到用户最后一条消息作为意图
+                const userMessages = currentStore.messages.filter(m => m.role === 'user')
+                if (userMessages.length > 0) {
+                  const lastUserMsg = userMessages[userMessages.length - 1]
+                  
+                  // 从最后一条用户消息中提取意图文本
+                  let intentText = ''
+                  if (typeof lastUserMsg.content === 'string') {
+                    intentText = lastUserMsg.content
+                  } else if (Array.isArray(lastUserMsg.content)) {
+                    intentText = lastUserMsg.content
+                      .filter(p => p.type === 'text')
+                      .map(p => p.text || '')
+                      .join('\n')
+                  }
+                  
+                  // 提取工具调用中修改过的文件
+                  const assistantMsg = currentStore.messages.find(m => m.id === assistantMessageId)
+                  const modifiedFiles = new Set<string>()
+                  
+                  if (assistantMsg?.toolCalls) {
+                    for (const toolCall of assistantMsg.toolCalls) {
+                      const args = toolCall.args as Record<string, unknown>
+                      if (toolCall.name === 'write_file' && args?.path && typeof args.path === 'string') {
+                        modifiedFiles.add(args.path)
+                      } else if (toolCall.name === 'edit_file' && args?.path && typeof args.path === 'string') {
+                        modifiedFiles.add(args.path)
+                      } else if (toolCall.name === 'delete_file' && args?.path && typeof args.path === 'string') {
+                        modifiedFiles.add(args.path)
+                      } else if (toolCall.name === 'search_replace' && args?.path && typeof args.path === 'string') {
+                        modifiedFiles.add(args.path)
+                      }
+                    }
+                  }
+                  
+                  // 如果有意图和修改的文件，进行学习
+                  if (intentText.trim() && modifiedFiles.size > 0) {
+                    console.log('[useFeishuConversation] Learning with MemCoder:', {
+                      intent: intentText.substring(0, 100),
+                      files: Array.from(modifiedFiles)
+                    })
+                    
+                    window.api.memcoder.learnFromWork(
+                      projectPath,
+                      intentText,
+                      Array.from(modifiedFiles)
+                    ).catch(err => {
+                      console.error('[useFeishuConversation] MemCoder learn failed:', err)
+                    })
+                  } else {
+                    console.log('[useFeishuConversation] Skipping MemCoder learning:', {
+                      hasIntent: !!intentText.trim(),
+                      modifiedFiles: modifiedFiles.size
+                    })
+                  }
+                }
+              }
+            }, 200)
             
             // 取消订阅
             if (unsubscribeRef.current) {

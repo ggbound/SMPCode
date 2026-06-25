@@ -206,6 +206,30 @@ declare global {
         update: (id: string, updates: Partial<{ content?: string; cronExpression?: string; enabled?: boolean }>) => Promise<{ success: boolean; reminder?: any; error?: string }>
         toggle: (id: string) => Promise<{ success: boolean; reminder?: any; error?: string }>
       }
+      
+      // MemCoder API
+      memcoder: {
+        initialize: (projectPath: string) => Promise<{ success: boolean; error?: string }>
+        getConfig: (projectPath: string) => Promise<{ success: boolean; config?: any; error?: string }>
+        updateConfig: (projectPath: string, config: any) => Promise<{ success: boolean; error?: string }>
+        setEnabled: (projectPath: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+        analyzeGit: (projectPath: string, maxCommits?: number) => Promise<{ success: boolean; count?: number; error?: string }>
+        learnFromWork: (projectPath: string, intent: string, files: string[]) => Promise<{ success: boolean; mapping?: any; error?: string }>
+        searchHistory: (projectPath: string, query: string, limit?: number) => Promise<{ success: boolean; mappings?: any[]; error?: string }>
+        getEnhancedPrompt: (projectPath: string, basePrompt: string) => Promise<{ success: boolean; prompt?: string; error?: string }>
+        getRelevantContext: (projectPath: string, query: string, limit?: number) => Promise<{ success: boolean; context?: string; error?: string }>
+        provideFeedback: (projectPath: string, mappingId: string, type: 'approve' | 'reject' | 'modify', feedback: string) => Promise<{ success: boolean; error?: string }>
+        getStats: (projectPath: string) => Promise<{ success: boolean; stats?: any; error?: string }>
+        getMemorySummary: (projectPath: string) => Promise<{ success: boolean; summary?: string; error?: string }>
+        getSuggestions: (projectPath: string, query: string) => 
+      Promise<{ success: boolean, suggestions?: any, error?: string }>,
+    getFeedback: (projectPath: string) => 
+      Promise<{ success: boolean, feedback?: any[], error?: string }>,
+    exportMemory: (projectPath: string) => 
+      Promise<{ success: boolean, memory?: any, error?: string }>,
+    clearMemory: (projectPath: string) => 
+      Promise<{ success: boolean, error?: string }>
+      }
     }
   }
 }

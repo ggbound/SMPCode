@@ -83,6 +83,7 @@ import {
   syncSubmodule,
   addToGitignore
 } from './services/git-service'
+import { getMemCoder } from './services/memcoder'
 import { 
   watchDirectory,
   unwatchDirectory,
@@ -938,6 +939,184 @@ function setupIpcHandlers(): void {
       return { success: true, reminder: updated }
     } catch (error) {
       log.error('Failed to toggle reminder:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // MemCoder handlers
+  ipcMain.handle('memcoder:initialize', async (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      await memCoder.initialize()
+      log.info(`[MemCoder] Initialized for ${projectPath}`)
+      return { success: true }
+    } catch (error) {
+      log.error('[MemCoder] Failed to initialize:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-config', (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const config = memCoder.getConfig()
+      return { success: true, config }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get config:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:update-config', (_event, { projectPath, config }: { projectPath: string; config: any }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      memCoder.updateConfig(config)
+      return { success: true }
+    } catch (error) {
+      log.error('[MemCoder] Failed to update config:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:set-enabled', (_event, { projectPath, enabled }: { projectPath: string; enabled: boolean }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      memCoder.setEnabled(enabled)
+      return { success: true }
+    } catch (error) {
+      log.error('[MemCoder] Failed to set enabled:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:analyze-git', async (_event, { projectPath, maxCommits }: { projectPath: string; maxCommits?: number }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const count = await memCoder.analyzeGitHistory(maxCommits)
+      return { success: true, count }
+    } catch (error) {
+      log.error('[MemCoder] Failed to analyze git history:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:learn-from-work', async (_event, { projectPath, intent, files }: { projectPath: string; intent: string; files: string[] }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const mapping = await memCoder.learnFromWork(intent, files)
+      return { success: true, mapping }
+    } catch (error) {
+      log.error('[MemCoder] Failed to learn from work:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:search-history', (_event, { projectPath, query, limit }: { projectPath: string; query: string; limit?: number }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const mappings = memCoder.searchHistory(query, limit)
+      return { success: true, mappings }
+    } catch (error) {
+      log.error('[MemCoder] Failed to search history:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-enhanced-prompt', (_event, { projectPath, basePrompt }: { projectPath: string; basePrompt: string }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const enhancedPrompt = memCoder.getEnhancedPrompt(basePrompt)
+      return { success: true, prompt: enhancedPrompt }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get enhanced prompt:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-relevant-context', (_event, { projectPath, query, limit }: { projectPath: string; query: string; limit?: number }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const context = memCoder.getRelevantContext(query, limit)
+      return { success: true, context }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get relevant context:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:provide-feedback', (_event, { projectPath, mappingId, type, feedback }: { projectPath: string; mappingId: string; type: 'approve' | 'reject' | 'modify'; feedback: string }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      memCoder.provideFeedback(mappingId, type, feedback)
+      return { success: true }
+    } catch (error) {
+      log.error('[MemCoder] Failed to provide feedback:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-stats', (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const stats = memCoder.getStats()
+      return { success: true, stats }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get stats:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-memory-summary', (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const summary = memCoder.getMemorySummary()
+      return { success: true, summary }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get memory summary:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-suggestions', (_event, { projectPath, query }: { projectPath: string; query: string }) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const suggestions = memCoder.getSuggestions(query)
+      return { success: true, suggestions }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get suggestions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:get-feedback', (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const feedback = memCoder.getFeedback()
+      return { success: true, feedback }
+    } catch (error) {
+      log.error('[MemCoder] Failed to get feedback:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:export-memory', (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      const memory = memCoder.exportMemory()
+      return { success: true, memory }
+    } catch (error) {
+      log.error('[MemCoder] Failed to export memory:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('memcoder:clear-memory', (_event, projectPath: string) => {
+    try {
+      const memCoder = getMemCoder(projectPath)
+      memCoder.clearMemory()
+      return { success: true }
+    } catch (error) {
+      log.error('[MemCoder] Failed to clear memory:', error)
       return { success: false, error: String(error) }
     }
   })
