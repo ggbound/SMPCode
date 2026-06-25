@@ -428,9 +428,9 @@ async function detectModelCapability(apiKey: string, model: string, apiUrl?: str
 }
 
 /**
- * 构建系统提示词 - 根据模型能力选择不同模式
+ * 构建系统提示词 - 所有模型都使用工具调用模式
  */
-function buildSystemPrompt(mode: 'chat' | 'agent', cwd: string, useCodeGeneration: boolean = false): string {
+function buildSystemPrompt(mode: 'chat' | 'agent', cwd: string): string {
   const systemInfo = `Operating System: ${process.platform}
 Working Directory: ${cwd}`
 
@@ -442,59 +442,7 @@ ${systemInfo}
 Provide helpful, accurate, and concise responses to the user's questions.`
   }
 
-  // Agent Mode - 根据是否使用代码生成模式选择不同提示词
-  if (useCodeGeneration) {
-    // 代码生成模式 - 用于不支持 function calling 的模型
-    // ✅ 修复：区分图片分析任务和代码任务
-    return `You are Claude Code, an AI coding assistant.
-
-${systemInfo}
-
-【任务类型判断】
-1. 如果用户上传了图片并要求分析内容 → 直接描述图片内容，不要生成代码
-2. 如果用户要求进行文件操作（创建/删除/修改/搜索文件）→ 生成 Python 代码
-3. 如果用户要求执行命令或查询信息 → 生成 Python 代码
-
-【图片分析任务】
-当用户上传图片时：
-- 直接描述图片中的内容
-- 回答用户关于图片的问题
-- 不要生成任何代码
-- 用自然的文字回复
-
-【代码生成任务】
-当需要进行文件操作时：
-- 输出 ONLY Python 代码 wrapped in triple backticks
-- Format must be exactly: \`\`\`python ...code... \`\`\`
-- ABSOLUTELY NO text outside code blocks
-- NEVER output "File written:" or "File deleted:"
-
-SEARCH RULES:
-- Use Path('.').rglob('**/*filename*') for fuzzy search
-- Use Path('.').rglob('filename') for exact match
-- ALWAYS check if file exists before operating
-
-FORBIDDEN PATTERNS:
-- "File written: ..."
-- "File deleted: ..."
-- "工具执行结果：..."
-- Shell commands: os.system(), subprocess, etc.
-
-【回复示例 - 图片分析】
-用户: [上传了一张代码截图] 帮我看下这个图片里面的内容
-你: 这张图片显示的是一个 LoginController.php 文件的内容...
-
-【回复示例 - 代码生成】
-用户: 删除 test.txt
-你: \`\`\`python
-import os
-from pathlib import Path
-found = list(Path('.').rglob('**/test.txt'))
-...
-\`\`\``
-  }
-
-  // Function Calling Mode - 支持 function calling 的模型
+  // Function Calling Mode - 所有模型都使用这个模式
   return `You are Claude Code, an AI coding assistant.
 
 ${systemInfo}
@@ -906,35 +854,10 @@ export async function sendCLIMessageStream(
   session.isStreaming = true
 
   try {
-    // ✅ 检测模型能力（只在第一次迭代时检测）
-    let useCodeGeneration = session.useCodeGeneration
-    let supportsCodeGeneration = true
-    if (iterationCount === 0 && useCodeGeneration === undefined) {
-      const modelCapability = await detectModelCapability(apiKey, model, apiUrl)
-      useCodeGeneration = !modelCapability.supportsFunctionCalling
-      supportsCodeGeneration = modelCapability.supportsCodeGeneration
-      session.useCodeGeneration = useCodeGeneration
-      
-      if (!modelCapability.supportsFunctionCalling && !modelCapability.supportsCodeGeneration) {
-        // 纯 Chat 模式
-        log.warn(`[CLI-Chat] Model ${model} does not support function calling or code generation, using chat mode only`)
-        onChunk({
-          type: 'text',
-          content: `⚠️ 当前模型 ${model} 不支持工具调用和代码生成，只能使用对话模式。\n建议使用 Claude 3.5 Sonnet 或 GPT-4 以获得 Agent 功能。\n\n`
-        })
-        // 切换到 chat 模式
-        session.mode = 'chat'
-      } else if (useCodeGeneration) {
-        log.info(`[CLI-Chat] Model ${model} does not support function calling, using code generation mode`)
-        // 通知用户
-        onChunk({
-          type: 'text',
-          content: `ℹ️ 当前模型 ${model} 不支持工具调用，已切换到代码生成模式。\n建议使用 Claude 3.5 Sonnet 或 GPT-4 以获得更好的体验。\n\n`
-        })
-      } else {
-        log.info(`[CLI-Chat] Model ${model} supports function calling, using standard mode`)
-      }
-    }
+    // ✅ 所有模型都使用标准工具调用模式
+    let useCodeGeneration = false
+    session.useCodeGeneration = useCodeGeneration
+    log.info(`[CLI-Chat] All models use standard function calling mode, model: ${model}`)
     
     // ✅ 修复：每次新对话开始时，清理旧消息（保留系统消息和最近几条）
     if (iterationCount === 0 && session.messages.length > 10) {
@@ -946,8 +869,8 @@ export async function sendCLIMessageStream(
     }
     
     // 构建消息历史
-    // ✅ 修复：根据模型能力选择不同的系统提示词
-    const systemPrompt = buildSystemPrompt(session.mode, session.cwd, useCodeGeneration || false)
+    // ✅ 所有模型都使用相同的系统提示词
+    const systemPrompt = buildSystemPrompt(session.mode, session.cwd)
     
     if (messages && messages.length > 0) {
       // 如果提供了完整消息历史，合并到 session.messages
