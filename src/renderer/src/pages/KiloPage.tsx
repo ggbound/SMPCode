@@ -65,26 +65,41 @@ const formatTime = (timestamp: number) => {
   return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
 }
 
-// 实时时间显示组件
-const TimeDisplay = memo(({ timestamp, keyRefresh }: { timestamp: number, keyRefresh?: number }) => {
-  const [displayTime, setDisplayTime] = useState(formatTime(timestamp))
+// 实时时间显示组件 - 直接从会话消息获取最新时间
+const TimeDisplay = memo(({ sessionId, keyRefresh, projectPath }: { sessionId: string, keyRefresh?: number, projectPath?: string }) => {
+  const [displayTime, setDisplayTime] = useState('刚刚')
   
-  console.log('[TimeDisplay] render', { timestamp, keyRefresh, displayTime })
+  // 获取会话最后一条消息的时间
+  const fetchLastMessageTime = useCallback(async () => {
+    if (!projectPath || !window.api?.loadConversation) return
+    
+    try {
+      const result = await window.api.loadConversation(projectPath, sessionId)
+      if (result.success && result.messages && result.messages.length > 0) {
+        const lastMsg = result.messages[result.messages.length - 1]
+        if (lastMsg.timestamp) {
+          setDisplayTime(formatTime(lastMsg.timestamp))
+          return
+        }
+      }
+    } catch (err) {
+      console.error('[TimeDisplay] Failed to load last message time:', err)
+    }
+  }, [sessionId, projectPath])
   
-  // 当 timestamp 或 keyRefresh 变化时，立即更新时间
+  // 当 keyRefresh 变化或组件挂载时，获取时间
   useEffect(() => {
-    console.log('[TimeDisplay] updating time', { timestamp, keyRefresh })
-    setDisplayTime(formatTime(timestamp))
-  }, [timestamp, keyRefresh])
+    fetchLastMessageTime()
+  }, [fetchLastMessageTime, keyRefresh])
   
+  // 每分钟刷新一次
   useEffect(() => {
     const timer = setInterval(() => {
-      console.log('[TimeDisplay] interval update', { timestamp })
-      setDisplayTime(formatTime(timestamp))
+      fetchLastMessageTime()
     }, 60000) // 每分钟更新一次
     
     return () => clearInterval(timer)
-  }, [timestamp])
+  }, [fetchLastMessageTime])
   
   return <span>{displayTime}</span>
 })
@@ -288,9 +303,10 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
       console.log('[KiloPage] Feishu session updated, sessionId:', sessionId)
       
       // 延迟一点执行，确保文件已写入
-      setTimeout(() => {
+      setTimeout(async () => {
         if (projectPath && window.api?.listSessions) {
-          window.api.listSessions(projectPath).then(result => {
+          try {
+            const result = await window.api.listSessions(projectPath)
             if (result.success && result.sessions) {
               // 过滤掉空会话
               const sessionsToLoad = result.sessions.filter((s: { messageCount: number }) => s.messageCount > 0)
@@ -303,9 +319,25 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
               const updatedSessions: KiloSession[] = [...currentSessions]
               
               for (const s of sessionsToLoad) {
-                const updatedAtTime = typeof s.updatedAt === 'string' 
-                  ? new Date(s.updatedAt).getTime() 
-                  : s.updatedAt
+                // 先加载会话消息，获取最后一条消息的时间
+                let lastMessageTime: number | null = null
+                
+                if (window.api?.loadConversation) {
+                  try {
+                    const msgResult = await window.api.loadConversation(projectPath, s.id)
+                    if (msgResult.success && msgResult.messages && msgResult.messages.length > 0) {
+                      const lastMsg = msgResult.messages[msgResult.messages.length - 1]
+                      lastMessageTime = lastMsg.timestamp
+                    }
+                  } catch (err) {
+                    console.error(`[KiloPage] Failed to load messages for session ${s.id}:`, err)
+                  }
+                }
+                
+                // 如果有最后一条消息的时间，就用它，否则用文件更新时间
+                const updatedAtTime = lastMessageTime !== null 
+                  ? lastMessageTime 
+                  : (typeof s.updatedAt === 'string' ? new Date(s.updatedAt).getTime() : s.updatedAt)
                 
                 const sessionData: KiloSession = {
                   id: s.id,
@@ -379,9 +411,9 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                 }
               }
             }
-          }).catch(err => {
+          } catch (err) {
             console.error('[KiloPage] Failed to reload sessions:', err)
-          })
+          }
         }
       }, 500)
     }
@@ -933,7 +965,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                               {session.title}
                             </div>
                             <div className="kilo-session-item-time">
-                              <TimeDisplay timestamp={session.updatedAt} keyRefresh={sidebarRefreshKey} />
+                              <TimeDisplay sessionId={session.id} keyRefresh={sidebarRefreshKey} projectPath={projectPath} />
                             </div>
                           </div>
                           {/* ✅ 编辑和删除按钮 */}

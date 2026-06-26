@@ -4,7 +4,7 @@
  * 存储位置：~/.smp-code/feishu/conversations/
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { 
   Send, 
   Bot, 
@@ -45,6 +45,59 @@ interface FeishuPanelProps {
   onModelChange?: (modelId: string) => void
 }
 
+// 格式化时间函数
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+  
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+// 实时时间显示组件 - 直接从会话消息获取最新时间
+const TimeDisplay = memo(({ sessionId, keyRefresh, projectPath }: { sessionId: string, keyRefresh?: number, projectPath?: string }) => {
+  const [displayTime, setDisplayTime] = useState('刚刚')
+  
+  // 获取会话最后一条消息的时间
+  const fetchLastMessageTime = useCallback(async () => {
+    if (!projectPath || !window.api?.feishu?.loadConversation) return
+    
+    try {
+      const result = await window.api.feishu.loadConversation(projectPath, sessionId)
+      if (result.success && result.messages && result.messages.length > 0) {
+        const lastMsg = result.messages[result.messages.length - 1]
+        if (lastMsg.timestamp) {
+          setDisplayTime(formatTime(lastMsg.timestamp))
+          return
+        }
+      }
+    } catch (err) {
+      console.error('[TimeDisplay] Failed to load last message time:', err)
+    }
+  }, [sessionId, projectPath])
+  
+  // 当 keyRefresh 变化或组件挂载时，获取时间
+  useEffect(() => {
+    fetchLastMessageTime()
+  }, [fetchLastMessageTime, keyRefresh])
+  
+  // 每分钟刷新一次
+  useEffect(() => {
+    const timer = setInterval(() => {
+      fetchLastMessageTime()
+    }, 60000) // 每分钟更新一次
+    
+    return () => clearInterval(timer)
+  }, [fetchLastMessageTime])
+  
+  return <span>{displayTime}</span>
+})
+
 export default function FeishuPanel({ apiKey, model, providers, projectPath, onModelChange }: FeishuPanelProps) {
   // 飞书连接状态
   const [isConnected, setIsConnected] = useState(false)
@@ -57,7 +110,7 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
   const [showMenuFor, setShowMenuFor] = useState<string | null>(null)
   const [attachedImages, setAttachedImages] = useState<FeishuImageContent[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [, setTimeTrigger] = useState(0) // 用于触发时间更新
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0) // 用于侧边栏时间刷新
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -118,15 +171,38 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
       const result = await window.api?.feishu?.listSessions?.(projectPath)
       console.log('[FeishuPanel] Sessions loaded:', result)
       if (result?.success && result.sessions) {
-        // 转换为 FeishuSession 格式
-        const sessions: FeishuSession[] = result.sessions.map((s: any) => ({
-          id: s.id,
-          title: s.title,
-          createdAt: new Date(s.createdAt).getTime(),
-          updatedAt: new Date(s.updatedAt).getTime(),
-          messageCount: s.messageCount,
-          mode: 'ask'
-        }))
+        // 加载每个会话的最后一条消息时间
+        const sessions: FeishuSession[] = []
+        
+        for (const s of result.sessions) {
+          let lastMessageTime: number | null = null
+          
+          if (window.api?.feishu?.loadConversation) {
+            try {
+              const msgResult = await window.api.feishu.loadConversation(projectPath, s.id)
+              if (msgResult.success && msgResult.messages && msgResult.messages.length > 0) {
+                const lastMsg = msgResult.messages[msgResult.messages.length - 1]
+                lastMessageTime = lastMsg.timestamp
+              }
+            } catch (e) {
+              console.error(`[FeishuPanel] Failed to load messages for session ${s.id}:`, e)
+            }
+          }
+          
+          // 如果有最后一条消息的时间，就用它，否则用文件更新时间
+          const updatedAt = lastMessageTime !== null 
+            ? lastMessageTime 
+            : new Date(s.updatedAt).getTime()
+          
+          sessions.push({
+            id: s.id,
+            title: s.title,
+            createdAt: new Date(s.createdAt).getTime(),
+            updatedAt: updatedAt,
+            messageCount: s.messageCount,
+            mode: 'ask'
+          })
+        }
         
         // 使用函数式更新避免依赖 store
         const currentStore = useFeishuStore.getState()
@@ -587,31 +663,14 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
     }
   }, [store, conversation, deleteSessionFile])
 
-  // 格式化时间
-  const formatTime = useCallback((timestamp: number) => {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    
-    if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
-    
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-  }, [])
-
   // 初始检查连接
   useEffect(() => {
     checkConnection()
   }, [checkConnection])
 
-  // 定期更新会话列表时间显示
+  // 侧边栏时间刷新（当组件可能显示时）
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeTrigger(prev => prev + 1)
-    }, 60000) // 每分钟更新一次
-    return () => clearInterval(timer)
+    setSidebarRefreshKey(prev => prev + 1)
   }, [])
 
   // 点击外部关闭下拉菜单
@@ -727,7 +786,7 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
                         <>
                           <div className="feishu-session-info">
                             <span className="feishu-session-title">{session.title}</span>
-                            <span className="feishu-session-time">{formatTime(session.updatedAt)}</span>
+                            <span className="feishu-session-time"><TimeDisplay sessionId={session.id} keyRefresh={sidebarRefreshKey} projectPath={projectPath} /></span>
                           </div>
                           <button 
                             className="feishu-session-menu-btn"

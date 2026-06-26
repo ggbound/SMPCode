@@ -184,7 +184,7 @@ export const useFeishuStore = create<FeishuState>((set, get) => ({
   
   updateSession: (id, updates) => set((state) => ({
     sessions: state.sessions.map(s => 
-      s.id === id ? { ...s, ...updates, updatedAt: Date.now() } : s
+      s.id === id ? { ...s, ...updates, updatedAt: updates.updatedAt !== undefined ? updates.updatedAt : s.updatedAt } : s
     )
   })),
   
