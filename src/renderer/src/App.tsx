@@ -854,17 +854,45 @@ function App() {
           // 同时同步会话到 kiloStore
           const kiloStore = useKiloStore.getState()
           kiloStore.clearAllSessions()
-          sortedSessions.forEach((s: any) => {
+          
+          const kiloSessions: any[] = []
+          
+          for (const s of sortedSessions as any[]) {
+            // 先加载会话消息，获取最后一条消息的时间
+            let lastMessageTime: number | null = null
+            
+            if (window.api?.loadConversation) {
+              try {
+                const msgResult = await window.api.loadConversation(newPath, s.id)
+                if (msgResult.success && msgResult.messages && msgResult.messages.length > 0) {
+                  const lastMsg = msgResult.messages[msgResult.messages.length - 1]
+                  lastMessageTime = lastMsg.timestamp
+                }
+              } catch (err) {
+                console.error(`[App] Failed to load messages for session ${s.id}:`, err)
+              }
+            }
+            
+            // 如果有最后一条消息的时间，就用它，否则用文件更新时间
+            const updatedAtTime = lastMessageTime !== null 
+              ? lastMessageTime 
+              : new Date(s.updatedAt).getTime()
+            
             const createdAtTime = new Date(s.createdAt || s.updatedAt).getTime()
-            kiloStore.addSession({
+            
+            kiloSessions.push({
               id: s.id,
               title: s.title,
               createdAt: createdAtTime,
-              updatedAt: new Date(s.updatedAt).getTime(),
+              updatedAt: updatedAtTime,
               messageCount: s.messageCount,
               mode: 'code' as any
             })
-          })
+          }
+          
+          console.log('[App] Setting kilo sessions:', kiloSessions.map(s => ({ id: s.id, title: s.title, updatedAt: s.updatedAt, date: new Date(s.updatedAt).toISOString() })))
+          
+          kiloStore.setSessions(kiloSessions)
           
           // 如果有会话，加载最新的一个
           if (loadedSessions.length > 0) {

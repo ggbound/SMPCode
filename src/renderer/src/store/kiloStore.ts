@@ -199,18 +199,41 @@ export const useKiloStore = create<KiloState>((set, get) => ({
   setCurrentSession: (id) => set({ currentSession: id }),
   
   // ✅ 新增：直接设置整个会话列表（用于加载时保持排序）
-  setSessions: (sessions) => set({ sessions }),
+  setSessions: (sessions) => {
+    console.log('[kiloStore] setSessions called', { sessions: sessions.map(s => ({ id: s.id, title: s.title, updatedAt: s.updatedAt, date: new Date(s.updatedAt).toISOString() })) })
+    set({ sessions })
+  },
   
-  addSession: (session) => set((state) => ({
-    sessions: [session, ...state.sessions],
-    currentSession: session.id
-  })),
+  addSession: (session) => {
+    console.log('[kiloStore] addSession called', { session: { id: session.id, title: session.title, updatedAt: session.updatedAt, date: new Date(session.updatedAt).toISOString() } })
+    set((state) => ({
+      sessions: [session, ...state.sessions],
+      currentSession: session.id
+    }))
+  },
   
-  updateSession: (id, updates) => set((state) => ({
-    sessions: state.sessions.map(s => 
-      s.id === id ? { ...s, ...updates, updatedAt: Date.now() } : s
-    )
-  })),
+  updateSession: (id, updates) => {
+    console.log('[kiloStore] updateSession called', { id, updates })
+    set((state) => {
+      const updatedSessions = state.sessions.map(s => {
+        if (s.id === id) {
+          // 如果 updates 中没有明确提供 updatedAt，则保持原来的时间戳
+          const newSession = { 
+            ...s, 
+            ...updates, 
+            updatedAt: updates.updatedAt !== undefined ? updates.updatedAt : s.updatedAt 
+          }
+          console.log('[kiloStore] updateSession updating', { 
+            old: { id: s.id, updatedAt: s.updatedAt, date: new Date(s.updatedAt).toISOString() },
+            new: { id: newSession.id, updatedAt: newSession.updatedAt, date: new Date(newSession.updatedAt).toISOString() }
+          })
+          return newSession
+        }
+        return s
+      })
+      return { sessions: updatedSessions }
+    })
+  },
   
   deleteSession: (id) => set((state) => ({
     sessions: state.sessions.filter(s => s.id !== id),

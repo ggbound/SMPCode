@@ -3,7 +3,7 @@
  * 完全复刻 Kilo Code 的界面和交互
  */
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, memo } from 'react'
 import { 
   PanelLeft, 
   Plus,
@@ -44,18 +44,70 @@ interface KiloPageProps {
   onOpenUrl?: (url: string) => void
 }
 
+// 格式化时间函数
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  
+  console.log('[formatTime]', { 
+    timestamp, 
+    date: date.toISOString(), 
+    now: now.toISOString(), 
+    diff 
+  })
+  
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
+  
+  return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
+}
+
+// 实时时间显示组件
+const TimeDisplay = memo(({ timestamp, keyRefresh }: { timestamp: number, keyRefresh?: number }) => {
+  const [displayTime, setDisplayTime] = useState(formatTime(timestamp))
+  
+  console.log('[TimeDisplay] render', { timestamp, keyRefresh, displayTime })
+  
+  // 当 timestamp 或 keyRefresh 变化时，立即更新时间
+  useEffect(() => {
+    console.log('[TimeDisplay] updating time', { timestamp, keyRefresh })
+    setDisplayTime(formatTime(timestamp))
+  }, [timestamp, keyRefresh])
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      console.log('[TimeDisplay] interval update', { timestamp })
+      setDisplayTime(formatTime(timestamp))
+    }, 60000) // 每分钟更新一次
+    
+    return () => clearInterval(timer)
+  }, [timestamp])
+  
+  return <span>{displayTime}</span>
+})
+
 export default function KiloPage({ apiKey, model, providers, projectPath, onModelChange, onOpenUrl }: KiloPageProps) {
   const [showSidebar, setShowSidebar] = useState(false)
+  const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0)
   const [input, setInput] = useState('')
   const [attachedImages, setAttachedImages] = useState<ImageContent[]>([])
   const [previewImage, setPreviewImage] = useState<ImageContent | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
+  // 当侧边栏打开时，刷新时间显示
+  useEffect(() => {
+    if (showSidebar) {
+      setSidebarRefreshKey(prev => prev + 1)
+    }
+  }, [showSidebar])
+  
   // 会话重命名状态
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
-  const [, setTimeTrigger] = useState(0) // 用于触发时间更新
   
   const store = useKiloStore()
   const mainStore = useMainStore()
@@ -75,13 +127,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   
-  // 定期更新会话列表时间显示
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeTrigger(prev => prev + 1)
-    }, 60000) // 每分钟更新一次
-    return () => clearInterval(timer)
-  }, [])
+
 
   // 从项目目录加载会话列表
   useEffect(() => {
@@ -131,21 +177,47 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
           }
           
           // 将加载的会话转换为 KiloSession 格式
-          const loadedSessions: KiloSession[] = sessionsToLoad.map(s => {
-            // 确保正确解析时间戳
-            const updatedAtTime = typeof s.updatedAt === 'string' 
-              ? new Date(s.updatedAt).getTime() 
-              : s.updatedAt
+          const loadedSessions: KiloSession[] = []
+          
+          for (const s of sessionsToLoad) {
+            // 先加载会话消息，获取最后一条消息的时间
+            let lastMessageTime: number | null = null
             
-            return {
+            if (window.api?.loadConversation) {
+              try {
+                const msgResult = await window.api.loadConversation(projectPath, s.id)
+                if (msgResult.success && msgResult.messages && msgResult.messages.length > 0) {
+                  const lastMsg = msgResult.messages[msgResult.messages.length - 1]
+                  lastMessageTime = lastMsg.timestamp
+                }
+              } catch (err) {
+                console.error(`[KiloPage] Failed to load messages for session ${s.id}:`, err)
+              }
+            }
+            
+            // 如果有最后一条消息的时间，就用它，否则用文件更新时间
+            const updatedAtTime = lastMessageTime !== null 
+              ? lastMessageTime 
+              : (typeof s.updatedAt === 'string' ? new Date(s.updatedAt).getTime() : s.updatedAt)
+            
+            console.log('[KiloPage] Session loaded', { 
+              id: s.id, 
+              title: s.title,
+              originalUpdatedAt: s.updatedAt, 
+              lastMessageTime: lastMessageTime,
+              finalUpdatedAt: updatedAtTime,
+              parsedDate: new Date(updatedAtTime).toISOString()
+            })
+            
+            loadedSessions.push({
               id: s.id,
               title: s.title,
               createdAt: updatedAtTime,
               updatedAt: updatedAtTime,
               messageCount: s.messageCount,
               mode: 'code' as AgentMode
-            }
-          })
+            })
+          }
           
           // ✅ 修复：合并内存中的会话（保留未保存到磁盘的会话）
           const memorySessions = store.sessions.filter(s => 
@@ -659,20 +731,6 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
     }
   }, [handleSend])
   
-  // 格式化时间
-  const formatTime = (timestamp: number) => {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-    
-    if (diff < 60000) return '刚刚'
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}小时前`
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)}天前`
-    
-    return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-  }
-  
   // 转换消息格式
   const kiloMessages = conversation.messages.map((msg, index) => ({
     ...msg,
@@ -875,7 +933,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
                               {session.title}
                             </div>
                             <div className="kilo-session-item-time">
-                              {formatTime(session.updatedAt)}
+                              <TimeDisplay timestamp={session.updatedAt} keyRefresh={sidebarRefreshKey} />
                             </div>
                           </div>
                           {/* ✅ 编辑和删除按钮 */}
