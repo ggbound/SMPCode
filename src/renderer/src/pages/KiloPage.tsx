@@ -110,6 +110,7 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   const [input, setInput] = useState('')
   const [attachedImages, setAttachedImages] = useState<ImageContent[]>([])
   const [previewImage, setPreviewImage] = useState<ImageContent | null>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   
@@ -810,11 +811,12 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
     const { scrollTop, scrollHeight, clientHeight } = container
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight
     
-    // 只有当用户明确向上滚动且不在底部时才禁用
+    // 控制滚动到底部按钮的显示/隐藏
     if (distanceFromBottom > 100) {
+      setShowScrollButton(true)
       isAutoScrollEnabledRef.current = false
     } else if (distanceFromBottom < 50) {
-      // 如果用户滚动回底部，重新启用自动滚动
+      setShowScrollButton(false)
       isAutoScrollEnabledRef.current = true
     }
   }, [])
@@ -1098,6 +1100,20 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
               <div ref={messagesEndRef} />
             </div>
           )}
+          
+        </div>
+        
+        {/* 滚动到底部按钮 */}
+        <div className="kilo-scroll-button-wrapper">
+          <button 
+            className={`kilo-scroll-button ${showScrollButton ? 'show' : ''}`}
+            onClick={() => scrollToBottom(false)}
+            title="滚动到底部"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
         </div>
         
         {/* 输入区域 */}

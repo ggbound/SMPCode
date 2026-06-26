@@ -2555,3 +2555,49 @@
   display: block;
   cursor: zoom-in;
 }
+
+/* ==================== 滚动到底部按钮 ==================== */
+.kilo-scroll-button-wrapper {
+  position: absolute;
+  bottom: 200px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  pointer-events: none;
+}
+
+.kilo-scroll-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-quaternary);
+  border: 1px solid var(--border-primary);
+  color: var(--fg-primary);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.kilo-scroll-button.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.kilo-scroll-button:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+.kilo-scroll-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}

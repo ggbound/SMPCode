@@ -111,6 +111,7 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
   const [attachedImages, setAttachedImages] = useState<FeishuImageContent[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0) // 用于侧边栏时间刷新
+  const [showScrollButton, setShowScrollButton] = useState(false) // 用于控制滚动按钮显示
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -696,6 +697,43 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
     mode: msg.mode || store.currentMode
   }))
 
+  // ========== 滚动处理 ==========
+  const isNearBottom = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return true
+    const { scrollTop, scrollHeight, clientHeight } = container
+    return scrollHeight - scrollTop - clientHeight < 50
+  }, [])
+
+  const scrollToBottom = useCallback((immediate = false) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    
+    const targetScrollTop = container.scrollHeight - container.clientHeight
+    if (immediate) {
+      container.scrollTop = targetScrollTop
+    } else {
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      })
+    }
+  }, [])
+
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    
+    const { scrollTop, scrollHeight, clientHeight } = container
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight
+    
+    if (distanceFromBottom > 100) {
+      setShowScrollButton(true)
+    } else if (distanceFromBottom < 50) {
+      setShowScrollButton(false)
+    }
+  }, [])
+
   return (
     <div className="feishu-panel">
       {/* 主体区域 */}
@@ -851,7 +889,7 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
               )}
 
               {/* 消息列表 */}
-              <div className="feishu-messages-container" ref={scrollContainerRef}>
+              <div className="feishu-messages-container" ref={scrollContainerRef} onScroll={handleScroll}>
                 {conversation.messages.length === 0 ? (
                   <div className="feishu-empty-chat">
                     <Bot size={64} />
@@ -884,6 +922,19 @@ export default function FeishuPanel({ apiKey, model, providers, projectPath, onM
                     <div ref={messagesEndRef} />
                   </div>
                 )}
+              </div>
+              
+              {/* 滚动到底部按钮 */}
+              <div className="feishu-scroll-button-wrapper">
+                <button 
+                  className={`feishu-scroll-button ${showScrollButton ? 'show' : ''}`}
+                  onClick={() => scrollToBottom(false)}
+                  title="滚动到底部"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
               </div>
 
               {/* 输入区域 */}
