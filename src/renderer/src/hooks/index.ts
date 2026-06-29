@@ -14,3 +14,5 @@ export {
 } from './useConversationBase'
 // 工具解析函数现在从共享模块导出
 export { parseToolCalls, cleanToolCallBlocks, TOOL_NAME_MAP } from '../utils/toolParser'
+// 任务恢复 Hook
+export { useTaskResumption, type ResumableTask, type ResumeContext } from './useTaskResumption'

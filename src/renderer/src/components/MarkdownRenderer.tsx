@@ -385,6 +385,16 @@ const createMarkdownComponents = (onLinkClick?: (url: string) => void): Componen
   em: (props) => (
     <em className="markdown-em">{props.children}</em>
   ),
+  
+  // 图片处理 - 限制最大宽度
+  img: (props) => (
+    <img 
+      className="markdown-img" 
+      src={props.src} 
+      alt={props.alt || ''}
+      style={{ maxWidth: '100%', height: 'auto' }}
+    />
+  ),
 })
 
 // 主组件

@@ -377,6 +377,36 @@ const api = {
       ipcRenderer.invoke('memcoder:export-memory', projectPath),
     clearMemory: (projectPath: string) => 
       ipcRenderer.invoke('memcoder:clear-memory', projectPath)
+  },
+
+  // Task Resumption - 任务断点续传
+  taskResumption: {
+    // 获取可恢复的任务列表
+    getResumableTasks: () => 
+      ipcRenderer.invoke('task-resumption:get-tasks'),
+    // 准备任务恢复
+    prepareTaskResume: (taskId: string) => 
+      ipcRenderer.invoke('task-resumption:prepare-resume', taskId),
+    // 删除任务
+    deleteTask: (taskId: string) => 
+      ipcRenderer.invoke('task-resumption:delete-task', taskId),
+    // 创建增强会话（支持断点续传）
+    createEnhancedSession: (mode: 'chat' | 'agent', cwd: string, initialPrompt?: string, options?: { resumeTaskId?: string; maxIterations?: number }) =>
+      ipcRenderer.invoke('task-resumption:create-session', { mode, cwd, initialPrompt, options }),
+    // 发送增强消息流
+    sendEnhancedMessage: (sessionId: string, message: string, options?: { maxIterations?: number }) =>
+      ipcRenderer.invoke('task-resumption:send-message', { sessionId, message, options }),
+    // 停止增强会话
+    stopEnhancedSession: (sessionId: string) =>
+      ipcRenderer.invoke('task-resumption:stop-session', { sessionId }),
+    // 删除增强会话
+    deleteEnhancedSession: (sessionId: string) =>
+      ipcRenderer.invoke('task-resumption:delete-session', { sessionId }),
+    // 监听流式数据
+    onStreamChunk: (callback: (event: unknown, data: { sessionId: string; chunk: any }) => void) => {
+      ipcRenderer.on('task-resumption:stream', callback)
+      return () => ipcRenderer.removeListener('task-resumption:stream', callback)
+    }
   }
 }
 

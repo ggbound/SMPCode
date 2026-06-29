@@ -2172,6 +2172,14 @@
   color: var(--fg-secondary);
 }
 
+/* Markdown 图片样式 - 限制最大宽度 */
+.markdown-img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 4px;
+}
+
 /* ==================== 代码块样式 ==================== */
 
 .kilo-message-content pre {
@@ -2540,8 +2548,8 @@
 
 /* 消息图片项 - 缩小显示 */
 .kilo-message-image-item {
-  max-width: 120px;
-  max-height: 80px;
+  max-width: 100%;
+  max-height: 200px;
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border-primary);
@@ -2550,10 +2558,32 @@
 
 .kilo-message-image {
   max-width: 100%;
-  max-height: 80px;
-  object-fit: cover;
+  max-height: 200px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   display: block;
   cursor: zoom-in;
+}
+
+/* 用户消息中的图片限制 - 确保不会超出消息气泡 */
+.kilo-message-simple.user .kilo-message-images {
+  max-width: 85%;  /* 与用户消息内容块保持一致 */
+  width: auto;
+  align-self: flex-end;  /* 右对齐 */
+}
+
+.kilo-message-simple.user .kilo-message-image-item {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+}
+
+.kilo-message-simple.user .kilo-message-image {
+  max-width: 100%;
+  max-height: 300px;
+  width: auto;
+  height: auto;
 }
 
 /* ==================== 滚动到底部按钮 ==================== */

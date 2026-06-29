@@ -22,6 +22,8 @@ import { ImageContent } from '../store/kiloStore'
 import { ModeSelector } from '../components/ModeSelector'
 import { ModelSelector } from '../components/ModelSelector'
 import { KiloMessageInline } from '../components/KiloMessageInline'
+import { TaskResumptionPanel } from '../components/TaskResumptionPanel'
+import type { ResumeContext } from '../hooks'
 import { useKiloConversation } from '../hooks/useKiloConversation'
 import { useKiloStore, KiloSession } from '../store/kiloStore'
 import { useStore as useMainStore, type Session as MainSession } from '../store'
@@ -1064,6 +1066,53 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
               <X size={16} />
             </button>
           </div>
+        )}
+        
+        {/* 任务恢复面板 - 仅在 Agent 模式下显示 */}
+        {store.currentMode === 'code' && (
+          <TaskResumptionPanel 
+            onResumeTask={(taskId: string, context: ResumeContext) => {
+              // 恢复任务时创建新会话
+              const newSessionId = uuidv4()
+              const newSession: KiloSession = {
+                id: newSessionId,
+                title: context.description.slice(0, 30) + (context.description.length > 30 ? '...' : ''),
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                mode: store.currentMode,
+                messageCount: context.messages.length
+              }
+              store.addSession(newSession)
+              store.setCurrentSession(newSessionId)
+              
+              // 清空现有消息
+              store.clearMessages()
+              
+              // 恢复消息历史
+              context.messages.forEach((msg, index) => {
+                store.addMessage({
+                  id: `restored-${index}-${Date.now()}`,
+                  role: msg.role as 'user' | 'assistant' | 'system' | 'tool',
+                  content: msg.content,
+                  timestamp: Date.now() - (context.messages.length - index) * 1000,
+                  blocks: []
+                })
+              })
+              
+              // 添加系统恢复消息
+              store.addMessage({
+                id: `resume-${Date.now()}`,
+                role: 'system',
+                content: `[任务恢复] 从检查点继续执行。${context.resumePrompt}`,
+                timestamp: Date.now(),
+                blocks: []
+              })
+              
+              // 显示成功提示
+              store.setError(`任务已恢复：${context.description.slice(0, 50)}...`, 'unknown')
+              setTimeout(() => store.clearError(), 5000)
+            }}
+          />
         )}
         
         {/* 消息列表 */}

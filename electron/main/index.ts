@@ -103,6 +103,18 @@ import {
   cleanupCLISessions,
   type StreamChunk
 } from './services/cli-chat-service'
+import {
+  createEnhancedSession,
+  getEnhancedSession,
+  deleteEnhancedSession,
+  stopEnhancedSession,
+  sendEnhancedMessageStream,
+  getResumableTaskList,
+  prepareTaskResume,
+  taskStateManager,
+  cleanupEnhancedSessions,
+  type StreamChunk as EnhancedStreamChunk
+} from './services/cli-chat-service-enhanced'
 
 // Configure logging
 // ✅ 性能优化：文件日志只记录 warn 及以上级别，减少磁盘 I/O 导致的主线程阻塞
@@ -890,6 +902,106 @@ function setupIpcHandlers(): void {
       return { success: deleted }
     } catch (error) {
       log.error('[IPC] Failed to delete CLI chat session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Task Resumption IPC handlers - 任务断点续传
+  ipcMain.handle('task-resumption:get-tasks', () => {
+    try {
+      const tasks = getResumableTaskList()
+      return { success: true, tasks }
+    } catch (error) {
+      log.error('[IPC] Failed to get resumable tasks:', error)
+      return { success: false, error: String(error), tasks: [] }
+    }
+  })
+
+  ipcMain.handle('task-resumption:prepare-resume', (_event, taskId: string) => {
+    try {
+      const context = prepareTaskResume(taskId)
+      return { success: true, context }
+    } catch (error) {
+      log.error('[IPC] Failed to prepare task resume:', error)
+      return { success: false, error: String(error), context: null }
+    }
+  })
+
+  ipcMain.handle('task-resumption:delete-task', (_event, taskId: string) => {
+    try {
+      const deleted = taskStateManager.deleteTask(taskId)
+      return { success: deleted }
+    } catch (error) {
+      log.error('[IPC] Failed to delete task:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('task-resumption:create-session', (_event, { mode, cwd, initialPrompt, options }: { 
+    mode: 'chat' | 'agent'; 
+    cwd: string; 
+    initialPrompt?: string;
+    options?: { resumeTaskId?: string; maxIterations?: number }
+  }) => {
+    try {
+      const result = createEnhancedSession(mode, cwd, initialPrompt, options)
+      log.info(`[IPC] Enhanced session created: ${result.sessionId}, resuming: ${result.isResuming}`)
+      return { 
+        success: true, 
+        sessionId: result.sessionId,
+        taskId: result.taskId,
+        isResuming: result.isResuming,
+        resumeContext: result.resumeContext
+      }
+    } catch (error) {
+      log.error('[IPC] Failed to create enhanced session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('task-resumption:send-message', async (_event, { sessionId, message, options }: { 
+    sessionId: string; 
+    message: string;
+    options?: { maxIterations?: number }
+  }) => {
+    try {
+      const session = getEnhancedSession(sessionId)
+      if (!session) {
+        return { success: false, error: 'Session not found' }
+      }
+
+      await sendEnhancedMessageStream(sessionId, message, {
+        onChunk: (chunk: EnhancedStreamChunk) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('task-resumption:stream', { sessionId, chunk })
+          }
+        },
+        maxIterations: options?.maxIterations
+      })
+
+      return { success: true }
+    } catch (error) {
+      log.error('[IPC] Failed to send enhanced message:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('task-resumption:stop-session', (_event, { sessionId }: { sessionId: string }) => {
+    try {
+      const stopped = stopEnhancedSession(sessionId)
+      return { success: stopped }
+    } catch (error) {
+      log.error('[IPC] Failed to stop enhanced session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('task-resumption:delete-session', (_event, { sessionId }: { sessionId: string }) => {
+    try {
+      const deleted = deleteEnhancedSession(sessionId)
+      return { success: deleted }
+    } catch (error) {
+      log.error('[IPC] Failed to delete enhanced session:', error)
       return { success: false, error: String(error) }
     }
   })
