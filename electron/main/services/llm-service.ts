@@ -352,6 +352,16 @@ async function* streamOpenAIMessage(
 
   const url = getApiUrl(apiUrl, false)
 
+  // 🔥 添加超时处理：创建 AbortController 组合 signal 和超时
+  const timeoutMs = 60000 // 60秒超时
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
+  
+  // 组合用户传入的 signal 和超时 signal
+  const combinedSignal = signal 
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -360,8 +370,11 @@ async function* streamOpenAIMessage(
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify(requestBody),
-      signal: signal
+      signal: combinedSignal
     })
+    
+    // 请求成功，清除超时
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -426,9 +439,16 @@ async function* streamOpenAIMessage(
       }
     }
   } catch (error) {
+    // 清除超时定时器
+    clearTimeout(timeoutId)
+    
     // ✅ 修复：忽略 AbortError，这是正常的取消操作
     if (error instanceof Error && error.name === 'AbortError') {
-      return
+      // 检查是否是超时导致的
+      if (signal?.aborted) {
+        throw new Error('请求被取消')
+      }
+      throw new Error('请求超时（60秒），请检查网络连接或稍后重试')
     }
     const errorMsg = error instanceof Error ? error.message : String(error)
     log.error('[LLM] OpenAI Stream API error:', error)
@@ -463,6 +483,15 @@ async function* streamAnthropicMessage(
 
   const url = getApiUrl(apiUrl, true)
 
+  // 🔥 添加超时处理
+  const timeoutMs = 60000 // 60秒超时
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
+  
+  const combinedSignal = signal 
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -472,8 +501,10 @@ async function* streamAnthropicMessage(
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify(requestBody),
-      signal: signal
+      signal: combinedSignal
     })
+    
+    clearTimeout(timeoutId)
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -513,9 +544,15 @@ async function* streamAnthropicMessage(
       }
     }
   } catch (error) {
+    // 清除超时定时器
+    clearTimeout(timeoutId)
+    
     // ✅ 修复：忽略 AbortError，这是正常的取消操作
     if (error instanceof Error && error.name === 'AbortError') {
-      return
+      if (signal?.aborted) {
+        throw new Error('请求被取消')
+      }
+      throw new Error('请求超时（60秒），请检查网络连接或稍后重试')
     }
     const errorMsg = error instanceof Error ? error.message : String(error)
     log.error('[LLM] Anthropic Stream API error:', error)

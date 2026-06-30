@@ -379,6 +379,31 @@ const api = {
       ipcRenderer.invoke('memcoder:clear-memory', projectPath)
   },
 
+  // CodeIndex - 代码索引服务
+  codeIndex: {
+    // 初始化代码索引
+    initialize: (projectPath: string) =>
+      ipcRenderer.invoke('code-index:initialize', projectPath),
+    // 获取项目摘要
+    getProjectSummary: (projectPath: string) =>
+      ipcRenderer.invoke('code-index:get-project-summary', projectPath),
+    // 搜索符号
+    searchSymbols: (projectPath: string, query: string) =>
+      ipcRenderer.invoke('code-index:search-symbols', { projectPath, query }),
+    // 获取文件信息
+    getFileInfo: (projectPath: string, filePath: string) =>
+      ipcRenderer.invoke('code-index:get-file-info', { projectPath, filePath }),
+    // 获取相关文件
+    getRelatedFiles: (projectPath: string, filePath: string) =>
+      ipcRenderer.invoke('code-index:get-related-files', { projectPath, filePath }),
+    // 获取项目上下文提示
+    getProjectContextPrompt: (projectPath: string) =>
+      ipcRenderer.invoke('code-index:get-project-context', projectPath),
+    // 强制重新索引
+    forceRebuild: (projectPath: string) =>
+      ipcRenderer.invoke('code-index:force-rebuild', projectPath)
+  },
+
   // Task Resumption - 任务断点续传
   taskResumption: {
     // 获取可恢复的任务列表

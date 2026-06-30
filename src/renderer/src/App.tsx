@@ -205,9 +205,12 @@ function App() {
   
   // Monaco Editor cursor position
   const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number }>({ line: 1, column: 1 })
-
+  
+  // 各对话面板的独立模型状态
   // VS Code Copilot integration hooks
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const codeCompletion = useCodeCompletion()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const codeIntelligence = useCodeIntelligence()
 
   const {
@@ -251,6 +254,16 @@ function App() {
     setFeishuConfig,
     setSyncStatus
   } = useStore()
+
+  // 各对话面板的独立模型状态 - 使用全局 model 作为初始值
+  const [feishuModel, setFeishuModel] = useState(model)
+  const [kiloModel, setKiloModel] = useState(model)
+  
+  // 当全局 model 改变时（如从设置页面修改），同步更新各面板模型
+  useEffect(() => {
+    setFeishuModel(model)
+    setKiloModel(model)
+  }, [model])
 
   // Initialize mode-specific hooks
   const { processChatMessage, stopGeneration: stopChatGeneration } = useChatMode()
@@ -2311,10 +2324,10 @@ function App() {
               <div className="feishu-full-container" style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
                 <FeishuPanel 
                   apiKey={apiKey}
-                  model={model}
+                  model={feishuModel}
                   providers={providers}
                   projectPath={projectPath || undefined}
-                  onModelChange={setModel}
+                  onModelChange={setFeishuModel}
                 />
               </div>
             )}
@@ -2403,10 +2416,10 @@ function App() {
             >
               <KiloPage 
                 apiKey={apiKey}
-                model={model}
+                model={kiloModel}
                 providers={providers}
                 projectPath={projectPath || undefined}
-                onModelChange={setModel}
+                onModelChange={setKiloModel}
                 onOpenUrl={handleOpenUrlInBrowser}
               />
             </div>

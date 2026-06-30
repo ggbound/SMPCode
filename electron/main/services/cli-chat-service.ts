@@ -22,6 +22,7 @@ import {
 } from '../cli/runtime-engine'
 import { toolRegistry } from '../cli/tool-registry'
 import { loadConfig } from '../config-service'
+import { getCodeIndexService } from './code-index'
 
 // 获取有效的模型 ID
 function getValidModelId(modelId: string, providerName?: string): string {
@@ -430,14 +431,26 @@ async function detectModelCapability(apiKey: string, model: string, apiUrl?: str
 /**
  * 构建系统提示词 - 所有模型都使用工具调用模式
  */
-function buildSystemPrompt(mode: 'chat' | 'agent', cwd: string): string {
+async function buildSystemPrompt(mode: 'chat' | 'agent', cwd: string): Promise<string> {
   const systemInfo = `Operating System: ${process.platform}
 Working Directory: ${cwd}`
+  
+  // 🔥 获取项目代码索引上下文
+  let projectContext = ''
+  try {
+    const codeIndex = getCodeIndexService(cwd)
+    await codeIndex.initialize()
+    projectContext = codeIndex.getProjectContextPrompt()
+  } catch (error) {
+    log.warn('[CLI-Chat] Failed to get project context:', error)
+  }
 
   if (mode === 'chat') {
     return `You are a helpful AI coding assistant.
 
 ${systemInfo}
+
+${projectContext}
 
 Provide helpful, accurate, and concise responses to the user's questions.`
   }
@@ -447,37 +460,137 @@ Provide helpful, accurate, and concise responses to the user's questions.`
 
 ${systemInfo}
 
+${projectContext}
+
 You have access to tools. Use them to complete tasks.
 
-When user asks you to work with a file:
-Step 1: Search for the file by name
-<tool name="search_files" pattern="filename" search_type="filename"/>
+## THINKING MODE (REQUIRED)
 
-Step 2: After finding the file, use the appropriate tool
-<tool name="delete_file" path="/full/path/to/file"/>
+Before ANY action, you MUST show your thinking process:
+
+### Step 1: ANALYZE
+Start with: "[思考] 用户想要..."
+- What does the user want?
+- Is this simple or complex?
+- What information do I need?
+
+### Step 2: PLAN (for complex tasks)
+Continue with: "[计划] 我将..."
+- List your steps
+- Identify files/directories
+- Consider risks
+
+### Step 3: EXECUTE
+Then: "[执行] 开始..."
+- Use tools to gather info
+- Make changes carefully
+- Verify results
+
+### Step 4: CONFIRM (for dangerous operations)
+Before DELETE/WRITE/EDIT:
+"[确认] 我将执行以下操作："
+- List what you'll do
+- Show affected files
+- Wait for user confirmation
+
+## RESPONSE FORMAT
+
+ALWAYS structure your response like this:
+
+[思考] <your analysis>
+
+[计划] <your plan> (if complex task)
+
+[执行] <what you're doing>
+
+<tool name="..." .../> (if using tools)
+
+OR for confirmation:
+
+[确认] 我将执行以下操作：
+1. ...
+2. ...
+
+请确认是否继续？(回复 "是" 继续，"否" 取消，或 "详细" 查看详情)
+
+## SIMPLE vs COMPLEX TASKS
+
+**Simple tasks** (thinking + execute):
+- Read a specific file
+- List a directory
+- Search for a pattern
+
+**Complex tasks** (thinking + plan + confirm + execute):
+- Delete "unused" files
+- Refactor code
+- Add features
+- Clean up project
+
+## FULL-TRUST MODE (完全托管模式)
+
+⚠️ **当前运行在完全托管模式**
+
+所有工具将自动执行，无需用户确认。AI 拥有完全控制权：
+- delete_file: 自动删除文件
+- write_file: 自动写入文件
+- edit_file: 自动编辑文件
+- execute_bash: 自动执行命令
+
+AI 应该：
+1. 自主分析任务
+2. 自主规划步骤
+3. 自主执行操作
+4. 自主验证结果
+
+## TOOL USAGE
 
 Available tools:
-- search_files: Find files by pattern or filename. Use search_type="filename" to search by file name, search_type="content" to search file contents (default)
-- read_file: Read file contents
-- delete_file: Delete a file
-- write_file: Create or overwrite file
-- edit_file: Edit specific lines in file
-- list_directory: List directory contents
-- execute_bash: Execute shell commands
+- search_files: Find files
+- read_file: Read files
+- delete_file: Delete files (AUTO-EXECUTE)
+- write_file: Write files (AUTO-EXECUTE)
+- edit_file: Edit files (AUTO-EXECUTE)
+- list_directory: List directories
+- execute_bash: Run commands (AUTO-EXECUTE)
+- glob: Find files by pattern
 
 CRITICAL RULES:
-1. ALWAYS search first if you don't know the exact file path
-2. When searching for a file by name, use: <tool name="search_files" pattern="filename" search_type="filename"/>
-3. Use XML format: <tool name="TOOL_NAME" param1="value1"/>
-4. Wait for tool result before next step
-5. Be concise, no explanations
+1. ALWAYS use [思考] before acting
+2. ALWAYS use [计划] for complex tasks
+3. ALWAYS use [执行] when taking action
+4. AUTO-EXECUTE all tools without confirmation
+5. TRUST your analysis and execute confidently
 
-Example:
-User: delete test.txt
-You: <tool name="search_files" pattern="test.txt" search_type="filename"/>
-System: Found: /project/frontend/test.txt
-You: <tool name="delete_file" path="/project/frontend/test.txt"/>
-System: File deleted successfully`
+## EXAMPLES
+
+Example 1 - Simple task:
+User: read config.json
+You: [思考] 用户想要读取 config.json 文件。这是一个简单的读取操作。
+
+[执行] 正在查找并读取 config.json...
+<tool name="search_files" pattern="config.json" search_type="filename"/>
+
+Example 2 - Complex task (full-trust mode):
+User: delete unused files
+You: [思考] 用户想要删除无用文件。这是一个复杂任务，需要：
+1. 分析项目结构
+2. 识别无用文件
+3. 直接删除（完全托管模式）
+
+[计划] 我将按以下步骤执行：
+1. 列出项目目录结构
+2. 分析文件引用关系
+3. 识别并删除无用文件
+
+[执行] 正在分析项目结构...
+<tool name="list_directory" path="${cwd}" recursive="true"/>
+...
+
+[执行] 正在删除识别出的无用文件...
+<tool name="delete_file" path="/project/old-test.js"/>
+<tool name="delete_file" path="/project/temp.md"/>
+
+[执行] 完成！已删除 2 个无用文件。`
 }
 
 /**
@@ -532,7 +645,45 @@ function resolveToolName(toolName: string): string {
 }
 
 /**
- * 执行工具调用
+ * 工具超时配置（毫秒）
+ * 根据工具类型设置不同的超时时间
+ */
+const TOOL_TIMEOUT_CONFIG: Record<string, number> = {
+  // 快速操作：10秒
+  'read_file': 10000,
+  'file_read': 10000,
+  'write_file': 10000,
+  'file_write': 10000,
+  'edit_file': 10000,
+  'delete_file': 10000,
+  'append_file': 10000,
+  
+  // 中等操作：30秒
+  'list_directory': 30000,
+  'glob': 30000,
+  'search_files': 30000,
+  'search_code': 30000,
+  'grep': 30000,
+  
+  // 复杂操作：60秒
+  'execute_bash': 60000,
+  'bash': 60000,
+  'browse_website': 60000,
+  
+  // 默认：30秒
+  'default': 30000
+}
+
+/**
+ * 获取工具超时时间
+ */
+function getToolTimeout(toolName: string): number {
+  const resolvedName = resolveToolName(toolName)
+  return TOOL_TIMEOUT_CONFIG[resolvedName] || TOOL_TIMEOUT_CONFIG['default']
+}
+
+/**
+ * 执行工具调用（带智能超时）
  */
 async function executeToolCall(
   toolName: string,
@@ -573,10 +724,24 @@ async function executeToolCall(
   }
 
   try {
-    const result = await toolRegistry.execute(resolvedToolName, args, {
+    // 🔥 智能超时：根据工具类型设置不同的超时时间
+    const toolTimeoutMs = getToolTimeout(resolvedToolName)
+    log.debug(`[CLI-Chat Tool] Executing ${resolvedToolName} with timeout ${toolTimeoutMs}ms`)
+    
+    const toolPromise = toolRegistry.execute(resolvedToolName, args, {
       cwd,
       permissionMode: 'moderate'
     })
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        const timeoutSec = Math.round(toolTimeoutMs / 1000)
+        reject(new Error(`工具执行超时（${timeoutSec}秒）`))
+      }, toolTimeoutMs)
+    })
+    
+    const result = await Promise.race([toolPromise, timeoutPromise])
+    
     log.debug(`[CLI-Chat Tool] Tool executed: ${resolvedToolName}, success=${result.success}`)
     return {
       success: result.success,
@@ -584,11 +749,37 @@ async function executeToolCall(
       error: result.error
     }
   } catch (error) {
+    const errorMsg = String(error)
     log.error(`[CLI-Chat Tool] Tool execution threw error:`, error)
+    
+    // 检查是否是超时错误
+    if (errorMsg.includes('超时') || errorMsg.includes('timeout')) {
+      const timeoutMs = getToolTimeout(resolvedToolName)
+      const timeoutSec = Math.round(timeoutMs / 1000)
+      
+      // 根据工具类型提供不同的建议
+      let suggestion = ''
+      if (['read_file', 'file_read', 'write_file', 'file_write'].includes(resolvedToolName)) {
+        suggestion = '文件可能过大，请尝试读取部分内容或检查文件大小。'
+      } else if (['search_files', 'search_code', 'grep', 'glob'].includes(resolvedToolName)) {
+        suggestion = '搜索范围可能过大，请尝试缩小搜索范围或使用更具体的模式。'
+      } else if (['execute_bash', 'bash'].includes(resolvedToolName)) {
+        suggestion = '命令执行时间过长，请检查命令是否会挂起或需要交互输入。'
+      } else {
+        suggestion = '操作可能过于复杂，请尝试简化操作或分批处理。'
+      }
+      
+      return {
+        success: false,
+        output: '',
+        error: `工具 ${resolvedToolName} 执行超时（${timeoutSec}秒）。${suggestion}`
+      }
+    }
+    
     return {
       success: false,
       output: '',
-      error: String(error)
+      error: errorMsg
     }
   }
 }
@@ -870,7 +1061,7 @@ export async function sendCLIMessageStream(
     
     // 构建消息历史
     // ✅ 所有模型都使用相同的系统提示词
-    const systemPrompt = buildSystemPrompt(session.mode, session.cwd)
+    const systemPrompt = await buildSystemPrompt(session.mode, session.cwd)
     
     if (messages && messages.length > 0) {
       // 如果提供了完整消息历史，合并到 session.messages
@@ -1331,6 +1522,21 @@ export async function sendCLIMessageStream(
       
       const toolCall = toolCalls[0]  // 只取第一个工具
       
+      // 🔥 完全托管模式：自动执行所有工具，无需确认
+      // 危险操作仅记录日志，不阻止执行
+      const dangerousTools = ['delete_file', 'write_file', 'edit_file', 'execute_bash', 'bash']
+      const isDangerous = dangerousTools.includes(toolCall.name)
+      
+      if (isDangerous) {
+        log.warn(`[CLI-Chat] Auto-executing dangerous tool: ${toolCall.name} (full-trust mode)`)
+        
+        // 仅显示执行信息，不等待确认
+        onChunk({
+          type: 'text',
+          content: `🔧 **执行 ${toolCall.name}** (完全托管模式)\n\n`
+        })
+      }
+      
       try {
         log.debug(`[CLI-Chat] Executing tool: ${toolCall.name}`)
         
@@ -1386,7 +1592,7 @@ export async function sendCLIMessageStream(
 
       // 工具执行后，继续对话让 AI 分析结果
       // ✅ 修复：在每次迭代时重新添加系统提示词，确保 AI 记住工具使用格式
-      const systemPrompt = buildSystemPrompt(session.mode, session.cwd)
+      const systemPrompt = await buildSystemPrompt(session.mode, session.cwd)
       
       // 检查是否已有系统提示词，如果有则替换，如果没有则添加
       const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
@@ -1798,7 +2004,7 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
 
         // 继续对话 - 让 AI 决定下一步
         // ✅ 修复：在每次迭代时重新添加系统提示词，确保 AI 记住工具使用格式
-        const systemPrompt = buildSystemPrompt(session.mode, session.cwd)
+        const systemPrompt = await buildSystemPrompt(session.mode, session.cwd)
         
         // 检查是否已有系统提示词，如果有则替换，如果没有则添加
         const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
@@ -1936,7 +2142,7 @@ export async function sendCLIMessage(
     if (session.messages.length === 0) {
       session.messages.push({
         role: 'system',
-        content: buildSystemPrompt(session.mode, session.cwd)
+        content: await buildSystemPrompt(session.mode, session.cwd)
       })
     }
 

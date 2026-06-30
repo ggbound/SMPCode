@@ -9,6 +9,21 @@ import { AgentMode, AGENT_MODE_CONFIGS } from '../types/agent'
 import { v4 as uuidv4 } from 'uuid'
 import { executeTool } from '../services/tool-client'
 import { buildMultimodalContent } from '../App'
+import { 
+  analyzeUserIntent, 
+  compressContext, 
+  buildContextualSystemPrompt,
+  shouldIncludeFullContext,
+  analyzeConversationState,
+  generateDuplicateWarning
+} from '../services/context-manager'
+import {
+  extractCheckpoints,
+  isDuplicateTask,
+  isDangerousOperation,
+  generateDangerWarning,
+  buildCheckpointContext
+} from '../services/task-checkpoint'
 
 // 流式响应块类型
 type StreamBlock = 
@@ -227,14 +242,70 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     // 准备请求 - 构建符合 OpenAI API 格式的消息历史（与后端 LLMMessage 完全兼容）
     const messages: CliChatMessage[] = []
     
+    // 🔥 智能上下文管理：分析用户意图
+    const userIntent = analyzeUserIntent(content, store.messages)
+    console.log('[useKiloConversation] User intent analysis:', userIntent)
+    
+    // 🔥 分析对话状态（检测已完成任务）
+    const conversationState = analyzeConversationState(store.messages)
+    console.log('[useKiloConversation] Conversation state:', {
+      completedTasks: conversationState.completedTasks.length,
+      keyFindings: conversationState.keyFindings.length
+    })
+    
+    // 🔥 提取任务检查点
+    const checkpoints = extractCheckpoints(store.messages)
+    console.log('[useKiloConversation] Task checkpoints:', checkpoints.length)
+    
+    // 检查是否是重复请求
+    const duplicateWarning = generateDuplicateWarning(content, conversationState)
+    if (duplicateWarning) {
+      console.log('[useKiloConversation] Duplicate request detected:', duplicateWarning)
+    }
+    
+    // 判断是否需要包含历史上下文
+    const includeHistory = shouldIncludeFullContext(content, store.messages)
+    console.log('[useKiloConversation] Include history:', includeHistory)
+    
     // 添加系统提示词（异步获取，支持 MemCoder 增强）
-    const systemPrompt = await generateSystemPrompt(store.currentMode)
+    let systemPrompt = await generateSystemPrompt(store.currentMode)
+    
+    // 如果需要历史上下文，添加上下文提示
+    if (includeHistory && store.messages.length > 0) {
+      const compressedContext = compressContext(store.messages, 4000, userIntent)
+      systemPrompt = buildContextualSystemPrompt(systemPrompt, compressedContext, userIntent, conversationState)
+      console.log('[useKiloConversation] Added contextual system prompt with', compressedContext.length, 'context messages')
+    }
+    
+    // 🔥 添加检查点上下文
+    if (checkpoints.length > 0) {
+      const checkpointContext = buildCheckpointContext(checkpoints)
+      if (checkpointContext) {
+        systemPrompt += '\n\n' + checkpointContext
+        console.log('[useKiloConversation] Added checkpoint context')
+      }
+    }
+    
     messages.push({ role: 'system', content: systemPrompt })
     
-    // ✅ 关键修复：不再传递历史消息，只传递当前用户消息
-    // 这样可以避免 AI 重复执行之前已经完成的任务
-    // 如果需要上下文，用户可以在当前消息中明确提及
-    console.log('[useKiloConversation] Skipping history messages, only sending system prompt + current user message')
+    // 如果需要历史上下文，添加压缩后的历史消息
+    if (includeHistory && store.messages.length > 0) {
+      const compressedContext = compressContext(store.messages, 4000, userIntent)
+      
+      // 添加历史消息（排除系统消息和当前用户消息）
+      compressedContext
+        .filter(m => m.role !== 'system')
+        .forEach(m => {
+          messages.push({
+            role: m.role as 'user' | 'assistant',
+            content: m.content
+          })
+        })
+      
+      console.log('[useKiloConversation] Added', messages.length - 1, 'historical messages')
+    } else {
+      console.log('[useKiloConversation] No history messages included (new task or user preference)')
+    }
     
     // 获取 MemCoder 的相关历史上下文（如果可用）
     let memcoderContext = ''
@@ -345,6 +416,26 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
               }
               store.addContentBlock(assistantMessageId, toolBlock)
               
+              // 🔥 工具可视化：显示执行进度
+              const toolDescriptions: Record<string, string> = {
+                'read_file': '读取文件',
+                'file_read': '读取文件',
+                'write_file': '写入文件',
+                'file_write': '写入文件',
+                'edit_file': '编辑文件',
+                'delete_file': '删除文件',
+                'list_directory': '列出目录',
+                'search_files': '搜索文件',
+                'search_code': '搜索代码',
+                'grep': '搜索内容',
+                'glob': '匹配文件',
+                'execute_bash': '执行命令',
+                'bash': '执行命令',
+                'browse_website': '浏览网页'
+              }
+              const toolDesc = toolDescriptions[toolCall.name] || toolCall.name
+              console.log(`[useKiloConversation] 🔧 ${toolDesc} 执行中...`)
+              
               // ✅ 不再在前端执行工具，等待后端发送 tool_result
               console.log('[useKiloConversation] Tool call registered, waiting for backend execution result...')
             }
@@ -386,6 +477,14 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                 }
               }
               
+              // 🔥 工具可视化：显示执行结果
+              const toolResultDesc = chunk.toolResult.success ? '✅ 完成' : '❌ 失败'
+              const duration = toolCallId && currentMsg?.toolCalls 
+                ? Date.now() - (currentMsg.toolCalls.find(t => t.id === toolCallId)?.timestamp || Date.now())
+                : 0
+              const durationStr = duration > 0 ? ` (${duration}ms)` : ''
+              console.log(`[useKiloConversation] 🔧 ${toolResultDesc}${durationStr}`)
+              
               // 将工具调用结果追加到消息内容中，让用户能看到结果
               const resultText = chunk.toolResult.success 
                 ? `\n\n**工具执行结果：**\n\`\`\`\n${chunk.toolResult.output}\n\`\`\``
@@ -408,15 +507,31 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             // ✅ 修复：忽略 AbortError，这是正常的取消操作（如应用退出时）
             if (chunk.error?.includes('aborted') || chunk.error?.includes('AbortError')) {
               console.debug('[useKiloConversation] Stream aborted (normal cleanup), ignoring')
+              store.stopStreaming()
               break
             }
             console.error('[useKiloConversation] Error chunk:', chunk.error)
             const errorMsg = chunk.error || 'Unknown error'
             
-            // 所有错误都不应该停止 AI 对话，AI 会继续处理并返回最终结果
-            // 只记录错误日志，不中断流式输出
-            console.log('[useKiloConversation] Error occurred but continuing conversation:', errorMsg)
-            // 不追加错误信息到内容，不停止流式输出，让 AI 自行处理并返回结果
+            // 🔥 关键修复：API 错误时需要停止流式并显示错误
+            // 更新消息内容显示错误
+            const currentMsgForError = store.messages.find(m => m.id === assistantMessageId)
+            const errorContent = `**请求出错**\n\n错误信息：${errorMsg}\n\n请检查：\n1. API Key 是否正确\n2. 网络连接是否正常\n3. 模型是否可用`
+            
+            store.updateMessage(assistantMessageId, {
+              content: errorContent,
+              isStreaming: false
+            })
+            
+            // 停止流式状态
+            store.stopStreaming()
+            setError(errorMsg)
+            
+            // 清理会话
+            if (unsubscribeRef.current) {
+              unsubscribeRef.current()
+              unsubscribeRef.current = null
+            }
             break
             
           case 'done':

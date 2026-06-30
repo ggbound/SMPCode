@@ -1233,6 +1233,91 @@ function setupIpcHandlers(): void {
     }
   })
 
+  // CodeIndex handlers
+  ipcMain.handle('code-index:initialize', async (_event, projectPath: string) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      await codeIndex.initialize()
+      return { success: true }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to initialize:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('code-index:get-project-summary', async (_event, projectPath: string) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      const summary = codeIndex.getProjectSummary()
+      return { success: true, summary }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to get project summary:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('code-index:search-symbols', async (_event, { projectPath, query }: { projectPath: string; query: string }) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      const symbols = codeIndex.searchSymbols(query)
+      return { success: true, symbols }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to search symbols:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('code-index:get-file-info', async (_event, { projectPath, filePath }: { projectPath: string; filePath: string }) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      const info = codeIndex.getFileInfo(filePath)
+      return { success: true, info }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to get file info:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('code-index:get-related-files', async (_event, { projectPath, filePath }: { projectPath: string; filePath: string }) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      const related = codeIndex.getRelatedFiles(filePath)
+      return { success: true, related }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to get related files:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('code-index:get-project-context', async (_event, projectPath: string) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      const context = codeIndex.getProjectContextPrompt()
+      return { success: true, context }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to get project context:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('code-index:force-rebuild', async (_event, projectPath: string) => {
+    try {
+      const { getCodeIndexService } = await import('./services/code-index')
+      const codeIndex = getCodeIndexService(projectPath)
+      await codeIndex.forceRebuild()
+      return { success: true }
+    } catch (error) {
+      log.error('[CodeIndex] Failed to force rebuild:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
   log.info('IPC handlers registered')
 }
 
