@@ -1,7 +1,10 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useState } from 'react'
 import Editor, { OnMount, OnChange, loader } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
+// import * as Y from 'yjs'
+// import { MonacoBinding } from 'y-monaco'
 import { EXTENSION_TO_LANGUAGE } from '../utils/languageMap'
+import useMonacoCompletion from '../hooks/useMonacoCompletion'
 
 // Configure Monaco to load from CDN (required for proper worker support in Electron)
 // This ensures workers are loaded correctly from CDN URLs
@@ -143,6 +146,10 @@ interface MonacoEditorProps {
   theme?: string
   onCursorPositionChange?: (position: { line: number; column: number }) => void
   onMount?: (editor: monaco.editor.IStandaloneCodeEditor) => void
+  onSelectionChange?: (selection: string, startLine: number, endLine: number) => void
+  rootPath?: string
+  filePath?: string
+  // ydoc?: Y.Doc
 }
 
 function MonacoEditor({ 
@@ -153,10 +160,25 @@ function MonacoEditor({
   onSave,
   theme = 'vs-dark',
   onCursorPositionChange,
-  onMount
+  onMount,
+  onSelectionChange,
+  rootPath,
+  filePath,
+  // ydoc
 }: MonacoEditorProps) {
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<string[]>([])
+  // const bindingRef = useRef<MonacoBinding | null>(null)
+  // const isYjsInitialized = useRef(false)
+  
+  // 使用 ref 保存 onSave 回调，避免频繁重建快捷键绑定
+  const onSaveRef = useRef(onSave)
+  useEffect(() => {
+    onSaveRef.current = onSave
+  }, [onSave])
+  
+  // 🔥 智能补全 Hook
+  useMonacoCompletion(editorRef.current, rootPath || null)
 
   // Handle editor mount
   const handleEditorDidMount: OnMount = useCallback((editor, monacoInstance) => {
@@ -168,9 +190,9 @@ function MonacoEditor({
     // Register Vue language support
     registerVueLanguage(monacoInstance)
 
-    // Set up keyboard shortcuts
+    // Set up keyboard shortcuts - 使用 ref 调用最新的 onSave
     editor.addCommand(monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS, () => {
-      onSave?.()
+      onSaveRef.current?.()
     })
 
     // Listen to cursor position changes
@@ -183,9 +205,51 @@ function MonacoEditor({
       })
     }
 
+    // 🔥 监听选择变化
+    if (onSelectionChange) {
+      editor.onDidChangeCursorSelection((e) => {
+        const selection = editor.getModel()?.getValueInRange(e.selection) || ''
+        if (selection) {
+          onSelectionChange(
+            selection,
+            e.selection.startLineNumber,
+            e.selection.endLineNumber
+          )
+        }
+      })
+    }
+
+    // 🔥 添加右键菜单 - 加入对话
+    editor.addAction({
+      id: 'add-to-conversation',
+      label: '加入对话',
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1,
+      precondition: 'editorHasSelection',
+      run: () => {
+        const selection = editor.getSelection()
+        if (selection) {
+          const selectedText = editor.getModel()?.getValueInRange(selection) || ''
+          const fileName = filePath ? filePath.split('/').pop() : '未知文件'
+          
+          // 触发自定义事件，将代码信息传递给 KiloPage
+          window.dispatchEvent(new CustomEvent('code-add-to-conversation', {
+            detail: {
+              code: selectedText,
+              filePath: filePath || '',
+              fileName: fileName || '',
+              startLine: selection.startLineNumber,
+              endLine: selection.endLineNumber,
+              language: language
+            }
+          }))
+        }
+      }
+    })
+
     // Focus editor
     editor.focus()
-  }, [onSave, onCursorPositionChange, onMount])
+  }, [onSave, onCursorPositionChange, onSelectionChange, onMount, filePath, language])
 
   // Handle content change
   const handleEditorChange: OnChange = useCallback((value) => {

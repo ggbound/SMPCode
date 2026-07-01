@@ -48,7 +48,7 @@ interface CLISession {
 
 // 流式响应块
 export interface StreamChunk {
-  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done'
+  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done' | 'diff_preview'
   content?: string
   toolCall?: {
     id: string
@@ -61,6 +61,29 @@ export interface StreamChunk {
     output: string
     error?: string
   }
+  diff?: {
+    path: string
+    oldContent: string
+    newContent: string
+    hunks: Array<{
+      oldStart: number
+      oldLines: number
+      newStart: number
+      newLines: number
+      lines: Array<{
+        type: 'context' | 'addition' | 'deletion'
+        oldLineNumber?: number
+        newLineNumber?: number
+        content: string
+      }>
+    }>
+    stats: {
+      additions: number
+      deletions: number
+      changes: number
+    }
+  }
+  pendingEditId?: string
   error?: string
   usage?: {
     inputTokens: number
@@ -1155,24 +1178,54 @@ export async function sendCLIMessageStream(
     const lastMessage = session.messages[session.messages.length - 1]
     const wasProvidedMessages = messages && messages.length > 0
     
+    // 🔥 处理 @ 引用
+    let processedMessage = message
+    let mentionContext = ''
+    
+    if (message.includes('@')) {
+      try {
+        const { expandMentions } = await import('./mention-service')
+        const { expandedMessage, contexts } = await expandMentions(session.cwd, message)
+        processedMessage = expandedMessage
+        mentionContext = contexts.content
+        
+        if (mentionContext) {
+          log.info(`[CLI-Chat] Expanded mentions in message: ${message.substring(0, 50)}...`)
+        }
+      } catch (error) {
+        log.warn('[CLI-Chat] Failed to expand mentions:', error)
+      }
+    }
+    
     if (wasProvidedMessages && lastMessage?.role === 'user') {
       // ✅ 修复：前端提供了完整消息历史，且最后一条是用户消息
       // 由于前端已经在 messages 数组中包含了正确的多模态消息，
       // 不需要再添加 message 参数（避免重复或覆盖多模态内容）
       log.debug('[CLI-Chat] Using provided messages from frontend, skipping duplicate message parameter')
-    } else if (!wasProvidedMessages && message.trim()) {
+    } else if (!wasProvidedMessages && processedMessage.trim()) {
       // 没有提供完整消息历史，且 message 不为空，添加 message 作为用户消息
+      // 🔥 如果有 @ 引用上下文，添加到消息中
+      const finalContent = mentionContext 
+        ? `${processedMessage}\n\n[引用上下文]${mentionContext}` 
+        : processedMessage
+      
       session.messages.push({
         role: 'user',
-        content: message
+        content: finalContent
       })
-    } else if (message.trim()) {
+    } else if (processedMessage.trim()) {
       // 提供了消息历史，但最后一条不是用户消息（可能是 tool 或 assistant）
       // 且 message 不为空，需要添加用户消息
       log.debug('[CLI-Chat] Last message is not user, adding new user message')
+      
+      // 🔥 如果有 @ 引用上下文，添加到消息中
+      const finalContent = mentionContext 
+        ? `${processedMessage}\n\n[引用上下文]${mentionContext}` 
+        : processedMessage
+      
       session.messages.push({
         role: 'user',
-        content: message
+        content: finalContent
       })
     }
     
@@ -1372,101 +1425,116 @@ export async function sendCLIMessageStream(
     })
     log.info('[CLI-Chat] === END MESSAGES ===')
     
-    for await (const chunk of streamChatMessage({
-      apiKey,
-      model,
-      messages: session.messages,
-      tools,  // 传递 tools，支持 function calling
-      stream: true,
-      apiUrl,
-      signal: session.abortController?.signal
-    })) {
-      chunkCount++
-      if (session.abortController?.signal.aborted) {
-        log.info('[CLI-Chat] Stream aborted by user')
-        break
-      }
-
-      if (chunk.type === 'content_block_delta') {
-        const delta = chunk.delta as {
-          content?: string
-          text?: string
-          tool_calls?: Array<{
-            index?: number
-            id?: string
-            function?: {
-              name?: string
-              arguments?: string
-            }
-          }>
+    try {
+      for await (const chunk of streamChatMessage({
+        apiKey,
+        model,
+        messages: session.messages,
+        tools,  // 传递 tools，支持 function calling
+        stream: true,
+        apiUrl,
+        signal: session.abortController?.signal
+      })) {
+        chunkCount++
+        if (session.abortController?.signal.aborted) {
+          log.info('[CLI-Chat] Stream aborted by user')
+          break
         }
 
-        // 处理文本内容（支持 content 和 text 属性，因为不同模型可能返回不同格式）
-        const text = delta?.content || delta?.text || ''
-        if (text) {
-          fullContent += text
+        if (chunk.type === 'content_block_delta') {
+          const delta = chunk.delta as {
+            content?: string
+            text?: string
+            tool_calls?: Array<{
+              index?: number
+              id?: string
+              function?: {
+                name?: string
+                arguments?: string
+              }
+            }>
+          }
+
+          // 处理文本内容（支持 content 和 text 属性，因为不同模型可能返回不同格式）
+          const text = delta?.content || delta?.text || ''
+          if (text) {
+            fullContent += text
+            onChunk({
+              type: 'text',
+              content: text
+            })
+          }
+
+          // 处理 OpenAI 格式的工具调用（在 delta.tool_calls 中）
+          if (delta?.tool_calls && delta.tool_calls.length > 0) {
+            for (const toolCallDelta of delta.tool_calls) {
+              const index = toolCallDelta.index ?? 0
+              const key = String(index)
+
+              // 获取或创建 pending tool call
+              if (!pendingToolCalls.has(key)) {
+                pendingToolCalls.set(key, {
+                  id: toolCallDelta.id || uuidv4(),
+                  name: '',
+                  arguments: ''
+                })
+              }
+
+              const pending = pendingToolCalls.get(key)!
+
+              // 累积名称
+              if (toolCallDelta.function?.name) {
+                pending.name += toolCallDelta.function.name
+              }
+
+              // 累积参数
+              if (toolCallDelta.function?.arguments) {
+                pending.arguments += toolCallDelta.function.arguments
+              }
+            }
+          }
+        } else if (chunk.type === 'usage') {
+          // ✅ 修复：捕获 usage 数据
+          log.debug('[CLI-Chat] Usage data received from stream:', chunk.usage)
+          if (chunk.usage) {
+            session.usage = {
+              inputTokens: chunk.usage.input_tokens,
+              outputTokens: chunk.usage.output_tokens
+            }
+          }
+        } else if (chunk.type === 'tool_use') {
+          // 处理 Anthropic 格式的工具调用
+          const input = (chunk as { input?: Record<string, unknown> }).input || {}
+          const toolCall = {
+            id: (chunk as { id?: string }).id || uuidv4(),
+            name: (chunk as { name?: string }).name || '',
+            arguments: input
+          }
+          toolCalls.push({
+            id: toolCall.id,
+            name: toolCall.name,
+            arguments: JSON.stringify(input)
+          })
+          log.debug(`[CLI-Chat] Received tool_use (Anthropic): name=${toolCall.name}`)
           onChunk({
-            type: 'text',
-            content: text
+            type: 'tool_call',
+            toolCall
           })
         }
-
-        // 处理 OpenAI 格式的工具调用（在 delta.tool_calls 中）
-        if (delta?.tool_calls && delta.tool_calls.length > 0) {
-          for (const toolCallDelta of delta.tool_calls) {
-            const index = toolCallDelta.index ?? 0
-            const key = String(index)
-
-            // 获取或创建 pending tool call
-            if (!pendingToolCalls.has(key)) {
-              pendingToolCalls.set(key, {
-                id: toolCallDelta.id || uuidv4(),
-                name: '',
-                arguments: ''
-              })
-            }
-
-            const pending = pendingToolCalls.get(key)!
-
-            // 累积名称
-            if (toolCallDelta.function?.name) {
-              pending.name += toolCallDelta.function.name
-            }
-
-            // 累积参数
-            if (toolCallDelta.function?.arguments) {
-              pending.arguments += toolCallDelta.function.arguments
-            }
-          }
-        }
-      } else if (chunk.type === 'usage') {
-        // ✅ 修复：捕获 usage 数据
-        log.debug('[CLI-Chat] Usage data received from stream:', chunk.usage)
-        if (chunk.usage) {
-          session.usage = {
-            inputTokens: chunk.usage.input_tokens,
-            outputTokens: chunk.usage.output_tokens
-          }
-        }
-      } else if (chunk.type === 'tool_use') {
-        // 处理 Anthropic 格式的工具调用
-        const input = (chunk as { input?: Record<string, unknown> }).input || {}
-        const toolCall = {
-          id: (chunk as { id?: string }).id || uuidv4(),
-          name: (chunk as { name?: string }).name || '',
-          arguments: input
-        }
-        toolCalls.push({
-          id: toolCall.id,
-          name: toolCall.name,
-          arguments: JSON.stringify(input)
-        })
-        log.debug(`[CLI-Chat] Received tool_use (Anthropic): name=${toolCall.name}`)
-        onChunk({
-          type: 'tool_call',
-          toolCall
-        })
       }
+    } catch (streamError) {
+      // ✅ 关键修复：捕获 API 错误（如 429 throttling）并发送给前端显示
+      const errorMsg = streamError instanceof Error ? streamError.message : String(streamError)
+      log.error('[CLI-Chat] Stream error:', errorMsg)
+      
+      // 发送错误 chunk 给前端，让用户看到错误信息
+      onChunk({
+        type: 'error',
+        error: errorMsg
+      })
+      
+      // 返回，不继续处理后续逻辑
+      return
     }
 
     // 流结束后，处理累积的 OpenAI 格式工具调用
@@ -1552,6 +1620,16 @@ export async function sendCLIMessageStream(
         }
         
         const result = await executeToolCall(toolCall.name, args, session.cwd)
+
+        // 🔥 Diff 预览：如果是 edit_file 且返回了 diff，发送 diff 预览
+        const metadata = (result as any).metadata
+        if (toolCall.name === 'edit_file' && result.success && metadata?.diff) {
+          onChunk({
+            type: 'diff_preview',
+            diff: metadata.diff,
+            pendingEditId: metadata.pendingEditId
+          })
+        }
 
         onChunk({
           type: 'tool_result',

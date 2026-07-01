@@ -3,7 +3,10 @@ import type { Tab } from './FileTabs'
 import { t } from '../i18n'
 import MonacoEditor from './MonacoEditor'
 import Breadcrumbs from './Breadcrumbs'
+import DiffPreview from './DiffPreview'
+import InlineAI from './InlineAI'
 import { File } from 'lucide-react'
+// import { useYjsDoc } from '../hooks/useYjsDoc'
 
 interface FileViewerProps {
   tab: Tab | null
@@ -13,6 +16,30 @@ interface FileViewerProps {
   rootPath?: string
   onCursorPositionChange?: (position: { line: number; column: number }) => void
   onEditorMount?: (editor: any) => void
+}
+
+// Diff 数据类型
+interface DiffData {
+  path: string
+  oldContent: string
+  newContent: string
+  hunks: Array<{
+    oldStart: number
+    oldLines: number
+    newStart: number
+    newLines: number
+    lines: Array<{
+      type: 'context' | 'addition' | 'deletion'
+      oldLineNumber?: number
+      newLineNumber?: number
+      content: string
+    }>
+  }>
+  stats: {
+    additions: number
+    deletions: number
+    changes: number
+  }
 }
 
 // Auto-save delay in milliseconds
@@ -25,6 +52,17 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
   const lastSavedContentRef = useRef('')
   const editorRef = useRef<HTMLDivElement>(null)
+  
+  // 使用 ref 保存最新的 editedContent，用于保存快捷键
+  const editedContentRef = useRef('')
+  
+  // 🔥 AI 功能状态
+  const [showDiff, setShowDiff] = useState(false)
+  const [diffData, setDiffData] = useState<DiffData | null>(null)
+  const [pendingEditId, setPendingEditId] = useState<string | null>(null)
+  const [showInlineAI, setShowInlineAI] = useState(false)
+  const [selectedCode, setSelectedCode] = useState('')
+  const [selectionRange, setSelectionRange] = useState<{ startLine: number; endLine: number } | null>(null)
 
 
 
@@ -32,26 +70,31 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
   useEffect(() => {
     if (tab) {
       setEditedContent(tab.content)
+      editedContentRef.current = tab.content
       lastSavedContentRef.current = tab.content
       setSaveStatus(tab.isDirty ? 'unsaved' : 'saved')
+      
     } else {
       // Reset when tab is closed
       setEditedContent('')
+      editedContentRef.current = ''
       lastSavedContentRef.current = ''
       setSaveStatus('saved')
     }
   }, [tab?.id])
 
-  // Listen for external file content changes from AI operations
+  // Listen for external file content changes from AI operations via IPC
   useEffect(() => {
-    const handleExternalChange = (e: CustomEvent<{ path: string; content: string }>) => {
-      if (!tab || tab.path !== e.detail.path) return
+    if (!window.api) return
 
+    const handleExternalChange = (_event: unknown, data: { filePath: string; content: string }) => {
+      if (!tab || tab.path !== data.filePath) return
 
       // Only update if content is actually different
-      if (e.detail.content !== editedContent) {
-        setEditedContent(e.detail.content)
-        lastSavedContentRef.current = e.detail.content
+      if (data.content !== editedContent) {
+        setEditedContent(data.content)
+        editedContentRef.current = data.content
+        lastSavedContentRef.current = data.content
         setSaveStatus('saved')
 
         // Flash the editor to indicate external update
@@ -65,9 +108,9 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
       }
     }
 
-    window.addEventListener('file-content-externally-changed', handleExternalChange as EventListener)
+    const unsubscribe = window.api.onFileContentChanged(handleExternalChange)
     return () => {
-      window.removeEventListener('file-content-externally-changed', handleExternalChange as EventListener)
+      unsubscribe()
     }
   }, [tab?.path, editedContent])
 
@@ -85,6 +128,7 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
       
       // Update edited content to match external content
       setEditedContent(tab.content)
+      editedContentRef.current = tab.content
       lastSavedContentRef.current = tab.content
       setSaveStatus('saved')
     }
@@ -99,7 +143,8 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
       setSaveStatus('saving')
       const success = await onSave(tab.id, content)
       if (success) {
-        onContentChange?.(tab.id, content)
+        // 保存成功后更新本地状态，但不调用 onContentChange
+        // 因为 onContentChange 会将 tab 标记为 dirty
         lastSavedContentRef.current = content
         setSaveStatus('saved')
         return true
@@ -119,6 +164,7 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
   // Handle content change with auto-save
   const handleContentChange = useCallback((newContent: string) => {
     setEditedContent(newContent)
+    editedContentRef.current = newContent
     setSaveStatus('unsaved')
     
     // Notify parent about content change (for dirty state)
@@ -139,12 +185,13 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     }, AUTO_SAVE_DELAY)
   }, [tab, onContentChange, performSave])
 
-  // Manual save handler
+  // Manual save handler - 使用 ref 避免依赖变化导致 MonacoEditor 重新绑定快捷键
   const handleManualSave = useCallback(async () => {
-    if (editedContent !== lastSavedContentRef.current) {
-      await performSave(editedContent)
+    const currentContent = editedContentRef.current
+    if (currentContent !== lastSavedContentRef.current) {
+      await performSave(currentContent)
     }
-  }, [editedContent, performSave])
+  }, [performSave])
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -155,17 +202,7 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     }
   }, [])
 
-  // Keyboard shortcut for save (Ctrl/Cmd + S)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault()
-        handleManualSave()
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [handleManualSave])
+  // 快捷键由 MonacoEditor 处理，不在此处重复监听
 
   const copyToClipboard = async () => {
     if (!tab) return
@@ -336,21 +373,82 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
     }
   }
 
+  // 处理编辑器选择变化
+  const handleEditorSelectionChange = useCallback((selection: string, startLine: number, endLine: number) => {
+    setSelectedCode(selection)
+    setSelectionRange({ startLine, endLine })
+  }, [])
+
+  // 监听 diff 预览事件
+  useEffect(() => {
+    const handleDiffPreview = (e: CustomEvent<{ diff: DiffData; pendingEditId: string }>) => {
+      setDiffData(e.detail.diff)
+      setPendingEditId(e.detail.pendingEditId)
+      setShowDiff(true)
+    }
+    
+    window.addEventListener('diff-preview', handleDiffPreview as EventListener)
+    return () => window.removeEventListener('diff-preview', handleDiffPreview as EventListener)
+  }, [])
+
+  // 应用 diff
+  const handleApplyDiff = async () => {
+    if (!pendingEditId || !rootPath || !window.api?.diff) return
+    try {
+      const result = await window.api.diff.applyEdit(pendingEditId, rootPath)
+      if (result.success) {
+        setShowDiff(false)
+        setDiffData(null)
+        setPendingEditId(null)
+      }
+    } catch (error) {
+      console.error('Failed to apply diff:', error)
+    }
+  }
+
+  // 取消 diff
+  const handleCancelDiff = async () => {
+    if (!pendingEditId || !window.api?.diff) return
+    try {
+      await window.api.diff.cancelEdit(pendingEditId)
+      setShowDiff(false)
+      setDiffData(null)
+      setPendingEditId(null)
+    } catch (error) {
+      console.error('Failed to cancel diff:', error)
+    }
+  }
+
   return (
     <div className="file-viewer">
-      {/* Breadcrumbs navigation */}
+      {/* 🔥 工具栏 */}
       {tab && rootPath && (
-        <Breadcrumbs
-          filePath={tab.path}
-          rootPath={rootPath}
-          onPathClick={(path) => {
-            // Dispatch event to highlight path in file tree
-            window.dispatchEvent(new CustomEvent('highlight-path', { detail: { path } }))
-          }}
-        />
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 16px',
+          backgroundColor: '#252526',
+          borderBottom: '1px solid #333'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <Breadcrumbs
+              filePath={tab.path}
+              rootPath={rootPath}
+              onPathClick={(path) => {
+                window.dispatchEvent(new CustomEvent('highlight-path', { detail: { path } }))
+              }}
+            />
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {/* 保存状态 */}
+            {getSaveStatusDisplay()}
+          </div>
+        </div>
       )}
       
-      <div className="file-viewer-content">
+      <div className="file-viewer-content" style={{ position: 'relative' }}>
         {isImage ? (
           <div className="file-viewer-image">
             <img src={`file://${tab.path}`} alt={fileName} />
@@ -364,11 +462,49 @@ function FileViewer({ tab, onContentChange, onSave, onExplainCode, rootPath, onC
               onSave={handleManualSave}
               onCursorPositionChange={onCursorPositionChange}
               onMount={onEditorMount}
+              onSelectionChange={handleEditorSelectionChange}
+              rootPath={rootPath}
+              filePath={tab.path}
             />
           </div>
         )}
+        
+        {/* 🔥 Diff 预览 */}
+        {showDiff && diffData && (
+          <DiffPreview
+            diff={diffData}
+            pendingEditId={pendingEditId || ''}
+            onApply={handleApplyDiff}
+            onCancel={handleCancelDiff}
+            onClose={() => setShowDiff(false)}
+          />
+        )}
       </div>
 
+      {/* 🔥 Inline AI 对话框 */}
+      {showInlineAI && selectedCode && selectionRange && tab && rootPath && (
+        <InlineAI
+          projectPath={rootPath}
+          filePath={tab.path}
+          selectedCode={selectedCode}
+          startLine={selectionRange.startLine}
+          endLine={selectionRange.endLine}
+          language={language}
+          onClose={() => setShowInlineAI(false)}
+          onApply={(newCode) => {
+            // 应用 AI 建议的代码
+            const lines = editedContent.split('\n')
+            const newLines = [
+              ...lines.slice(0, selectionRange.startLine - 1),
+              newCode,
+              ...lines.slice(selectionRange.endLine)
+            ]
+            const newContent = newLines.join('\n')
+            handleContentChange(newContent)
+            setShowInlineAI(false)
+          }}
+        />
+      )}
     </div>
   )
 }

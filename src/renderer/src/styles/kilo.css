@@ -2631,3 +2631,116 @@
   transform: translateY(0);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
+
+/* ==================== @Mention 引用输入组件 ==================== */
+
+.mention-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.mention-textarea {
+  width: 100%;
+  min-height: 60px;
+  max-height: 200px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-primary);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.mention-textarea::placeholder {
+  color: var(--fg-disabled);
+  font-size: 14px;
+}
+
+.mention-suggestions {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 10000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  border-bottom: 1px solid var(--border-primary);
+}
+
+.mention-item:last-child {
+  border-bottom: none;
+}
+
+.mention-item:hover,
+.mention-item.selected {
+  background: var(--accent-primary);
+}
+
+.mention-item-icon {
+  font-size: 14px;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+
+.mention-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mention-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-item-desc {
+  font-size: 11px;
+  color: var(--fg-disabled);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mention-item.selected .mention-item-desc {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.mention-item-type {
+  font-size: 10px;
+  color: var(--fg-disabled);
+  text-transform: uppercase;
+  padding: 2px 6px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.mention-item-type.selected {
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.mention-empty {
+  padding: 16px;
+  text-align: center;
+  color: var(--fg-disabled);
+  font-size: 13px;
+}

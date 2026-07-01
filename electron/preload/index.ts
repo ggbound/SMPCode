@@ -209,6 +209,10 @@ const api = {
     ipcRenderer.on('fs:change', callback)
     return () => ipcRenderer.removeListener('fs:change', callback)
   },
+  onFileContentChanged: (callback: (event: unknown, data: { filePath: string; content: string }) => void) => {
+    ipcRenderer.on('fs:file-content-changed', callback)
+    return () => ipcRenderer.removeListener('fs:file-content-changed', callback)
+  },
 
   // File operation notifications from AI tools
   onFileOperation: (callback: (event: unknown, data: { operation: 'writing' | 'editing' | 'creating'; path: string; timestamp: number }) => void) => {
@@ -432,6 +436,104 @@ const api = {
       ipcRenderer.on('task-resumption:stream', callback)
       return () => ipcRenderer.removeListener('task-resumption:stream', callback)
     }
+  },
+
+  // Diff Service - 文件差异服务
+  diff: {
+    // 应用待处理的编辑
+    applyEdit: (editId: string, cwd: string) =>
+      ipcRenderer.invoke('diff:apply-edit', { editId, cwd }),
+    // 取消待处理的编辑
+    cancelEdit: (editId: string) =>
+      ipcRenderer.invoke('diff:cancel-edit', editId),
+    // 获取所有待处理的编辑
+    getPendingEdits: () =>
+      ipcRenderer.invoke('diff:get-pending-edits')
+  },
+
+  // Operation History - 操作历史
+  history: {
+    // 撤销操作
+    undo: (projectPath: string) =>
+      ipcRenderer.invoke('history:undo', projectPath),
+    // 重做操作
+    redo: (projectPath: string) =>
+      ipcRenderer.invoke('history:redo', projectPath),
+    // 获取操作历史
+    get: (projectPath: string) =>
+      ipcRenderer.invoke('history:get', projectPath),
+    // 清空历史
+    clear: (projectPath: string) =>
+      ipcRenderer.invoke('history:clear', projectPath)
+  },
+
+  // Mention Service - @ 符号引用
+  mention: {
+    // 搜索可引用项
+    search: (projectPath: string, query: string, type?: 'file' | 'symbol' | 'directory') =>
+      ipcRenderer.invoke('mention:search', { projectPath, query, type }),
+    // 展开消息中的 @ 引用
+    expand: (projectPath: string, message: string) =>
+      ipcRenderer.invoke('mention:expand', { projectPath, message }),
+    // 获取建议
+    suggestions: (projectPath: string, partialQuery: string, type?: 'file' | 'symbol' | 'directory') =>
+      ipcRenderer.invoke('mention:suggestions', { projectPath, partialQuery, type })
+  },
+
+  // Inline AI - 代码内联 AI
+  inlineAI: {
+    // 创建会话
+    create: (filePath: string, selectedCode: string, startLine: number, endLine: number, language: string) =>
+      ipcRenderer.invoke('inline-ai:create', { filePath, selectedCode, startLine, endLine, language }),
+    // 获取会话
+    get: (sessionId: string) =>
+      ipcRenderer.invoke('inline-ai:get', sessionId),
+    // 更新会话
+    update: (sessionId: string, updates: any) =>
+      ipcRenderer.invoke('inline-ai:update', { sessionId, updates }),
+    // 删除会话
+    delete: (sessionId: string) =>
+      ipcRenderer.invoke('inline-ai:delete', sessionId),
+    // 生成提示词
+    generatePrompt: (selectedCode: string, instruction: string, language: string) =>
+      ipcRenderer.invoke('inline-ai:generate-prompt', { selectedCode, instruction, language }),
+    // 监听替换事件
+    onReplace: (callback: (event: unknown, data: any) => void) => {
+      ipcRenderer.on('inline-ai:replace', callback)
+      return () => ipcRenderer.removeListener('inline-ai:replace', callback)
+    }
+  },
+
+  // Batch Edit - 批量文件编辑
+  batchEdit: {
+    // 创建会话
+    create: (projectPath: string, description: string, edits: Array<{ filePath: string; oldContent: string; newContent: string }>) =>
+      ipcRenderer.invoke('batch-edit:create', { projectPath, description, edits }),
+    // 获取会话
+    get: (sessionId: string) =>
+      ipcRenderer.invoke('batch-edit:get', sessionId),
+    // 应用会话
+    apply: (sessionId: string) =>
+      ipcRenderer.invoke('batch-edit:apply', sessionId),
+    // 取消会话
+    cancel: (sessionId: string) =>
+      ipcRenderer.invoke('batch-edit:cancel', sessionId),
+    // 获取统计
+    stats: (sessionId: string) =>
+      ipcRenderer.invoke('batch-edit:stats', sessionId),
+    // 获取所有会话
+    all: () =>
+      ipcRenderer.invoke('batch-edit:all')
+  },
+
+  // Completion Service - 智能补全
+  completion: {
+    // 获取补全建议
+    get: (projectPath: string, context: any) =>
+      ipcRenderer.invoke('completion:get', { projectPath, context }),
+    // 检查是否应该触发补全
+    shouldTrigger: (lineContent: string, character: number) =>
+      ipcRenderer.invoke('completion:should-trigger', { lineContent, character })
   }
 }
 

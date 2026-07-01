@@ -23,6 +23,7 @@ import { ModeSelector } from '../components/ModeSelector'
 import { ModelSelector } from '../components/ModelSelector'
 import { KiloMessageInline } from '../components/KiloMessageInline'
 import { TaskResumptionPanel } from '../components/TaskResumptionPanel'
+import MentionInput from '../components/MentionInput'
 import type { ResumeContext } from '../hooks'
 import { useKiloConversation } from '../hooks/useKiloConversation'
 import { useKiloStore, KiloSession } from '../store/kiloStore'
@@ -883,6 +884,35 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
   //       mainStore.selectSession(store.currentSession)
   //   }
   // }, [lastMessageId, kiloMessages.length, store.currentSession, projectPath])
+
+  // 🔥 监听编辑器右键菜单"加入对话"事件
+  useEffect(() => {
+    const handleAddToConversation = (e: CustomEvent<{
+      code: string
+      filePath: string
+      fileName: string
+      startLine: number
+      endLine: number
+      language: string
+    }>) => {
+      const { code, fileName, startLine, endLine, language } = e.detail
+      
+      // 将代码引用格式化为 Markdown 格式，写入输入框
+      const codeReference = `**${fileName}:${startLine}-${endLine}**\n\n\`\`\`${language}\n${code}\n\`\`\`\n\n`
+      
+      setInput(prev => prev + codeReference)
+      
+      // 切换到 Ask 模式
+      store.setCurrentMode('ask')
+      
+      console.log('[KiloPage] Code added to conversation:', { fileName, lines: `${startLine}-${endLine}` })
+    }
+    
+    window.addEventListener('code-add-to-conversation', handleAddToConversation as EventListener)
+    return () => {
+      window.removeEventListener('code-add-to-conversation', handleAddToConversation as EventListener)
+    }
+  }, [store])
   
   return (
     <div className="kilo-page">
@@ -1194,16 +1224,27 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
             
             {/* 文本输入区域 */}
             <div className="kilo-input-wrapper">
-              <textarea
-                className="kilo-textarea-modern"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder={`${AGENT_MODE_CONFIGS[store.currentMode].description}...`}
-                rows={3}
-                disabled={conversation.isGenerating}
-              />
+              {/* 🔥 @ 引用输入 */}
+              {projectPath ? (
+                <MentionInput
+                  projectPath={projectPath}
+                  value={input}
+                  onChange={setInput}
+                  onSubmit={handleSend}
+                  placeholder={`${AGENT_MODE_CONFIGS[store.currentMode].description}... 使用 @ 引用文件或符号`}
+                />
+              ) : (
+                <textarea
+                  className="kilo-textarea-modern"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onPaste={handlePaste}
+                  placeholder={`${AGENT_MODE_CONFIGS[store.currentMode].description}...`}
+                  rows={3}
+                  disabled={conversation.isGenerating}
+                />
+              )}
             </div>
             
             {/* 底部工具栏 */}

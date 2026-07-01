@@ -1318,6 +1318,284 @@ function setupIpcHandlers(): void {
     }
   })
 
+  // Diff Service handlers
+  ipcMain.handle('diff:apply-edit', async (_event, { editId, cwd }: { editId: string; cwd: string }) => {
+    try {
+      const { applyEdit } = await import('./services/diff-service')
+      const success = await applyEdit(editId, cwd)
+      return { success }
+    } catch (error) {
+      log.error('[DiffService] Failed to apply edit:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('diff:cancel-edit', async (_event, editId: string) => {
+    try {
+      const { cancelEdit } = await import('./services/diff-service')
+      const success = cancelEdit(editId)
+      return { success }
+    } catch (error) {
+      log.error('[DiffService] Failed to cancel edit:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('diff:get-pending-edits', async () => {
+    try {
+      const { getAllPendingEdits } = await import('./services/diff-service')
+      const edits = getAllPendingEdits()
+      return { success: true, edits }
+    } catch (error) {
+      log.error('[DiffService] Failed to get pending edits:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Operation History handlers
+  ipcMain.handle('history:undo', async (_event, projectPath: string) => {
+    try {
+      const { undo, getUndoDescription } = await import('./services/operation-history')
+      const operation = await undo(projectPath)
+      const description = getUndoDescription(projectPath)
+      return { 
+        success: operation !== null, 
+        operation,
+        description,
+        canUndo: description !== null
+      }
+    } catch (error) {
+      log.error('[OperationHistory] Failed to undo:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('history:redo', async (_event, projectPath: string) => {
+    try {
+      const { redo, getRedoDescription } = await import('./services/operation-history')
+      const operation = await redo(projectPath)
+      const description = getRedoDescription(projectPath)
+      return { 
+        success: operation !== null, 
+        operation,
+        description,
+        canRedo: description !== null
+      }
+    } catch (error) {
+      log.error('[OperationHistory] Failed to redo:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('history:get', async (_event, projectPath: string) => {
+    try {
+      const { getHistory, getCurrentIndex, canUndo, canRedo } = await import('./services/operation-history')
+      const history = getHistory(projectPath)
+      const currentIndex = getCurrentIndex(projectPath)
+      return { 
+        success: true, 
+        history,
+        currentIndex,
+        canUndo: canUndo(projectPath),
+        canRedo: canRedo(projectPath)
+      }
+    } catch (error) {
+      log.error('[OperationHistory] Failed to get history:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('history:clear', async (_event, projectPath: string) => {
+    try {
+      const { clearHistory } = await import('./services/operation-history')
+      clearHistory(projectPath)
+      return { success: true }
+    } catch (error) {
+      log.error('[OperationHistory] Failed to clear history:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Mention Service handlers
+  ipcMain.handle('mention:search', async (_event, { projectPath, query, type }: { projectPath: string; query: string; type?: 'file' | 'symbol' | 'directory' }) => {
+    try {
+      const { searchMentions } = await import('./services/mention-service')
+      const items = await searchMentions(projectPath, query, type)
+      return { success: true, items }
+    } catch (error) {
+      log.error('[MentionService] Failed to search mentions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('mention:expand', async (_event, { projectPath, message }: { projectPath: string; message: string }) => {
+    try {
+      const { expandMentions } = await import('./services/mention-service')
+      const result = await expandMentions(projectPath, message)
+      return { success: true, ...result }
+    } catch (error) {
+      log.error('[MentionService] Failed to expand mentions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('mention:suggestions', async (_event, { projectPath, partialQuery, type }: { projectPath: string; partialQuery: string; type?: 'file' | 'symbol' | 'directory' }) => {
+    try {
+      const { getMentionSuggestions } = await import('./services/mention-service')
+      const items = await getMentionSuggestions(projectPath, partialQuery, type)
+      return { success: true, items }
+    } catch (error) {
+      log.error('[MentionService] Failed to get suggestions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Inline AI handlers
+  ipcMain.handle('inline-ai:create', async (_event, { filePath, selectedCode, startLine, endLine, language }: { filePath: string; selectedCode: string; startLine: number; endLine: number; language: string }) => {
+    try {
+      const { createInlineSession } = await import('./services/inline-ai-service')
+      const session = createInlineSession(filePath, selectedCode, startLine, endLine, language)
+      return { success: true, session }
+    } catch (error) {
+      log.error('[InlineAI] Failed to create session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('inline-ai:get', async (_event, sessionId: string) => {
+    try {
+      const { getInlineSession } = await import('./services/inline-ai-service')
+      const session = getInlineSession(sessionId)
+      return { success: true, session }
+    } catch (error) {
+      log.error('[InlineAI] Failed to get session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('inline-ai:update', async (_event, { sessionId, updates }: { sessionId: string; updates: any }) => {
+    try {
+      const { updateInlineSession } = await import('./services/inline-ai-service')
+      const session = updateInlineSession(sessionId, updates)
+      return { success: true, session }
+    } catch (error) {
+      log.error('[InlineAI] Failed to update session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('inline-ai:delete', async (_event, sessionId: string) => {
+    try {
+      const { deleteInlineSession } = await import('./services/inline-ai-service')
+      const success = deleteInlineSession(sessionId)
+      return { success }
+    } catch (error) {
+      log.error('[InlineAI] Failed to delete session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('inline-ai:generate-prompt', async (_event, { selectedCode, instruction, language }: { selectedCode: string; instruction: string; language: string }) => {
+    try {
+      const { generatePrompt } = await import('./services/inline-ai-service')
+      const prompt = generatePrompt(selectedCode, instruction, language)
+      return { success: true, prompt }
+    } catch (error) {
+      log.error('[InlineAI] Failed to generate prompt:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Batch Edit handlers
+  ipcMain.handle('batch-edit:create', async (_event, { projectPath, description, edits }: { projectPath: string; description: string; edits: Array<{ filePath: string; oldContent: string; newContent: string }> }) => {
+    try {
+      const { createBatchEditSession } = await import('./services/batch-edit-service')
+      const session = createBatchEditSession(projectPath, description, edits)
+      return { success: true, session }
+    } catch (error) {
+      log.error('[BatchEdit] Failed to create session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('batch-edit:get', async (_event, sessionId: string) => {
+    try {
+      const { getBatchEditSession } = await import('./services/batch-edit-service')
+      const session = getBatchEditSession(sessionId)
+      return { success: true, session }
+    } catch (error) {
+      log.error('[BatchEdit] Failed to get session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('batch-edit:apply', async (_event, sessionId: string) => {
+    try {
+      const { applyBatchEditSession } = await import('./services/batch-edit-service')
+      const result = await applyBatchEditSession(sessionId)
+      return { success: true, result }
+    } catch (error) {
+      log.error('[BatchEdit] Failed to apply session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('batch-edit:cancel', async (_event, sessionId: string) => {
+    try {
+      const { cancelBatchEditSession } = await import('./services/batch-edit-service')
+      const success = cancelBatchEditSession(sessionId)
+      return { success }
+    } catch (error) {
+      log.error('[BatchEdit] Failed to cancel session:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('batch-edit:stats', async (_event, sessionId: string) => {
+    try {
+      const { getBatchEditStats } = await import('./services/batch-edit-service')
+      const stats = getBatchEditStats(sessionId)
+      return { success: true, stats }
+    } catch (error) {
+      log.error('[BatchEdit] Failed to get stats:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('batch-edit:all', async () => {
+    try {
+      const { getAllBatchEditSessions } = await import('./services/batch-edit-service')
+      const sessions = getAllBatchEditSessions()
+      return { success: true, sessions }
+    } catch (error) {
+      log.error('[BatchEdit] Failed to get all sessions:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // Completion Service handlers
+  ipcMain.handle('completion:get', async (_event, { projectPath, context }: { projectPath: string; context: any }) => {
+    try {
+      const { getCompletions } = await import('./services/completion-service')
+      const completions = await getCompletions(projectPath, context)
+      return { success: true, completions }
+    } catch (error) {
+      log.error('[Completion] Failed to get completions:', error)
+      return { success: false, error: String(error), completions: [] }
+    }
+  })
+
+  ipcMain.handle('completion:should-trigger', async (_event, { lineContent, character }: { lineContent: string; character: number }) => {
+    try {
+      const { shouldTriggerCompletion } = await import('./services/completion-service')
+      const shouldTrigger = shouldTriggerCompletion(lineContent, character)
+      return { success: true, shouldTrigger }
+    } catch (error) {
+      log.error('[Completion] Failed to check trigger:', error)
+      return { success: false, error: String(error), shouldTrigger: false }
+    }
+  })
+
   log.info('IPC handlers registered')
 }
 

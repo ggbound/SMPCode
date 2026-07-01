@@ -54,6 +54,61 @@ export async function executeReadFile(
   }
 }
 
+// ============ 批量编辑工具 ============
+
+export async function executeBatchEdit(
+  args: Record<string, unknown>,
+  cwd: string
+): Promise<ToolExecutionResult> {
+  const description = args.description as string
+  const edits = args.edits as Array<{ filePath: string; oldContent: string; newContent: string }>
+  const preview = args.preview as boolean | undefined
+
+  if (!edits || !Array.isArray(edits) || edits.length === 0) {
+    return { success: false, output: '', error: 'Edits array is required and must not be empty' }
+  }
+
+  try {
+    const { createBatchEditSession, applyBatchEditSession } = await import('./batch-edit-service')
+    
+    // 创建批量编辑会话
+    const session = createBatchEditSession(cwd, description || 'Batch edit', edits)
+    
+    // 如果是预览模式，返回会话信息
+    if (preview) {
+      return {
+        success: true,
+        output: `Created batch edit session with ${session.items.length} files`,
+        metadata: {
+          sessionId: session.id,
+          description: session.description,
+          fileCount: session.items.length,
+          files: session.items.map(i => i.filePath),
+          preview: true
+        }
+      }
+    }
+    
+    // 应用所有编辑
+    const result = await applyBatchEditSession(session.id)
+    
+    return {
+      success: result.success,
+      output: `Batch edit completed: ${result.applied} applied, ${result.failed} failed, ${result.total} total`,
+      metadata: {
+        sessionId: session.id,
+        ...result
+      }
+    }
+  } catch (error) {
+    return {
+      success: false,
+      output: '',
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
 export async function executeWriteFile(
   args: Record<string, unknown>,
   cwd: string
@@ -78,17 +133,36 @@ export async function executeWriteFile(
       await mkdir(dir, { recursive: true })
     }
 
+    // 读取旧内容（如果文件存在）
+    let oldContent: string | undefined
+    let operationType: 'file_write' | 'file_create' = 'file_create'
+    
+    try {
+      oldContent = await readFile(fullPath, 'utf-8')
+      operationType = 'file_write'
+    } catch {
+      // 文件不存在，是创建操作
+      oldContent = undefined
+    }
+
     await writeFile(fullPath, content, 'utf-8')
+
+    // 🔥 记录操作历史
+    const { recordOperation } = await import('../services/operation-history')
+    await recordOperation(cwd, operationType, filePath, oldContent, content, {
+      description: operationType === 'file_create' ? 'Created new file' : 'Overwrote file',
+      toolName: 'write_file'
+    })
 
     // ✅ 修复：主动发送文件变化事件到前端，确保文件树立即刷新
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('fs:change', { 
-        eventType: 'add', 
+        eventType: 'change', 
         filename: basename(fullPath), 
         dirPath: dirname(fullPath) 
       })
-      log.info(`[executeWriteFile] Sent fs:change event for new file: ${filePath}`)
+      log.info(`[executeWriteFile] Sent fs:change event for file: ${filePath}`)
     }
 
     return {
@@ -112,6 +186,7 @@ export async function executeEditFile(
   const filePath = args.path as string
   const oldString = args.old_string as string
   const newString = args.new_string as string
+  const preview = args.preview as boolean | undefined
 
   if (!filePath || oldString === undefined || newString === undefined) {
     return { success: false, output: '', error: 'Path, old_string, and new_string are required' }
@@ -126,7 +201,33 @@ export async function executeEditFile(
     }
 
     const newContent = content.replace(oldString, newString)
+    
+    // 🔥 Diff 预览模式：不实际写入，返回 diff
+    if (preview) {
+      const { generateDiff, createPendingEdit } = await import('../services/diff-service')
+      const diff = generateDiff(content, newContent, filePath)
+      const pendingEdit = createPendingEdit(filePath, content, newContent)
+      
+      return {
+        success: true,
+        output: `Diff preview created for ${filePath}`,
+        metadata: { 
+          path: fullPath,
+          diff,
+          pendingEditId: pendingEdit.id,
+          preview: true
+        }
+      }
+    }
+
     await writeFile(fullPath, newContent, 'utf-8')
+    
+    // 🔥 记录操作历史
+    const { recordOperation } = await import('../services/operation-history')
+    await recordOperation(cwd, 'file_edit', filePath, content, newContent, {
+      description: `Replaced "${oldString.substring(0, 50)}..." with "${newString.substring(0, 50)}..."`,
+      toolName: 'edit_file'
+    })
 
     return {
       success: true,
@@ -170,7 +271,23 @@ export async function executeDeleteFile(
       }
     }
     
+    // 读取文件内容以便撤销
+    let oldContent: string | undefined
+    try {
+      oldContent = await readFile(fullPath, 'utf-8')
+    } catch {
+      // 可能是二进制文件或目录，无法读取内容
+      oldContent = undefined
+    }
+    
     await rm(fullPath, { recursive: true, force: true })
+    
+    // 🔥 记录操作历史
+    const { recordOperation } = await import('../services/operation-history')
+    await recordOperation(cwd, 'file_delete', filePath, oldContent, undefined, {
+      description: `Deleted file ${filePath}`,
+      toolName: 'delete_file'
+    })
     
     // 验证文件是否被删除
     const stillExists = existsSync(fullPath)

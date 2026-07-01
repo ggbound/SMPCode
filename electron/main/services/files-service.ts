@@ -129,22 +129,29 @@ export function writeFile(filePath: string, content: string): void {
     const filename = path.basename(filePath)
     
     // Trigger a change event so watchers can pick it up
-    // This ensures the UI refreshes when AI writes to files
-    setTimeout(() => {
-      // The watcher will detect this change automatically
-      log.info(`[writeFile] File written and change notification triggered: ${filePath}`)
-      
-      // ✅ 修复：主动发送文件变化事件到前端，确保文件树立即刷新
-      const mainWindow = BrowserWindow.getAllWindows()[0]
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('fs:change', { 
-          eventType: 'add', 
-          filename: path.basename(filePath), 
-          dirPath: path.dirname(filePath) 
-        })
-        log.info(`[writeFile] Sent fs:change event for new file: ${filePath}`)
-      }
-    }, 100)
+      // This ensures the UI refreshes when AI writes to files
+      setTimeout(() => {
+        // The watcher will detect this change automatically
+        log.info(`[writeFile] File written and change notification triggered: ${filePath}`)
+        
+        // ✅ 修复：主动发送文件变化事件到前端，确保文件树立即刷新
+        const mainWindow = BrowserWindow.getAllWindows()[0]
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('fs:change', { 
+            eventType: 'change', 
+            filename: path.basename(filePath), 
+            dirPath: path.dirname(filePath) 
+          })
+          log.info(`[writeFile] Sent fs:change event for file: ${filePath}`)
+          
+          // ✅ 发送文件内容变化事件，供 Yjs 同步使用
+          mainWindow.webContents.send('fs:file-content-changed', { 
+            filePath: filePath, 
+            content: content 
+          })
+          log.info(`[writeFile] Sent fs:file-content-changed event for file: ${filePath}`)
+        }
+      }, 100)
   } catch (error) {
     log.error('[writeFile] Failed to write file:', error)
     throw error

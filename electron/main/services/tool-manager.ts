@@ -16,7 +16,8 @@ import {
   executeCheckPort,
   executeKillProcess,
   executeFindProcess,
-  executeListReminders
+  executeListReminders,
+  executeBatchEdit
 } from './tool-implementations'
 import { mcpManager } from './mcp-manager'
 
@@ -81,6 +82,7 @@ class ToolManager {
     this.register('kill_process', executeKillProcess)
     this.register('find_process', executeFindProcess)
     this.register('list_reminders', executeListReminders)
+    this.register('batch_edit', executeBatchEdit)
 
     this.isInitialized = true
     log.info(`[ToolManager] Initialized with ${this.tools.size} tools`)

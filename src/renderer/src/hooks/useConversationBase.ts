@@ -11,7 +11,7 @@ import { TOOL_NAME_MAP } from '../utils/toolConstants'
 
 // CLI Chat 流式响应块类型 - 共享类型定义
 export interface StreamChunk {
-  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done'
+  type: 'text' | 'tool_call' | 'tool_result' | 'error' | 'done' | 'diff_preview'
   content?: string
   toolCall?: {
     id: string
@@ -24,6 +24,29 @@ export interface StreamChunk {
     output: string
     error?: string
   }
+  diff?: {
+    path: string
+    oldContent: string
+    newContent: string
+    hunks: Array<{
+      oldStart: number
+      oldLines: number
+      newStart: number
+      newLines: number
+      lines: Array<{
+        type: 'context' | 'addition' | 'deletion'
+        oldLineNumber?: number
+        newLineNumber?: number
+        content: string
+      }>
+    }>
+    stats: {
+      additions: number
+      deletions: number
+      changes: number
+    }
+  }
+  pendingEditId?: string
   error?: string
 }
 

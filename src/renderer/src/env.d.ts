@@ -109,6 +109,7 @@ declare global {
       fsReadFile: (filePath: string) => Promise<{ success: boolean; content?: string; error?: string }>
       fsWriteFile: (filePath: string, content: string) => Promise<{ success: boolean; error?: string }>
       onFileChange: (callback: (event: unknown, data: { eventType: string; filename: string; dirPath: string }) => void) => () => void
+      onFileContentChanged: (callback: (event: unknown, data: { filePath: string; content: string }) => void) => () => void
       
       // File operation notifications from AI tools
       onFileOperation: (callback: (event: unknown, data: { 
@@ -229,6 +230,54 @@ declare global {
       Promise<{ success: boolean, memory?: any, error?: string }>,
     clearMemory: (projectPath: string) => 
       Promise<{ success: boolean, error?: string }>
+      }
+      
+      // Diff Service - 文件差异服务
+      diff: {
+        applyEdit: (editId: string, cwd: string) => Promise<{ success: boolean; error?: string }>
+        cancelEdit: (editId: string) => Promise<{ success: boolean; error?: string }>
+        getPendingEdits: () => Promise<{ success: boolean; edits?: any[]; error?: string }>
+      }
+      
+      // Operation History - 操作历史
+      history: {
+        undo: (projectPath: string) => Promise<{ success: boolean; operation?: any; description?: string; canUndo?: boolean; error?: string }>
+        redo: (projectPath: string) => Promise<{ success: boolean; operation?: any; description?: string; canRedo?: boolean; error?: string }>
+        get: (projectPath: string) => Promise<{ success: boolean; history?: any[]; currentIndex?: number; canUndo?: boolean; canRedo?: boolean; error?: string }>
+        clear: (projectPath: string) => Promise<{ success: boolean; error?: string }>
+      }
+      
+      // Mention Service - @ 符号引用
+      mention: {
+        search: (projectPath: string, query: string, type?: 'file' | 'symbol' | 'directory') => Promise<{ success: boolean; items?: any[]; error?: string }>
+        expand: (projectPath: string, message: string) => Promise<{ success: boolean; expandedMessage?: string; contexts?: any; error?: string }>
+        suggestions: (projectPath: string, partialQuery: string, type?: 'file' | 'symbol' | 'directory') => Promise<{ success: boolean; items?: any[]; error?: string }>
+      }
+      
+      // Inline AI - 代码内联 AI
+      inlineAI: {
+        create: (filePath: string, selectedCode: string, startLine: number, endLine: number, language: string) => Promise<{ success: boolean; session?: any; error?: string }>
+        get: (sessionId: string) => Promise<{ success: boolean; session?: any; error?: string }>
+        update: (sessionId: string, updates: any) => Promise<{ success: boolean; session?: any; error?: string }>
+        delete: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+        generatePrompt: (selectedCode: string, instruction: string, language: string) => Promise<{ success: boolean; prompt?: string; error?: string }>
+        onReplace: (callback: (event: unknown, data: any) => void) => () => void
+      }
+      
+      // Batch Edit - 批量文件编辑
+      batchEdit: {
+        create: (projectPath: string, description: string, edits: Array<{ filePath: string; oldContent: string; newContent: string }>) => Promise<{ success: boolean; session?: any; error?: string }>
+        get: (sessionId: string) => Promise<{ success: boolean; session?: any; error?: string }>
+        apply: (sessionId: string) => Promise<{ success: boolean; result?: any; error?: string }>
+        cancel: (sessionId: string) => Promise<{ success: boolean; error?: string }>
+        stats: (sessionId: string) => Promise<{ success: boolean; stats?: any; error?: string }>
+        all: () => Promise<{ success: boolean; sessions?: any[]; error?: string }>
+      }
+      
+      // Completion Service - 智能补全
+      completion: {
+        get: (projectPath: string, context: any) => Promise<{ success: boolean; completions?: any[]; error?: string }>
+        shouldTrigger: (lineContent: string, character: number) => Promise<{ success: boolean; shouldTrigger?: boolean; error?: string }>
       }
     }
   }

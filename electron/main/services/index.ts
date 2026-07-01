@@ -1,6 +1,12 @@
 // Services barrel export
 export * from './memcoder'
 export * from './code-index'
+export * from './diff-service'
+export * from './operation-history'
+export * from './mention-service'
+export * from './inline-ai-service'
+export * from './batch-edit-service'
+export * from './completion-service'
 export * from './llm-service'
 export * from './commands-service'
 // Note: tools-service removed - using core/tools and tool-executor instead
