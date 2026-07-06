@@ -488,6 +488,94 @@ export function JackFileExplorer({
       }
     }
 
+    // 处理添加到对话 - 只引用文件相对路径，不读取内容
+    const handleAddToConversation = () => {
+      if (!node || node.type !== 'file') return
+      
+      closeMenu()
+      
+      try {
+        const fileName = node.name
+        const language = getFileLanguage(fileName)
+        
+        // 计算相对路径
+        const fullPath = node.path
+        const relativePath = workspaceRoot && fullPath.startsWith(workspaceRoot)
+          ? fullPath.substring(workspaceRoot.length).replace(/^[/\\]/, '')
+          : fullPath
+        
+        // 触发添加到对话事件 - 只包含文件引用信息
+        window.dispatchEvent(new CustomEvent('code-add-to-conversation', {
+          detail: {
+            code: '', // 空内容，只引用文件
+            filePath: relativePath, // 使用相对路径
+            fileName: fileName,
+            startLine: 1,
+            endLine: 1,
+            language: language,
+            isFileReference: true // 标记为文件引用
+          }
+        }))
+        
+        console.log('[JackFileExplorer] Added file reference to conversation:', relativePath)
+      } catch (error) {
+        console.error('[JackFileExplorer] Add to conversation failed:', error)
+        alert('添加到对话失败: ' + (error instanceof Error ? error.message : String(error)))
+      }
+    }
+
+    // 获取文件语言类型
+    const getFileLanguage = (fileName: string): string => {
+      const ext = fileName.split('.').pop()?.toLowerCase() || ''
+      const langMap: Record<string, string> = {
+        'js': 'javascript',
+        'ts': 'typescript',
+        'jsx': 'javascript',
+        'tsx': 'typescript',
+        'vue': 'vue',
+        'php': 'php',
+        'py': 'python',
+        'java': 'java',
+        'go': 'go',
+        'rs': 'rust',
+        'rb': 'ruby',
+        'c': 'c',
+        'cpp': 'cpp',
+        'h': 'c',
+        'hpp': 'cpp',
+        'cs': 'csharp',
+        'swift': 'swift',
+        'kt': 'kotlin',
+        'scala': 'scala',
+        'r': 'r',
+        'm': 'objective-c',
+        'mm': 'objective-c',
+        'sh': 'shell',
+        'bash': 'shell',
+        'zsh': 'shell',
+        'ps1': 'powershell',
+        'sql': 'sql',
+        'html': 'html',
+        'htm': 'html',
+        'css': 'css',
+        'scss': 'scss',
+        'sass': 'scss',
+        'less': 'less',
+        'json': 'json',
+        'xml': 'xml',
+        'yaml': 'yaml',
+        'yml': 'yaml',
+        'toml': 'toml',
+        'ini': 'ini',
+        'md': 'markdown',
+        'txt': 'text',
+        'dockerfile': 'dockerfile',
+        'makefile': 'makefile',
+        'cmake': 'cmake'
+      }
+      return langMap[ext] || ext || 'text'
+    }
+
     return (
       <div
         ref={menuRef}
@@ -501,6 +589,18 @@ export function JackFileExplorer({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sft-context-menu" data-scope={scope}>
+          {/* 🔥 添加到对话 - 仅对文件显示 */}
+          {node?.type === 'file' && (
+            <div>
+              <div
+                className="sft-context-menu-item"
+                onClick={handleAddToConversation}
+              >
+                <span>添加到对话</span>
+              </div>
+              <div className="sft-context-menu-separator" />
+            </div>
+          )}
           {groups.map((group, groupIndex) => (
             <div key={groupIndex}>
               {group.map((item) => {

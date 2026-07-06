@@ -489,8 +489,14 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
       return
     }
     
-    // 先保存当前会话的消息（如果不是飞书会话）
+    // ✅ 修复：如果已经在目标会话中，不要重复加载
     const currentSessionId = store.currentSession
+    if (currentSessionId === sessionId) {
+      console.log('[KiloPage] Already in target session, skipping switch:', sessionId)
+      return
+    }
+    
+    // 先保存当前会话的消息（如果不是飞书会话）
     if (currentSessionId && store.messages.length > 0 && window.api?.saveConversation) {
       const currentSession = store.sessions.find(s => s.id === currentSessionId)
       if (currentSession && currentSession.title !== '飞书专用对话' && !currentSessionId.startsWith('feishu-session-')) {
@@ -894,18 +900,26 @@ export default function KiloPage({ apiKey, model, providers, projectPath, onMode
       startLine: number
       endLine: number
       language: string
+      isFileReference?: boolean
     }>) => {
-      const { code, fileName, startLine, endLine, language } = e.detail
+      const { code, filePath, fileName, startLine, endLine, language, isFileReference } = e.detail
       
-      // 将代码引用格式化为 Markdown 格式，写入输入框
-      const codeReference = `**${fileName}:${startLine}-${endLine}**\n\n\`\`\`${language}\n${code}\n\`\`\`\n\n`
+      let codeReference: string
+      
+      if (isFileReference) {
+        // 文件引用模式 - 只显示文件路径
+        codeReference = `**${filePath}**\n\n`
+      } else {
+        // 代码片段模式 - 显示完整代码
+        codeReference = `**${fileName}:${startLine}-${endLine}**\n\n\`\`\`${language}\n${code}\n\`\`\`\n\n`
+      }
       
       setInput(prev => prev + codeReference)
       
       // 切换到 Ask 模式
       store.setCurrentMode('ask')
       
-      console.log('[KiloPage] Code added to conversation:', { fileName, lines: `${startLine}-${endLine}` })
+      console.log('[KiloPage] Code added to conversation:', { fileName, lines: `${startLine}-${endLine}`, isFileReference })
     }
     
     window.addEventListener('code-add-to-conversation', handleAddToConversation as EventListener)

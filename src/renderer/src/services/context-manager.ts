@@ -479,10 +479,11 @@ export function shouldIncludeFullContext(
     return true
   }
   
+  // 只有明确意图为继续或引用时才包含历史
+  // 移除 confidence > 0.8 的条件，避免误判
   return (
     intent.userIntent === 'continue' ||
-    intent.userIntent === 'reference_previous' ||
-    intent.confidence > 0.8
+    intent.userIntent === 'reference_previous'
   )
 }
 
