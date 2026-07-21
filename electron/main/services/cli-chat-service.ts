@@ -101,6 +101,9 @@ const sessions = new Map<string, CLISession>()
  * ✅ 智能上下文压缩
  * 参考先进 AI Coding 工具（Claude Code、Cursor、GitHub Copilot）的做法
  * 将历史对话压缩为简洁的摘要，保留关键信息
+ * 
+ * ⚠️ 重要：只保留系统消息和最近的用户消息，不注入历史操作摘要
+ * 历史操作摘要会误导AI，让用户的新问题被当作历史任务的延续
  */
 function compressMessageHistory(messages: LLMMessage[]): LLMMessage[] {
   if (messages.length <= 10) return messages
@@ -110,68 +113,16 @@ function compressMessageHistory(messages: LLMMessage[]): LLMMessage[] {
   // 1. 保留系统消息
   const systemMessages = messages.filter(m => m.role === 'system')
   
-  // 2. 保留最新的用户消息
-  const userMessages = messages.filter(m => m.role === 'user')
-  const latestUserMessage = userMessages[userMessages.length - 1]
+  // 2. 只保留最近5条非系统消息（包含用户和助手消息）
+  // 这样AI能看到最近的对话上下文，但不会看到压缩后的"摘要"消息
+  const recentMessages = messages
+    .filter(m => m.role !== 'system')
+    .slice(-5)
   
-  // 3. 压缩中间的对话历史
-  const nonSystemMessages = messages.filter(m => m.role !== 'system')
+  // 3. 构建压缩后的消息历史
+  const compressedMessages: LLMMessage[] = [...systemMessages, ...recentMessages]
   
-  // 4. 提取关键信息（文件操作、搜索结果等）
-  const keyOperations: string[] = []
-  let lastFileOperation: string | null = null
-  
-  for (const msg of nonSystemMessages) {
-    const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-    
-    // 提取文件操作
-    if (content.includes('File written:') || content.includes('File deleted:')) {
-      const match = content.match(/File\s+(written|deleted):\s*(.+)/i)
-      if (match) {
-        lastFileOperation = `${match[1]}: ${match[2]}`
-        keyOperations.push(lastFileOperation)
-      }
-    }
-    
-    // 提取搜索结果
-    if (content.includes('Found:') || content.includes('搜索文件')) {
-      const lines = content.split('\n').filter(l => l.includes('Found:') || l.includes('/'))
-      if (lines.length > 0) {
-        keyOperations.push(`搜索: ${lines[0].substring(0, 100)}`)
-      }
-    }
-    
-    // 提取代码执行结果
-    if (content.includes('```python') && content.includes('print(')) {
-      // 保留代码执行结果
-      const lines = content.split('\n').filter(l => l.includes('print('))
-      if (lines.length > 0) {
-        keyOperations.push(`执行: ${lines.join(', ').substring(0, 100)}`)
-      }
-    }
-  }
-  
-  // 5. 构建压缩后的消息历史
-  const compressedMessages: LLMMessage[] = [...systemMessages]
-  
-  // 如果有关键操作，添加摘要
-  if (keyOperations.length > 0) {
-    // 去重并限制数量
-    const uniqueOps = keyOperations.slice(-5)  // 只保留最近 5 个关键操作
-    const summary = uniqueOps.map((op, i) => `${i + 1}. ${op}`).join('\n')
-    
-    compressedMessages.push({
-      role: 'user',
-      content: `[历史操作摘要]\n${summary}\n\n请继续当前任务。`
-    })
-  }
-  
-  // 添加最新的用户消息
-  if (latestUserMessage) {
-    compressedMessages.push(latestUserMessage)
-  }
-  
-  log.info(`[Context Compression] Compressed to ${compressedMessages.length} messages`)
+  log.info(`[Context Compression] Compressed to ${compressedMessages.length} messages (keeping recent context only)`)
   
   return compressedMessages
 }
@@ -1232,31 +1183,59 @@ export async function sendCLIMessageStream(
         })
       }
       
-      // 找到 session.messages 中最后一条助手消息的位置
-      const lastAssistantIndex = session.messages.findIndex(m => m.role === 'assistant')
-      
-      // 遍历前端提供的消息，追加到 session.messages
-      for (const m of messages) {
-        // 跳过系统消息（保留后端的系统提示词）
-        if (m.role === 'system') continue
+      // ✅ 关键修复：当 iterationCount === 0（新对话开始）时，应该清理已完成的工具执行历史
+      // 前端 store.messages 可能包含之前的完整对话（包括工具调用和结果），但这会误导AI以为要继续执行
+      // 新对话应该只保留：系统消息 + 最近的用户消息（不包含已完成的工具执行详情）
+      if (iterationCount === 0) {
+        log.info(`[CLI-Chat] New conversation started, filtering out completed tool execution history`)
         
-        // 检查消息是否已存在（避免重复）
-        const exists = session.messages.some(sm => 
-          sm.role === m.role && sm.content === m.content
-        )
+        // 保留系统提示词
+        const systemMessages: LLMMessage[] = messages
+          .filter(m => m.role === 'system')
+          .map(m => ({ role: 'system', content: m.content }))
         
-        if (!exists) {
-          const msg: LLMMessage = { 
-            role: m.role as 'system' | 'user' | 'assistant' | 'tool', 
-            content: m.content
+        // 只保留最近的用户消息，过滤掉已完成的助手消息和工具结果
+        // 这样可以确保AI只关注当前用户问题，而不是把历史任务当作待办事项
+        const userMessages = messages.filter(m => m.role === 'user')
+        const recentUserMessage = userMessages[userMessages.length - 1]
+        
+        // 替换为干净的历史：系统消息 + 当前用户问题
+        session.messages = [...systemMessages]
+        if (recentUserMessage) {
+          session.messages.push({
+            role: 'user',
+            content: recentUserMessage.content
+          })
+          log.info(`[CLI-Chat] Kept only current user message, discarded ${messages.length - systemMessages.length - 1} historical messages`)
+        }
+      } else {
+        // 工具调用递归时，正常合并消息历史
+        // 找到 session.messages 中最后一条助手消息的位置
+        const lastAssistantIndex = session.messages.findIndex(m => m.role === 'assistant')
+        
+        // 遍历前端提供的消息，追加到 session.messages
+        for (const m of messages) {
+          // 跳过系统消息（保留后端的系统提示词）
+          if (m.role === 'system') continue
+          
+          // 检查消息是否已存在（避免重复）
+          const exists = session.messages.some(sm => 
+            sm.role === m.role && sm.content === m.content
+          )
+          
+          if (!exists) {
+            const msg: LLMMessage = { 
+              role: m.role as 'system' | 'user' | 'assistant' | 'tool', 
+              content: m.content
+            }
+            if (m.name) msg.name = m.name
+            if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
+            session.messages.push(msg)
+            const contentPreview = typeof m.content === 'string' 
+              ? m.content.substring(0, 50) 
+              : '[多模态内容]'
+            log.debug(`[CLI-Chat] Added message: role=${m.role}, content=${contentPreview}...`)
           }
-          if (m.name) msg.name = m.name
-          if ((m as any).tool_call_id) msg.tool_call_id = (m as any).tool_call_id
-          session.messages.push(msg)
-          const contentPreview = typeof m.content === 'string' 
-            ? m.content.substring(0, 50) 
-            : '[多模态内容]'
-          log.debug(`[CLI-Chat] Added message: role=${m.role}, content=${contentPreview}...`)
         }
       }
       
