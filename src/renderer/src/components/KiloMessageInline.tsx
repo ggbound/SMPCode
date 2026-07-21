@@ -55,14 +55,34 @@ const toolIconMap: Record<string, LucideIcon> = {
 }
 
 // 内联工具调用卡片
-const InlineToolCallCard = memo(function InlineToolCallCard({ 
-  toolCall,
-  isExpanded: initialExpanded = false
-}: { 
-  toolCall: KiloToolCall
+interface InlineToolCallCardProps {
+  toolCallId: string
+  getToolCall: () => KiloToolCall | undefined
   isExpanded?: boolean
-}) {
+}
+
+const InlineToolCallCard = memo(function InlineToolCallCard({
+  toolCallId,
+  getToolCall,
+  isExpanded: initialExpanded = false
+}: InlineToolCallCardProps) {
+  const toolCall = getToolCall()
   const [isExpanded, setIsExpanded] = useState(initialExpanded)
+
+  // 如果 toolCall 不存在，显示加载状态
+  if (!toolCall) {
+    return (
+      <div className="kilo-inline-tool-card loading">
+        <div className="kilo-inline-tool-header">
+          <div className="kilo-inline-tool-main">
+            <Loader2 size={14} className="kilo-spin" />
+            <span>加载中...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const config = TOOL_CONFIG[toolCall.name] || {
     label: toolCall.name,
     icon: 'Wrench',
@@ -97,8 +117,8 @@ const InlineToolCallCard = memo(function InlineToolCallCard({
     // 只显示路径类参数
     const path = args.path || args.file_path || args.directory || args.filePath
     if (path && typeof path === 'string') {
-      const shortPath = path.length > 30 
-        ? '...' + path.slice(-30) 
+      const shortPath = path.length > 30
+        ? '...' + path.slice(-30)
         : path
       return shortPath
     }
@@ -108,7 +128,7 @@ const InlineToolCallCard = memo(function InlineToolCallCard({
   const argsSummary = getArgsSummary()
 
   return (
-    <div 
+    <div
       className={`kilo-inline-tool-card ${toolCall.status}`}
       style={{
         '--tool-color': config.color,
@@ -154,8 +174,8 @@ const InlineToolCallCard = memo(function InlineToolCallCard({
             <div className="kilo-inline-tool-section">
               <span className="kilo-inline-tool-section-title">结果</span>
               <pre className="kilo-inline-tool-result">
-                {typeof toolCall.result === 'string' 
-                  ? toolCall.result 
+                {typeof toolCall.result === 'string'
+                  ? toolCall.result
                   : JSON.stringify(toolCall.result, null, 2)}
               </pre>
             </div>
@@ -194,11 +214,13 @@ const TextBlockComponent = memo(function TextBlockComponent({
 // 内容块渲染器
 const ContentBlockRenderer = memo(function ContentBlockRenderer({
   block,
+  message,
   isLast,
   isStreaming,
   onOpenUrl
 }: {
   block: ContentBlock
+  message: KiloMessageType
   isLast?: boolean
   isStreaming?: boolean
   onOpenUrl?: (url: string) => void
@@ -206,10 +228,17 @@ const ContentBlockRenderer = memo(function ContentBlockRenderer({
   switch (block.type) {
     case 'text':
       return <TextBlockComponent content={(block as TextBlock).content} isStreaming={isStreaming} onOpenUrl={onOpenUrl} />
-    
+
     case 'tool_call':
-      return <InlineToolCallCard toolCall={(block as ToolCallBlock).toolCall} />
-    
+      const toolCallBlock = block as ToolCallBlock
+      // 从 message.toolCalls 获取最新的 toolCall 状态
+      return (
+        <InlineToolCallCard
+          toolCallId={toolCallBlock.toolCall.id}
+          getToolCall={() => message.toolCalls?.find(tc => tc.id === toolCallBlock.toolCall.id)}
+        />
+      )
+
     case 'thinking':
       return (
         <div className="kilo-thinking-block">
@@ -217,7 +246,7 @@ const ContentBlockRenderer = memo(function ContentBlockRenderer({
           <span>思考中...</span>
         </div>
       )
-    
+
     default:
       return null
   }
@@ -420,6 +449,7 @@ export const KiloMessageInline = memo(function KiloMessageInline({
             <ContentBlockRenderer
               key={block.id}
               block={block}
+              message={message}
               isLast={isLast && index === blocks.length - 1}
               isStreaming={message.isStreaming}
               onOpenUrl={onOpenUrl}
