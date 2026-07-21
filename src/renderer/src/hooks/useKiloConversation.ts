@@ -74,6 +74,15 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
   const sessionIdRef = useRef<string | null>(null)
   const originalSessionIdRef = useRef<string | null>(null) // 保存发送消息时的会话ID
   const [error, setError] = useState<string | null>(null)
+
+  // 🔥 关键修复：存储 toolCallId -> { messageId, toolCall } 的映射
+  // 不依赖 store，直接使用快照更新
+  const toolCallMapRef = useRef<Map<string, { messageId: string; toolCall: KiloToolCall }>>(new Map())
+
+  // 调试：监控 ref 的变化
+  useEffect(() => {
+    console.log('[useKiloConversation] toolCallMapRef initialized, size:', toolCallMapRef.current.size)
+  }, [])
   
   // MemCoder 初始化 - 当项目路径变化时
   useEffect(() => {
@@ -219,6 +228,14 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
     
     // 创建 AI 消息占位 - 使用 blocks 支持内联工具调用
     const assistantMessageId = uuidv4()
+
+    // 🔥 关键调试：追踪 assistantMessageId 的创建
+    console.log('[useKiloConversation] Creating assistant message:', {
+      assistantMessageId,
+      currentSession: store.currentSession,
+      existingMessages: store.messages.map(m => ({ id: m.id.slice(0, 8), role: m.role }))
+    })
+
     const initialTextBlock: TextBlock = {
       id: uuidv4(),
       type: 'text',
@@ -235,9 +252,17 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
       blocks: [initialTextBlock],
       toolCalls: []
     }
-    
+
     store.addMessage(assistantMessage)
     store.startStreaming(assistantMessageId)
+
+    // 🔥 关键调试：确认消息已添加到 store
+    const addedMsg = store.messages.find(m => m.id === assistantMessageId)
+    console.log('[useKiloConversation] Message added check:', {
+      assistantMessageId,
+      foundInStore: !!addedMsg,
+      storeMessagesCount: store.messages.length
+    })
     
     // 准备请求 - 构建符合 OpenAI API 格式的消息历史（与后端 LLMMessage 完全兼容）
     const messages: CliChatMessage[] = []
@@ -405,6 +430,18 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                 status: 'running',
                 timestamp: Date.now()
               }
+
+              // 🔥 关键修复：保存 toolCallId -> { messageId, toolCall } 的映射
+              toolCallMapRef.current.set(toolCall.id, { messageId: assistantMessageId, toolCall })
+
+              // 🔥 调试日志：记录 tool_call 事件
+              console.log('[useKiloConversation] tool_call received:', {
+                assistantMessageId,
+                toolCallId: toolCall.id,
+                name: toolCall.name,
+                mapSize: toolCallMapRef.current.size
+              })
+
               // 添加到 toolCalls 数组
               store.addToolCall(assistantMessageId, toolCall)
               // 同时添加为内联内容块
@@ -415,7 +452,7 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                 timestamp: Date.now()
               }
               store.addContentBlock(assistantMessageId, toolBlock)
-              
+
               // 🔥 工具可视化：显示执行进度
               const toolDescriptions: Record<string, string> = {
                 'read_file': '读取文件',
@@ -434,8 +471,8 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
                 'browse_website': '浏览网页'
               }
               const toolDesc = toolDescriptions[toolCall.name] || toolCall.name
-              console.log(`[useKiloConversation] 🔧 ${toolDesc} 执行中...`)
-              
+              console.log(`[useKiloConversation] 🔧 ${toolDesc} 执行中... (ID: ${toolCall.id})`)
+
               // ✅ 不再在前端执行工具，等待后端发送 tool_result
               console.log('[useKiloConversation] Tool call registered, waiting for backend execution result...')
             }
@@ -443,57 +480,97 @@ export function useKiloConversation(options: UseKiloConversationOptions) {
             
           case 'tool_result':
             if (chunk.toolResult) {
-              const currentMsg = store.messages.find(m => m.id === assistantMessageId)
               const toolCallId = chunk.toolResult.toolCallId
-              
-              // 更新 toolCalls 中的状态 - 通过 toolCallId 精确匹配
-              if (toolCallId && currentMsg?.toolCalls) {
-                const toolCall = currentMsg.toolCalls.find(t => t.id === toolCallId)
-                if (toolCall) {
-                  store.updateToolCall(assistantMessageId, toolCall.id, {
-                    status: chunk.toolResult.success ? 'completed' : 'failed',
-                    result: chunk.toolResult.output,
-                    error: chunk.toolResult.error,
-                    duration: Date.now() - toolCall.timestamp
-                  })
-                }
+
+              // 🔥 关键修复：通过映射表获取保存的数据
+              const savedData = toolCallMapRef.current.get(toolCallId)
+
+              // 🔥 调试日志：检查 tool_result 事件
+              console.log('[useKiloConversation] tool_result received:', {
+                toolCallId,
+                hasSavedData: !!savedData,
+                savedMessageId: savedData?.messageId.slice(0, 8) || 'none',
+                mapSize: toolCallMapRef.current.size,
+                success: chunk.toolResult.success
+              })
+
+              if (!savedData) {
+                console.warn('[useKiloConversation] No saved data found for toolCallId:', toolCallId)
+                break
               }
-              
-              // 更新 blocks 中的工具调用状态 - 通过 toolCallId 精确匹配
-              if (currentMsg?.blocks) {
-                const toolBlock = currentMsg.blocks.find(
+
+              const { messageId, toolCall: originalToolCall } = savedData
+
+              // 🔥 关键修复：获取最新的 store 状态，而不是使用闭包中的旧状态
+              const currentStore = useKiloStore.getState()
+              const targetMsg = currentStore.messages.find(m => m.id === messageId)
+
+              console.log('[useKiloConversation] Store state (via getState):', {
+                messageId: messageId.slice(0, 8),
+                foundInStore: !!targetMsg,
+                messagesCount: currentStore.messages.length,
+                messageIds: currentStore.messages.slice(-3).map(m => ({ id: m.id.slice(0, 8), role: m.role }))
+              })
+
+              // ✅ 更新 toolCalls 中的状态
+              // 使用 getState 获取最新状态来更新
+              currentStore.updateToolCall(messageId, toolCallId, {
+                status: chunk.toolResult.success ? 'completed' : 'failed',
+                result: chunk.toolResult.output,
+                error: chunk.toolResult.error,
+                duration: Date.now() - originalToolCall.timestamp
+              })
+
+              console.log('[useKiloConversation] Tool status updated:', {
+                messageId: messageId.slice(0, 8),
+                toolCallId,
+                newStatus: chunk.toolResult.success ? 'completed' : 'failed'
+              })
+
+              // ✅ 更新 blocks 中的工具调用状态
+              if (targetMsg?.blocks) {
+                const targetBlock = targetMsg.blocks.find(
                   b => b.type === 'tool_call' && (b as ToolCallBlock).toolCall.id === toolCallId
                 ) as ToolCallBlock | undefined
-                if (toolBlock) {
-                  store.updateContentBlock(assistantMessageId, toolBlock.id, {
+
+                if (targetBlock) {
+                  console.log('[useKiloConversation] Updating block toolCall status:', {
+                    messageId: messageId.slice(0, 8),
+                    blockId: targetBlock.id.slice(0, 8),
+                    toolCallId
+                  })
+                  currentStore.updateContentBlock(messageId, targetBlock.id, {
                     toolCall: {
-                      ...toolBlock.toolCall,
+                      ...targetBlock.toolCall,
                       status: chunk.toolResult.success ? 'completed' : 'failed',
                       result: chunk.toolResult.output,
                       error: chunk.toolResult.error,
-                      duration: Date.now() - toolBlock.toolCall.timestamp
+                      duration: Date.now() - targetBlock.toolCall.timestamp
                     }
                   })
                 }
               }
-              
+
+              // ✅ 清理映射（可选，防止内存泄漏）
+              // toolCallMapRef.current.delete(toolCallId)
+
               // 🔥 工具可视化：显示执行结果
               const toolResultDesc = chunk.toolResult.success ? '✅ 完成' : '❌ 失败'
-              const duration = toolCallId && currentMsg?.toolCalls 
-                ? Date.now() - (currentMsg.toolCalls.find(t => t.id === toolCallId)?.timestamp || Date.now())
-                : 0
+              const duration = Date.now() - originalToolCall.timestamp
               const durationStr = duration > 0 ? ` (${duration}ms)` : ''
               console.log(`[useKiloConversation] 🔧 ${toolResultDesc}${durationStr}`)
-              
-              // 将工具调用结果追加到消息内容中，让用户能看到结果
-              const resultText = chunk.toolResult.success 
+
+              // 将工具调用结果追加到消息内容中
+              const resultText = chunk.toolResult.success
                 ? `\n\n**工具执行结果：**\n\`\`\`\n${chunk.toolResult.output}\n\`\`\``
                 : `\n\n**工具执行失败：**\n${chunk.toolResult.error || 'Unknown error'}`
-              
-              const currentContent = currentMsg?.content || ''
-              store.updateMessage(assistantMessageId, {
-                content: currentContent + resultText
-              })
+
+              if (targetMsg) {
+                const currentContent = typeof targetMsg.content === 'string' ? targetMsg.content : ''
+                currentStore.updateMessage(messageId, {
+                  content: currentContent + resultText
+                })
+              }
               
               // ✅ 文件操作完成后立即刷新资源管理器
               if (chunk.toolResult.success) {

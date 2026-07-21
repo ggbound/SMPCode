@@ -1788,13 +1788,16 @@ export async function sendCLIMessageStream(
 
         // ✅ 标记工具为 running 状态
         toolCallManager.markAsRunning(toolCall.id)
+        log.info(`[CLI-Chat] Executing tool: ${toolCall.name}, toolCallId: ${toolCall.id}`)
         const result = await executeToolCall(toolCall.name, args, session.cwd)
 
         // ✅ 根据执行结果更新状态
         if (result.success) {
           toolCallManager.markAsCompleted(toolCall.id, result.output)
+          log.info(`[CLI-Chat] Tool completed successfully: ${toolCall.name}, toolCallId: ${toolCall.id}`)
         } else {
           toolCallManager.markAsFailed(toolCall.id, result.error || 'Unknown error')
+          log.info(`[CLI-Chat] Tool failed: ${toolCall.name}, toolCallId: ${toolCall.id}, error: ${result.error}`)
         }
 
         // 🔥 Diff 预览：如果是 edit_file 且返回了 diff，发送 diff 预览
@@ -1807,6 +1810,7 @@ export async function sendCLIMessageStream(
           })
         }
 
+        log.info(`[CLI-Chat] Sending tool_result event: toolCallId=${toolCall.id}, success=${result.success}`)
         onChunk({
           type: 'tool_result',
           toolResult: {
@@ -2158,6 +2162,7 @@ export async function sendCLIMessageStream(
 
           // ✅ 修复：先发送 tool_call 事件，让前端显示工具调用
           // ✅ 修复：arguments 保持为对象，不要序列化为字符串，前端期望的是对象
+          log.info(`[CLI-Chat] Sending tool_call event: toolCallId=${toolCallId}, name=${firstToolCall.name}`)
           onChunk({
             type: 'tool_call',
             toolCall: {
@@ -2168,7 +2173,7 @@ export async function sendCLIMessageStream(
           })
 
           // ✅ 关键修复：使用 ToolCallManager 进行指纹检测
-          log.info(`[CLI-Chat] Registering extracted tool call: ${firstToolCall.name}, sessionId: ${sessionId}, iteration: ${iterationCount}`)
+          log.info(`[CLI-Chat] Registering extracted tool call: ${firstToolCall.name}, toolCallId=${toolCallId}, sessionId: ${sessionId}, iteration: ${iterationCount}`)
           const registration = toolCallManager.registerToolCall(
             sessionId,
             toolCallId,
@@ -2229,7 +2234,17 @@ export async function sendCLIMessageStream(
           }
 
           toolCallManager.markAsRunning(toolCallId)
+          log.info(`[CLI-Chat] Executing extracted tool: ${firstToolCall.name}, toolCallId=${toolCallId}`)
           const result = await executeToolCall(firstToolCall.name, firstToolCall.arguments, session.cwd)
+
+          // ✅ 根据执行结果更新状态
+          if (result.success) {
+            toolCallManager.markAsCompleted(toolCallId, result.output)
+            log.info(`[CLI-Chat] Extracted tool completed successfully: ${firstToolCall.name}, toolCallId=${toolCallId}`)
+          } else {
+            toolCallManager.markAsFailed(toolCallId, result.error || 'Unknown error')
+            log.info(`[CLI-Chat] Extracted tool failed: ${firstToolCall.name}, toolCallId=${toolCallId}, error: ${result.error}`)
+          }
 
           // ✅ 修复：从搜索结果中提取文件路径
           if (firstToolCall.name === 'search_files' && result.success) {
@@ -2242,6 +2257,7 @@ export async function sendCLIMessageStream(
           }
 
           // 发送 tool_result 事件
+          log.info(`[CLI-Chat] Sending tool_result event for extracted tool: toolCallId=${toolCallId}, success=${result.success}`)
           onChunk({
             type: 'tool_result',
             toolResult: {
@@ -2259,13 +2275,6 @@ export async function sendCLIMessageStream(
             content: result.success ? result.output : result.error || 'Error',
             tool_call_id: toolCallId
           })
-
-          // ✅ 根据执行结果更新状态
-          if (result.success) {
-            toolCallManager.markAsCompleted(toolCallId, result.output)
-          } else {
-            toolCallManager.markAsFailed(toolCallId, result.error || 'Unknown error')
-          }
 
           toolResultForContinue = result.success ? result.output : result.error || 'Error'
         } catch (error) {
