@@ -78,8 +78,8 @@ export function analyzeUserIntent(
   
   // 新任务关键词
   const newTaskKeywords = [
-    '新建', '创建', '开始', '初始化', '新的',
-    'create new', 'start', 'init', 'new'
+    '新建', '创建', '开始', '初始化', '新的', '删除', '移除', '删掉', '删去', '清空',
+    'create new', 'start', 'init', 'new', 'delete', 'remove', 'clear', 'clean'
   ]
   
   // 重复检测关键词
@@ -284,17 +284,29 @@ export function isDuplicateRequest(
   state: ConversationState
 ): boolean {
   const lowerMsg = currentMessage.toLowerCase()
-  
+
+  // 如果用户意图明确是新任务，不认为是重复
+  const newTaskKeywords = ['删除', '移除', '删掉', '删去', '清空', 'delete', 'remove', 'clear', 'clean']
+  if (newTaskKeywords.some(k => lowerMsg.includes(k))) {
+    // 删除操作通常不是重复，而是对之前操作的补充
+    return false
+  }
+
   // 检查是否请求了已完成的任务
   for (const task of state.completedTasks) {
     const taskLower = task.toLowerCase()
     // 提取工具名
     const toolName = taskLower.split(':')[0]
+    // 只有当操作类型和工具都匹配时才认为是重复
     if (lowerMsg.includes(toolName)) {
-      return true
+      // 检查是否包含重复关键词
+      const repeatKeywords = ['再', '重新', '又', '还是', 'again', 'retry', '重新执行', '重新创建']
+      if (repeatKeywords.some(k => lowerMsg.includes(k))) {
+        return true
+      }
     }
   }
-  
+
   return false
 }
 

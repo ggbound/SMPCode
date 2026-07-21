@@ -21,6 +21,7 @@ import {
   type TurnResult
 } from '../cli/runtime-engine'
 import { toolRegistry } from '../cli/tool-registry'
+import { toolCallManager } from './tool-call-manager'
 import { loadConfig } from '../config-service'
 import { getCodeIndexService } from './code-index'
 
@@ -44,6 +45,8 @@ interface CLISession {
     inputTokens: number
     outputTokens: number
   }
+  hasReusedToolResult?: boolean  // ✅ 是否复用了已完成的工具结果
+  disableTools?: boolean  // ✅ 强制纯文本模式（禁止工具调用）
 }
 
 // 流式响应块
@@ -994,6 +997,107 @@ function extractToolCallsFromContent(content: string): {
 const MAX_ITERATIONS = 99999
 
 /**
+ * ✅ 工具调用完成后继续对话
+ * 统一封装：更新系统提示词、添加 continuePrompt、递归调用 AI
+ * 用于 function calling 分支与 XML 工具调用分支
+ */
+async function continueAfterToolResult(
+  sessionId: string,
+  toolName: string,
+  toolResult: string,
+  onChunk: (chunk: StreamChunk) => void,
+  iterationCount: number,
+  modelParam?: string
+): Promise<void> {
+  const session = sessions.get(sessionId)
+  if (!session) {
+    log.error(`[CLI-Chat] Session not found in continueAfterToolResult: ${sessionId}`)
+    onChunk({ type: 'done' })
+    return
+  }
+
+  // 更新系统提示词
+  let systemPrompt: string
+  if (session.disableTools) {
+    systemPrompt = `You are Claude Code, an AI coding assistant.
+
+Working Directory: ${session.cwd}
+
+✅ 任务已完成！工具已成功执行。
+
+**你现在必须只生成纯文本回复：**
+- 总结任务完成情况
+- 说明已完成的操作
+- **绝对禁止**使用任何工具调用
+- **绝对禁止**生成 <tool> 标签
+
+只回复文字总结即可。`
+    log.info(`[CLI-Chat] Using pure text mode system prompt (tools disabled)`)
+  } else {
+    systemPrompt = await buildSystemPrompt(session.mode, session.cwd)
+  }
+
+  const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
+  if (existingSystemIndex >= 0) {
+    session.messages[existingSystemIndex] = { role: 'system', content: systemPrompt }
+  } else {
+    session.messages.unshift({ role: 'system', content: systemPrompt })
+  }
+
+  // 添加 continuePrompt
+  let continuePrompt: string
+  if (session.disableTools) {
+    continuePrompt = `✅ 任务已完成！
+
+工具 ${toolName} 已成功执行并返回结果：
+${toolResult}
+
+**你现在必须：**
+1. 只回复纯文本总结（说明任务已完成）
+2. **绝对禁止**使用任何工具调用格式
+3. **绝对禁止**生成 <tool> 标签
+
+只回复文字总结即可。`
+    // 重置标志，避免影响后续正常流程
+    session.disableTools = false
+  } else {
+    continuePrompt = `工具 ${toolName} 执行完成，结果如下：
+${toolResult}
+
+请基于上述结果判断下一步：
+- 如果任务已完成，请直接回复文字总结，不要调用任何工具；
+- 如果还有后续步骤，请调用其他未执行过的工具；
+- **绝对禁止**重复调用 ${toolName}（该工具已成功执行）。
+
+当前迭代: ${iterationCount + 1}/${MAX_ITERATIONS}`
+  }
+
+  session.messages.push({
+    role: 'user',
+    content: continuePrompt
+  })
+
+  log.debug(`[CLI-Chat] Recursing for iteration ${iterationCount + 2}`)
+
+  const currentSession = sessions.get(sessionId)
+  if (!currentSession || !currentSession.isStreaming) {
+    log.debug(`[CLI-Chat] Session ${sessionId} is no longer active, stopping recursion`)
+    onChunk({ type: 'done' })
+    return
+  }
+
+  try {
+    await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
+  } catch (recursiveError) {
+    log.error(`[CLI-Chat] Recursive call failed at iteration ${iterationCount + 1}:`, recursiveError)
+    onChunk({
+      type: 'error',
+      error: `Recursive iteration failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`
+    })
+  }
+}
+
+/**
  * 发送消息并获取流式响应
  */
 // 消息类型定义 - 支持多模态（与 LLMMessage 兼容）
@@ -1312,40 +1416,46 @@ export async function sendCLIMessageStream(
       log.info(`[CLI-Chat] Trimmed message history to ${session.messages.length} messages`)
     }
     
-    // ✅ 修复：过滤掉包含幻觉的消息，防止 AI 学习错误模式
+    // ✅ 修复：过滤掉 AI 生成的幻觉消息，但保留真实的 tool 执行结果
+    // 关键：tool 角色的消息是工具的真实返回，不能过滤，否则 AI 看不到执行结果会重复调用
     const filteredMessages = session.messages.filter(m => {
-      if (m.role === 'system') return true
+      // 系统消息、用户消息、工具返回消息都保留
+      if (m.role === 'system' || m.role === 'tool' || m.role === 'user') return true
+
+      // 只过滤 assistant 消息中的幻觉
+      if (m.role !== 'assistant') return true
+
       const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content)
-      
-      // 规则 1: 过滤掉包含 "File written:" 或 "File deleted:" 但没有代码块的消息
+
+      // 规则 1: 过滤掉包含 "File written:" 或 "File deleted:" 但没有代码块的 assistant 幻觉消息
       if (content.includes('File written:') || content.includes('File deleted:')) {
         if (!content.includes('```python')) {
           log.warn(`[CLI-Chat] Filtering out hallucinated file operation message`)
           return false
         }
       }
-      
-      // 规则 2: 过滤掉包含 "工具执行结果：" 的幻觉消息
+
+      // 规则 2: 过滤掉包含 "工具执行结果：" 的 assistant 幻觉消息
       if (content.includes('工具执行结果：') || content.includes('**工具执行结果：**')) {
         log.warn(`[CLI-Chat] Filtering out hallucinated tool result message`)
         return false
       }
-      
-      // 规则 3: 过滤掉只包含路径但没有代码块的消息
+
+      // 规则 3: 过滤掉只包含路径但没有代码块的 assistant 消息
       if (/^\s*\/Users\/[^\n]+\.(txt|md|json|js|ts|py)\s*$/i.test(content)) {
         log.warn(`[CLI-Chat] Filtering out standalone path message`)
         return false
       }
-      
-      // 规则 4: 过滤掉包含 "任务已完成" 但没有代码块的消息
+
+      // 规则 4: 过滤掉包含 "任务已完成" 但没有代码块的 assistant 幻觉消息
       if (content.includes('任务已完成') && !content.includes('```python')) {
         log.warn(`[CLI-Chat] Filtering out hallucinated completion message`)
         return false
       }
-      
+
       // 规则 5: 过滤掉重复的 "File written/deleted" 消息（保留最新的）
       // 这个在后续处理
-      
+
       return true
     })
     
@@ -1568,46 +1678,44 @@ export async function sendCLIMessageStream(
     log.debug(`[CLI-Chat] Session mode: ${session.mode}, fullContent preview: ${fullContent.substring(0, 100)}...`)
 
     // 执行工具调用（Agent 模式）
+    // ✅ 关键设计：每次只处理一个工具调用，执行后立即递归让 AI 决定下一步
+    // 这样 AI 可以基于前一个工具的结果决定下一步操作
     if (session.mode === 'agent' && toolCalls.length > 0) {
-      log.debug(`[CLI-Chat] Executing ${toolCalls.length} tool calls in iteration ${iterationCount + 1}`)
+      // ✅ 只取第一个工具调用（忽略后续的，让 AI 在递归中决定是否需要继续）
+      const toolCall = toolCalls[0]
+      log.debug(`[CLI-Chat] Processing first tool call: ${toolCall.name} (ignoring ${toolCalls.length - 1} others)`)
 
-      // 添加助手回复到消息历史（必须包含 tool_calls，否则后续的 tool 消息会报错）
+      // ✅ 关键修复：只添加第一个 tool_call 到消息历史
+      // 之前添加所有 tool_calls，导致 AI 在递归后又生成重复调用
       session.messages.push({
         role: 'assistant',
         content: fullContent.trim() || '',
-        tool_calls: toolCalls.map(tc => ({
-          id: tc.id,
+        tool_calls: [{
+          id: toolCall.id,
           type: 'function',
           function: {
-            name: tc.name,
-            arguments: tc.arguments
+            name: toolCall.name,
+            arguments: toolCall.arguments
           }
-        }))
+        }]
       })
 
-      // 性能优化：每次 iteration 只执行第一个工具，避免同时执行多个工具导致卡顿
-      log.debug(`[CLI-Chat] Executing FIRST tool only: ${toolCalls[0].name}`)
-      
-      const toolCall = toolCalls[0]  // 只取第一个工具
-      
-      // 🔥 完全托管模式：自动执行所有工具，无需确认
-      // 危险操作仅记录日志，不阻止执行
+      // 🔥 完全托管模式：自动执行工具，无需确认
       const dangerousTools = ['delete_file', 'write_file', 'edit_file', 'execute_bash', 'bash']
       const isDangerous = dangerousTools.includes(toolCall.name)
-      
+
       if (isDangerous) {
         log.warn(`[CLI-Chat] Auto-executing dangerous tool: ${toolCall.name} (full-trust mode)`)
-        
-        // 仅显示执行信息，不等待确认
         onChunk({
           type: 'text',
           content: `🔧 **执行 ${toolCall.name}** (完全托管模式)\n\n`
         })
       }
-      
+
+      // ✅ 在 try 块外部声明，确保 catch 块也能访问
+      let toolResultForContinue = ''
+
       try {
-        log.debug(`[CLI-Chat] Executing tool: ${toolCall.name}`)
-        
         // ✅ 修复：添加 JSON 解析错误处理，防止无效参数导致整个流程崩溃
         let args: Record<string, unknown>
         try {
@@ -1618,8 +1726,76 @@ export async function sendCLIMessageStream(
           // 使用空参数继续，让工具执行时处理无效参数
           args = {}
         }
-        
+
+        // ✅ 关键修复：使用 ToolCallManager 进行指纹检测
+        log.info(`[CLI-Chat] Registering tool call: ${toolCall.name}, sessionId: ${sessionId}, iteration: ${iterationCount}`)
+        const registration = toolCallManager.registerToolCall(
+          sessionId,
+          toolCall.id,
+          toolCall.name,
+          args,
+          iterationCount
+        )
+        log.info(`[CLI-Chat] Tool call registration result: isDuplicate=${registration.isDuplicate}, hasExisting=${!!registration.existingRecord}`)
+
+        if (registration.isDuplicate && registration.existingRecord) {
+          const existing = registration.existingRecord
+          log.warn(`[CLI-Chat] Duplicate tool call detected: ${toolCall.name}, existing status: ${existing.status}, existing iteration: ${existing.iterationCount}`)
+
+          if (existing.status === 'completed') {
+            // ✅ 关键修复：工具已执行过且成功完成，复用结果并让 AI 决定下一步
+            // 不再直接结束对话，避免中断后续任务
+            log.info(`[CLI-Chat] Tool ${toolCall.name} already completed, reusing result and continuing (reuseCount=${existing.reuseCount})`)
+            onChunk({
+              type: 'text',
+              content: `✅ 工具 ${toolCall.name} 已在之前成功执行，直接复用结果\n\n`
+            })
+            // 添加 tool 结果到消息历史
+            session.messages.push({
+              role: 'tool',
+              name: toolCall.name,
+              content: existing.result || '操作已完成',
+              tool_call_id: toolCall.id
+            })
+            // 标记当前 toolCall 也为 completed
+            toolCallManager.markAsCompleted(toolCall.id, existing.result || '操作已完成')
+
+            // 🔥 防循环保护：如果同一个 completed 工具被反复请求超过阈值，强制进入纯文本总结模式
+            if (existing.reuseCount >= 2) {
+              log.warn(`[CLI-Chat] Tool ${toolCall.name} reused ${existing.reuseCount} times, forcing text-only mode to break loop`)
+              session.disableTools = true
+            }
+
+            // 继续递归，让 AI 基于结果决定下一步（继续后续工具或文字总结）
+            // 后续统一在工具执行后的公共逻辑中处理
+            continueAfterToolResult(sessionId, toolCall.name, existing.result || '操作已完成', onChunk, iterationCount, modelParam)
+            return
+          } else if (existing.status === 'running') {
+            // 工具正在执行中，等待
+            onChunk({ type: 'text', content: `⏳ 工具 ${toolCall.name} 正在执行中...\n\n` })
+            session.messages.push({
+              role: 'tool',
+              name: toolCall.name,
+              content: '操作正在执行中，请稍后重试',
+              tool_call_id: toolCall.id
+            })
+            toolCallManager.markAsRunning(toolCall.id)
+            onChunk({ type: 'done' })
+            return
+          }
+          // failed 状态会重新执行
+        }
+
+        // ✅ 标记工具为 running 状态
+        toolCallManager.markAsRunning(toolCall.id)
         const result = await executeToolCall(toolCall.name, args, session.cwd)
+
+        // ✅ 根据执行结果更新状态
+        if (result.success) {
+          toolCallManager.markAsCompleted(toolCall.id, result.output)
+        } else {
+          toolCallManager.markAsFailed(toolCall.id, result.error || 'Unknown error')
+        }
 
         // 🔥 Diff 预览：如果是 edit_file 且返回了 diff，发送 diff 预览
         const metadata = (result as any).metadata
@@ -1649,93 +1825,45 @@ export async function sendCLIMessageStream(
           tool_call_id: toolCall.id
         })
 
+        toolResultForContinue = result.success ? result.output : result.error || 'Error'
         log.debug(`[CLI-Chat] Tool ${toolCall.name} executed: success=${result.success}`)
-        
-        // 如果有更多工具，记录日志但不执行
-        if (toolCalls.length > 1) {
-          log.debug(`[CLI-Chat] Deferring ${toolCalls.length - 1} additional tool(s) to next iteration`)
-        }
       } catch (error) {
-        log.error(`[CLI-Chat] Tool execution error: ${error}`)
+        const errorMsg = String(error)
+        log.error(`[CLI-Chat] Tool execution error: ${errorMsg}`)
         onChunk({
           type: 'tool_result',
           toolResult: {
             toolCallId: toolCall.id,
             success: false,
             output: '',
-            error: String(error)
+            error: errorMsg
           }
         })
+        // ✅ 关键修复：把执行异常也加入消息历史，让 AI 可以决定重试或报告
+        session.messages.push({
+          role: 'tool',
+          name: toolCall.name,
+          content: `Error: ${errorMsg}`,
+          tool_call_id: toolCall.id
+        })
+        toolCallManager.markAsFailed(toolCall.id, errorMsg)
+        toolResultForContinue = `Error: ${errorMsg}`
+      }
+
+      // 如果有更多工具，记录日志但不执行
+      if (toolCalls.length > 1) {
+        log.debug(`[CLI-Chat] Deferring ${toolCalls.length - 1} additional tool(s) to next iteration`)
       }
 
       // 工具执行后，继续对话让 AI 分析结果
-      // ✅ 修复：在每次迭代时重新添加系统提示词，确保 AI 记住工具使用格式
-      const systemPrompt = await buildSystemPrompt(session.mode, session.cwd)
-      
-      // 检查是否已有系统提示词，如果有则替换，如果没有则添加
-      const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
-      if (existingSystemIndex >= 0) {
-        session.messages[existingSystemIndex] = {
-          role: 'system',
-          content: systemPrompt
-        }
-      } else {
-        session.messages.unshift({
-          role: 'system',
-          content: systemPrompt
-        })
-      }
-      
-      // 添加一个明确的用户消息来提示 AI 继续分析
-      // ✅ 修复：明确告诉 AI 必须使用工具调用格式
-      const continuePrompt = `工具执行完成。
-
-CRITICAL: 你必须使用工具调用格式来继续任务。
-
-如果任务已完成，请说"任务已完成"。
-如果任务未完成，你必须输出工具调用格式：
-<tool name="TOOL_NAME" param1="value1" param2="value2"/>
-
-可用工具：
-- <tool name="write_file" path="..." content="..."/>
-- <tool name="edit_file" path="..." old_string="..." new_string="..."/>
-- <tool name="delete_file" path="..."/>
-- <tool name="search_files" pattern="..."/>
-- <tool name="read_file" path="..."/>
-- <tool name="list_directory" path="..."/>
-- <tool name="execute_bash" command="..."/>
-
-当前迭代: ${iterationCount + 1}/${MAX_ITERATIONS}`
-
-      session.messages.push({
-        role: 'user',
-        content: continuePrompt
-      })
-
-      log.debug(`[CLI-Chat] Recursing for iteration ${iterationCount + 2}`)
-
-      // ✅ 修复：检查会话是否仍然活跃
-      const currentSession = sessions.get(sessionId)
-      if (!currentSession || !currentSession.isStreaming) {
-        log.debug(`[CLI-Chat] Session ${sessionId} is no longer active, stopping recursion`)
-        onChunk({ type: 'done' })
-        return
-      }
-
-      // ✅ 修复：使用 try-catch 包裹递归调用，防止栈溢出和未处理异常
-      try {
-        // 递归调用 sendCLIMessageStream 继续对话，传递 model 参数
-        await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
-      } catch (recursiveError) {
-        log.error(`[CLI-Chat] Recursive call failed at iteration ${iterationCount + 1}:`, recursiveError)
-        onChunk({
-          type: 'error',
-          error: `Recursive iteration failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`
-        })
-        return
-      }
-      
-      // 递归调用内部会处理完成信号，这里直接返回
+      await continueAfterToolResult(
+        sessionId,
+        toolCall.name,
+        toolResultForContinue,
+        onChunk,
+        iterationCount,
+        modelParam
+      )
       return
     }
     
@@ -1994,26 +2122,26 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
       if (extractedToolCalls.length > 0) {
         log.info(`[CLI-Chat] Found ${extractedToolCalls.length} tool calls in content`)
 
-        // 添加助手回复到消息历史（必须包含 tool_calls）
-        // 使用清理后的内容（不包含 JSON 工具调用代码块）
-        session.messages.push({
-          role: 'assistant',
-          content: cleanedContent,
-          tool_calls: extractedToolCalls.map(tc => ({
-            id: tc.id,
-            type: 'function',
-            function: {
-              name: tc.name,
-              arguments: JSON.stringify(tc.arguments)
-            }
-          }))
-        })
-
         // ✅ 修复：每次只执行第一个工具调用，让 AI 决定下一步
         // 这样可以实现：搜索 -> 告知用户 -> 删除 -> 验证 的完整流程
         const firstToolCall = extractedToolCalls[0]
         const remainingToolCalls = extractedToolCalls.slice(1)
-        
+
+        // ✅ 关键修复：助手消息只包含第一个 tool_call
+        // 避免历史中出现未执行的 tool_calls，导致 AI 后续生成重复调用
+        session.messages.push({
+          role: 'assistant',
+          content: cleanedContent,
+          tool_calls: [{
+            id: firstToolCall.id,
+            type: 'function',
+            function: {
+              name: firstToolCall.name,
+              arguments: JSON.stringify(firstToolCall.arguments)
+            }
+          }]
+        })
+
         if (remainingToolCalls.length > 0) {
           log.debug(`[CLI-Chat] Deferring ${remainingToolCalls.length} additional tool(s) to next iteration`)
         }
@@ -2021,12 +2149,13 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
         // ✅ 修复：声明变量用于存储搜索结果中的文件路径
         let filePathFromSearch = ''
         
+        // ✅ 在 try 块外部声明，确保 catch 块也能访问
+        let toolResultForContinue = ''
+        const toolCallId = firstToolCall.id || `extracted-${firstToolCall.name}`
+
         try {
           log.debug(`[CLI-Chat] Executing first tool: ${firstToolCall.name}`)
-          
-          // 使用工具调用的实际 ID
-          const toolCallId = firstToolCall.id || `extracted-${firstToolCall.name}`
-          
+
           // ✅ 修复：先发送 tool_call 事件，让前端显示工具调用
           // ✅ 修复：arguments 保持为对象，不要序列化为字符串，前端期望的是对象
           onChunk({
@@ -2037,7 +2166,69 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
               arguments: firstToolCall.arguments
             }
           })
-          
+
+          // ✅ 关键修复：使用 ToolCallManager 进行指纹检测
+          log.info(`[CLI-Chat] Registering extracted tool call: ${firstToolCall.name}, sessionId: ${sessionId}, iteration: ${iterationCount}`)
+          const registration = toolCallManager.registerToolCall(
+            sessionId,
+            toolCallId,
+            firstToolCall.name,
+            firstToolCall.arguments,
+            iterationCount
+          )
+          log.info(`[CLI-Chat] Extracted tool call registration result: isDuplicate=${registration.isDuplicate}, hasExisting=${!!registration.existingRecord}`)
+
+          if (registration.isDuplicate && registration.existingRecord) {
+            const existing = registration.existingRecord
+            log.warn(`[CLI-Chat] Duplicate extracted tool call detected: ${firstToolCall.name}, existing status: ${existing.status}`)
+
+            if (existing.status === 'completed') {
+              // ✅ 关键修复：工具已执行过且成功完成，复用结果并让 AI 决定下一步
+              log.info(`[CLI-Chat] Extracted tool ${firstToolCall.name} already completed, reusing result and continuing (reuseCount=${existing.reuseCount})`)
+              onChunk({
+                type: 'text',
+                content: `✅ 工具 ${firstToolCall.name} 已在之前成功执行，直接复用结果\n\n`
+              })
+              session.messages.push({
+                role: 'tool',
+                name: firstToolCall.name,
+                content: existing.result || '操作已完成',
+                tool_call_id: toolCallId
+              })
+              toolCallManager.markAsCompleted(toolCallId, existing.result || '操作已完成')
+
+              // 🔥 防循环保护：如果同一个 completed 工具被反复请求超过阈值，强制进入纯文本总结模式
+              if (existing.reuseCount >= 2) {
+                log.warn(`[CLI-Chat] Extracted tool ${firstToolCall.name} reused ${existing.reuseCount} times, forcing text-only mode to break loop`)
+                session.disableTools = true
+              }
+
+              await continueAfterToolResult(
+                sessionId,
+                firstToolCall.name,
+                existing.result || '操作已完成',
+                onChunk,
+                iterationCount,
+                modelParam
+              )
+              return
+            } else if (existing.status === 'running') {
+              // 工具正在执行中，等待
+              onChunk({ type: 'text', content: `⏳ 工具 ${firstToolCall.name} 正在执行中...\n\n` })
+              session.messages.push({
+                role: 'tool',
+                name: firstToolCall.name,
+                content: '操作正在执行中，请稍后重试',
+                tool_call_id: toolCallId
+              })
+              toolCallManager.markAsRunning(toolCallId)
+              onChunk({ type: 'done' })
+              return
+            }
+            // failed 状态会重新执行
+          }
+
+          toolCallManager.markAsRunning(toolCallId)
           const result = await executeToolCall(firstToolCall.name, firstToolCall.arguments, session.cwd)
 
           // ✅ 修复：从搜索结果中提取文件路径
@@ -2068,66 +2259,47 @@ CRITICAL: 你必须使用工具调用格式来继续任务。
             content: result.success ? result.output : result.error || 'Error',
             tool_call_id: toolCallId
           })
-          
-          // ✅ 修复：简化 continuePrompt，让 AI 明确知道需要继续任务
-          const continuePrompt = result.success 
-            ? `任务已完成：${firstToolCall.name} 执行成功。${result.output ? `输出：${result.output}` : ''}`
-            : `任务执行失败：${result.error || '未知错误'}。请重试或报告问题。`
-          
-          // 保存 continuePrompt 供后续使用
-          ;(session as any)._continuePrompt = continuePrompt
-        } catch (error) {
-          log.error(`[CLI-Chat] Extracted tool execution error:`, error)
-        }
 
-        // 继续对话 - 让 AI 决定下一步
-        // ✅ 修复：在每次迭代时重新添加系统提示词，确保 AI 记住工具使用格式
-        const systemPrompt = await buildSystemPrompt(session.mode, session.cwd)
-        
-        // 检查是否已有系统提示词，如果有则替换，如果没有则添加
-        const existingSystemIndex = session.messages.findIndex(m => m.role === 'system')
-        if (existingSystemIndex >= 0) {
-          session.messages[existingSystemIndex] = {
-            role: 'system',
-            content: systemPrompt
+          // ✅ 根据执行结果更新状态
+          if (result.success) {
+            toolCallManager.markAsCompleted(toolCallId, result.output)
+          } else {
+            toolCallManager.markAsFailed(toolCallId, result.error || 'Unknown error')
           }
-        } else {
-          session.messages.unshift({
-            role: 'system',
-            content: systemPrompt
-          })
-        }
-        
-        // ✅ 修复：使用之前保存的 continuePrompt
-        const continuePrompt = (session as any)._continuePrompt || '请继续任务'
-        delete (session as any)._continuePrompt
 
-        session.messages.push({
-          role: 'user',
-          content: continuePrompt
-        })
-
-        // ✅ 修复：检查会话是否仍然活跃
-        const currentSession = sessions.get(sessionId)
-        if (!currentSession || !currentSession.isStreaming) {
-          log.debug(`[CLI-Chat] Session ${sessionId} is no longer active, stopping recursion`)
-          onChunk({ type: 'done' })
-          return
-        }
-
-        // ✅ 修复：使用 try-catch 包裹递归调用，防止栈溢出和未处理异常
-        try {
-          // 递归调用时传递 model 参数
-          await sendCLIMessageStream(sessionId, '', onChunk, undefined, iterationCount + 1, modelParam)
-        } catch (recursiveError) {
-          log.error(`[CLI-Chat] Recursive call failed at iteration ${iterationCount + 1}:`, recursiveError)
+          toolResultForContinue = result.success ? result.output : result.error || 'Error'
+        } catch (error) {
+          const errorMsg = String(error)
+          log.error(`[CLI-Chat] Extracted tool execution error:`, errorMsg)
           onChunk({
-            type: 'error',
-            error: `Recursive iteration failed: ${recursiveError instanceof Error ? recursiveError.message : String(recursiveError)}`
+            type: 'tool_result',
+            toolResult: {
+              toolCallId: toolCallId,
+              success: false,
+              output: '',
+              error: errorMsg
+            }
           })
-          return
+          // ✅ 关键修复：把执行异常也加入消息历史，让 AI 可以决定重试或报告
+          session.messages.push({
+            role: 'tool',
+            name: firstToolCall.name,
+            content: `Error: ${errorMsg}`,
+            tool_call_id: toolCallId
+          })
+          toolCallManager.markAsFailed(toolCallId, errorMsg)
+          toolResultForContinue = `Error: ${errorMsg}`
         }
-        
+
+        // 工具执行后，继续对话让 AI 分析结果
+        await continueAfterToolResult(
+          sessionId,
+          firstToolCall.name,
+          toolResultForContinue,
+          onChunk,
+          iterationCount,
+          modelParam
+        )
         return
       }
     }
